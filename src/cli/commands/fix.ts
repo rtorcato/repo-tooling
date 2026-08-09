@@ -18,21 +18,27 @@ import { declinedInLock, lockfilePatchForTarget } from './fix-targets.js'
 import { computeFileList } from './setup-presets.js'
 import { BASE_FIXERS, type Fixer, type FixRiskLevel, type Pkg } from '../../base/fixers.js'
 import { FIXERS, readPackageJson } from '../../languages/js/fixers.js'
+import { PYTHON_FIXERS } from '../../languages/python/fixers.js'
 import { SWIFT_FIXERS } from '../../languages/swift/fixers.js'
 import { detectLanguage } from '../utils/detect-language.js'
 
+/** The module-specific fixer set per detected language (#286, #290, #303). */
+const LANGUAGE_FIXERS: Record<string, Fixer[]> = {
+	swift: SWIFT_FIXERS,
+	python: PYTHON_FIXERS,
+}
+
 /**
- * The fixers that apply to a repo, by detected language (#286, #303): the
- * language-agnostic base set plus the module's own. Swift repos get the Swift
- * module; everything else (including a bare dir mid-setup) gets JS, the
- * historical default.
+ * The fixers that apply to a repo, by detected language: the language-agnostic
+ * base set plus the module's own. Anything without a module of its own
+ * (including a bare dir mid-setup) gets JS, the historical default.
  */
 function fixersForLanguage(language: string): Fixer[] {
-	return [...BASE_FIXERS, ...(language === 'swift' ? SWIFT_FIXERS : FIXERS)]
+	return [...BASE_FIXERS, ...(LANGUAGE_FIXERS[language] ?? FIXERS)]
 }
 
 /** Every fixer across every language — for `--list` and the unknown-target hint. */
-const ALL_FIXERS: Fixer[] = [...BASE_FIXERS, ...FIXERS, ...SWIFT_FIXERS]
+const ALL_FIXERS: Fixer[] = [...BASE_FIXERS, ...FIXERS, ...SWIFT_FIXERS, ...PYTHON_FIXERS]
 
 export interface FixOptions {
 	directory?: string

@@ -69,11 +69,30 @@ const SWIFT_FIX_TARGETS: Record<string, string> = {
 	// isn't safe. The check's own hint covers both halves.
 }
 
+/** The same shadowing for the Python module (#290). */
+const PYTHON_FIX_TARGETS: Record<string, string> = {
+	'Git hooks': 'python-git-hooks',
+	'Pre-push hook': 'python-git-hooks',
+	'GitHub Actions': 'python-ci',
+	'GitLab CI': 'python-gitlab-ci',
+	Ruff: 'ruff',
+	mypy: 'mypy',
+	pytest: 'pytest',
+	'Python .gitignore': 'python-gitignore',
+	// `pyproject.toml` and `Python tests` are deliberately absent, for the same
+	// reason `Swift tests` is: the fix is content only the project can write
+	// (package metadata, actual tests). Their own hints say what to add.
+	// `lockfile` too — see the note at the top of src/languages/python/fixers.ts.
+}
+
+const FIX_TARGETS_BY_LANGUAGE: Record<string, Record<string, string>> = {
+	swift: SWIFT_FIX_TARGETS,
+	python: PYTHON_FIX_TARGETS,
+}
+
 export function getFixTargetForCheck(checkName: string, language?: string): string | null {
-	if (language === 'swift' && SWIFT_FIX_TARGETS[checkName]) {
-		return SWIFT_FIX_TARGETS[checkName]
-	}
-	return FIX_TARGETS[checkName] ?? null
+	const overrides = language ? FIX_TARGETS_BY_LANGUAGE[language] : undefined
+	return overrides?.[checkName] ?? FIX_TARGETS[checkName] ?? null
 }
 
 /**
@@ -175,6 +194,7 @@ export function lockfilePatchForTarget(
 			return c.commitLint ? null : { commitLint: true }
 		case 'husky':
 		case 'swift-git-hooks':
+		case 'python-git-hooks':
 			return c.gitHooks ? null : { gitHooks: true }
 		case 'semantic-release':
 		case 'swift-release':

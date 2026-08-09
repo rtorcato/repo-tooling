@@ -103,6 +103,8 @@
 		"tooling/mcp/mcp.json.example",
 		"tooling/swift/*.yml",
 		"tooling/swift/*.json",
+		"tooling/python/*.toml",
+		"tooling/python/*.ini",
 		"tooling/github-actions/workflows/*.yml",
 		"README.md",
 		"AGENTS.md"

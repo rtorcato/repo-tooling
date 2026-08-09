@@ -88,7 +88,7 @@ A universal baseline (`.editorconfig`, `.nvmrc`, `engines.node`, `knip.json`, `.
 :::note Non-JS languages
 The table above is the JavaScript/TypeScript question list. Picking **Swift** asks only for a package name and then scaffolds a SwiftPM library — SwiftLint, Periphery and `swift test` are the standard rather than options. See the [Swift guide](./swift.md).
 
-Python and Perl write nothing and point you at `doctor`, which already audits those repos against the language-agnostic checks (CI, CodeQL, Dependabot, GitHub repo settings). Their presets land with their language modules — see [#139](https://github.com/rtorcato/repo-tooling/issues/139).
+Python and Perl write nothing and point you at `doctor`. For **Python** that's now a full audit — Ruff, mypy, pytest, `.gitignore`, CI and git hooks on top of the language-agnostic checks, all fixable with `fix`; only the `setup` preset is still missing. See the [Python reference](../reference/python.md). Perl gets the language-agnostic checks (CI, CodeQL, Dependabot, GitHub repo settings) until its module lands — see [#139](https://github.com/rtorcato/repo-tooling/issues/139).
 :::
 
 ## Non-interactive setup (CI / scripts)

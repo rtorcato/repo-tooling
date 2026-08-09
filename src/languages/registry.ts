@@ -23,8 +23,8 @@ export interface LanguageModule {
 	 */
 	dependabotEcosystem: string | null
 	/**
-	 * Whether repo-tooling's doctor/fix suite covers this language yet. Only JS
-	 * today; Swift/Python/Perl flip to `true` as their modules land (#286/#290/#289).
+	 * Whether repo-tooling's doctor/fix suite covers this language yet. JS, Swift
+	 * and Python today; Perl flips to `true` when its module lands (#289).
 	 * The coarse doctor gate keys off this until per-module dispatch (#285).
 	 */
 	supported: boolean
@@ -50,7 +50,7 @@ export const LANGUAGES: Record<LanguageModule['id'], LanguageModule> = {
 		label: 'Python',
 		codeqlLanguages: ['python'],
 		dependabotEcosystem: 'pip',
-		supported: false,
+		supported: true,
 	},
 	perl: {
 		id: 'perl',
