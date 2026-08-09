@@ -1,3 +1,15 @@
+# [3.6.0](https://github.com/rtorcato/repo-tooling/compare/v3.5.0...v3.6.0) (2026-08-09)
+
+
+### Bug Fixes
+
+* **cli:** send fixer advisories to stderr so --json stays parseable ([#358](https://github.com/rtorcato/repo-tooling/issues/358)) ([99789c1](https://github.com/rtorcato/repo-tooling/commit/99789c17ba2247563b5f44edf016634abe747376)), closes [#356](https://github.com/rtorcato/repo-tooling/issues/356)
+
+
+### Features
+
+* **python:** add src/languages/python module ([#356](https://github.com/rtorcato/repo-tooling/issues/356)) ([294a09b](https://github.com/rtorcato/repo-tooling/commit/294a09bc5576f563e9ae855e814d1b7f9b2ffab2)), closes [#286](https://github.com/rtorcato/repo-tooling/issues/286) [#288](https://github.com/rtorcato/repo-tooling/issues/288)
+
 # [3.5.0](https://github.com/rtorcato/repo-tooling/compare/v3.4.0...v3.5.0) (2026-08-09)
 
 
