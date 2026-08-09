@@ -71,6 +71,35 @@ libraries) out of the box. Beyond that, repo-tooling ships **optional deploy
 workflows** you add on demand — they're too deploy-target-specific to scaffold
 by default, so the setup wizard never prompts for them.
 
+### Why `ci.yml` is generated, not a reusable workflow
+
+The alternative was for consumers to call one shared workflow instead of owning
+a file:
+
+```yaml
+jobs:
+  ci:
+    uses: rtorcato/repo-tooling/.github/workflows/ci.yml@main
+```
+
+One source of truth, upgrades landing automatically. It was rejected:
+
+- **It only works on GitHub.** repo-tooling also generates GitLab CI, which has
+  no equivalent — so those repos would need the generated file regardless, and
+  the family would run two different models.
+- **The consumer stops owning its CI.** Adding a job, a matrix entry or a deploy
+  step means either abandoning the shared workflow or growing an input for every
+  knob anyone might want.
+- **It pins every consumer to a ref of this repo.** `@main` runs whatever lands
+  here on their runners; the generated file has no such surface.
+
+The one thing it was meant to solve — a generated `ci.yml` drifting from the
+preset with nobody noticing — is now covered by the audit instead. `doctor`
+compares the workflow's action pins against the preset and reports the
+disagreement, `fix github-actions --diff` shows the delta before anything is
+overwritten, and the composite action above turns that into a CI gate. Drift is
+visible and reconcilable, which was the only real gap in owning the file.
+
 ## Optional deploy workflows
 
 Add any of these to an existing repo with `fix`:
