@@ -55,6 +55,12 @@ export interface Fixer {
 	 */
 	riskLevel?: FixRiskLevel
 	canFixDrift?: boolean
+	/**
+	 * Advisories printed from here go to `console.error`, never `console.log`:
+	 * stdout is the `--json` payload's channel and a stray line lands in the
+	 * middle of it, breaking every parser downstream (#357). They're diagnostics,
+	 * not results, so stderr is the right stream regardless of the flag.
+	 */
 	run(ctx: FixerContext): Promise<{ filesWritten: string[] }>
 }
 
@@ -123,7 +129,7 @@ export const BASE_FIXERS: Fixer[] = [
 			// generator correctly emits no workflow for an empty matrix (Perl, #289),
 			// and a silent no-op reads as "done".
 			if (codeqlLanguages.length === 0) {
-				console.log(chalk.yellow(`   skipped — CodeQL has no ${label} analyzer`))
+				console.error(chalk.yellow(`   skipped — CodeQL has no ${label} analyzer`))
 				return { filesWritten: [] }
 			}
 			return { filesWritten: await generateCodeQLWorkflow(targetDir, codeqlLanguages) }

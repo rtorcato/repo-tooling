@@ -249,7 +249,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const includeTreeshake = await fs.pathExists(
@@ -257,7 +257,7 @@ export const FIXERS: Fixer[] = [
 			)
 			const verify = composeVerifyScriptFromPkg(pkg, { includeTreeshake })
 			if (!verify) {
-				console.log(
+				console.error(
 					chalk.gray(
 						'   not enough tools enabled to compose a verify chain — skipping (need 2+ of typecheck/lint/tests)'
 					)
@@ -287,7 +287,7 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
 			if (pkg?.private === true) {
-				console.log(chalk.gray('   skipping — package is private'))
+				console.error(chalk.gray('   skipping — package is private'))
 				return { filesWritten: [] }
 			}
 			const filesWritten = await generateSemanticReleaseConfig(targetDir)
@@ -347,7 +347,7 @@ export const FIXERS: Fixer[] = [
 				overwrite: result.check === 'GitHub Actions',
 			})
 			if (!filesWritten.includes(CI_WORKFLOW)) {
-				console.log(
+				console.error(
 					chalk.yellow(
 						`   ${CI_WORKFLOW} differs from the preset — left as-is; run \`fix github-actions --diff\` to see the delta`
 					)
@@ -562,17 +562,17 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: false,
 		async run({ targetDir, pkg }) {
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const workspaceName = (pkg.name as string | undefined) ?? null
 			if (!workspaceName) {
-				console.log(chalk.yellow('   package.json has no `name` — skipping'))
+				console.error(chalk.yellow('   package.json has no `name` — skipping'))
 				return { filesWritten: [] }
 			}
 			const { allCandidates, defaultAllowed } = inferSubpathsFromExports(pkg)
 			if (allCandidates.length < 2 || !defaultAllowed) {
-				console.log(
+				console.error(
 					chalk.yellow(
 						'   package.json does not expose ≥2 subpath exports — tree-shake check needs multiple subpaths to be meaningful. Skipping.'
 					)
@@ -586,7 +586,7 @@ export const FIXERS: Fixer[] = [
 				allowedSubpath,
 				forbiddenSubpaths,
 			})
-			console.log(
+			console.error(
 				chalk.dim(
 					`   Wired '${allowedSubpath}' as allowed; forbidden = [${forbiddenSubpaths.join(', ')}]. Edit apps/treeshake-check/check.mjs to tune.`
 				)
@@ -670,7 +670,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const updated = { ...pkg }
@@ -701,7 +701,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const updated = { ...pkg }
@@ -731,7 +731,7 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const p = pkg as Record<string, unknown>
@@ -744,7 +744,7 @@ export const FIXERS: Fixer[] = [
 				isPrivate: p.private === true,
 			})
 			if (!block) {
-				console.log(
+				console.error(
 					chalk.yellow('   package.json has no name/repository to build badges from — skipping')
 				)
 				return { filesWritten: [] }
@@ -767,7 +767,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const updated = { ...pkg }
@@ -777,7 +777,7 @@ export const FIXERS: Fixer[] = [
 			devDeps['@rtorcato/repo-tooling'] = 'latest'
 			updated.devDependencies = devDeps
 			await fs.writeJson(pkgPath, updated, { spaces: 2 })
-			console.log(chalk.dim('   reminder: run `pnpm install` to install the new dep'))
+			console.error(chalk.dim('   reminder: run `pnpm install` to install the new dep'))
 			return { filesWritten: ['package.json'] }
 		},
 	},
@@ -790,7 +790,7 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: false,
 		async run({ targetDir, pkg }) {
 			if (!pkg) {
-				console.log(chalk.yellow('   no package.json found — skipping'))
+				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
 			const config = inferProjectConfig(pkg)

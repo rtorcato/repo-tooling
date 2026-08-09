@@ -58,15 +58,16 @@ describe('python fixers', () => {
 		const uncovered = (await runDoctor(dir))
 			.map((r) => r.check)
 			.filter((check) => !fixable.has(check))
-		// `language` is informational. `Git identity` is unfixable by design
-		// (#328) — only the operator knows their own address. `README badges` and
-		// `Coverage upload` need a package.json to build from, which a Python repo
-		// hasn't got. `lockfile` has no Python preset to record yet (see the note
-		// atop src/languages/python/fixers.ts). `pyproject.toml` and `Python
-		// tests` are content only the project can write.
+		// `language` and `Monorepo` are informational. `Git identity` is unfixable
+		// by design (#328) — only the operator knows their own address. `README
+		// badges` and `Coverage upload` need a package.json to build from, which a
+		// Python repo hasn't got. `lockfile` has no Python preset to record yet
+		// (see the note atop src/languages/python/fixers.ts). `pyproject.toml` and
+		// `Python tests` are content only the project can write.
 		expect(uncovered).toEqual([
 			'language',
 			'lockfile',
+			'Monorepo',
 			'Git identity',
 			'README badges',
 			'Coverage upload',

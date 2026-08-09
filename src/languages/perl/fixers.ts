@@ -60,7 +60,7 @@ export const PERL_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			const { filesWritten, hooksPathSet } = await installPerlGitHooks(targetDir)
-			console.log(
+			console.error(
 				hooksPathSet
 					? chalk.dim(`   git config core.hooksPath ${PERL_HOOKS_DIR}`)
 					: chalk.yellow(
