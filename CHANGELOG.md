@@ -1,3 +1,10 @@
+## [3.7.1](https://github.com/rtorcato/repo-tooling/compare/v3.7.0...v3.7.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **cli:** finish routing fixer advisories off stdout ([#361](https://github.com/rtorcato/repo-tooling/issues/361)) ([457e28f](https://github.com/rtorcato/repo-tooling/commit/457e28f60d9a51152c4c7b581a8b661d67d65415)), closes [#357](https://github.com/rtorcato/repo-tooling/issues/357) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#290](https://github.com/rtorcato/repo-tooling/issues/290) [#290](https://github.com/rtorcato/repo-tooling/issues/290) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#358](https://github.com/rtorcato/repo-tooling/issues/358)
+
 # [3.7.0](https://github.com/rtorcato/repo-tooling/compare/v3.6.0...v3.7.0) (2026-08-09)
 
 
