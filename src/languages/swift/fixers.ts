@@ -102,7 +102,7 @@ export const SWIFT_FIXERS: Fixer[] = [
 			if (await fs.pathExists(path.join(targetDir, file))) return { filesWritten: [] }
 
 			await fs.outputFile(path.join(targetDir, file), doccLandingPage(target))
-			console.log(
+			console.error(
 				chalk.yellow(
 					'   add swift-docc-plugin to Package.swift to build it: .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0")'
 				)
@@ -131,7 +131,7 @@ export const SWIFT_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			const { filesWritten, hooksPathSet } = await installSwiftGitHooks(targetDir)
-			console.log(
+			console.error(
 				hooksPathSet
 					? chalk.dim(`   git config core.hooksPath ${SWIFT_HOOKS_DIR}`)
 					: chalk.yellow(

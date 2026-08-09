@@ -747,6 +747,27 @@ describe('fix --json', () => {
 		}
 	})
 
+	// #357: a fixer's own advisory used to go to stdout, landing in the middle of
+	// the payload and breaking every parser downstream (the #315 action included).
+	// Asserting on the *whole* stream, not `.at(-1)`, is the point — taking the
+	// last call is exactly what hid this.
+	it('keeps stdout parseable when a fixer prints an advisory', async () => {
+		const dir = newTmpDir()
+		// No scripts at all, so `verify` has nothing to chain and bails with a note.
+		await seedPackageJson(dir)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			await fixCommand('verify', { directory: dir, json: true })
+			expect(errSpy.mock.calls.join('\n')).toContain('verify chain')
+			expect(logSpy.mock.calls).toHaveLength(1)
+			expect(() => JSON.parse(logSpy.mock.calls.join(''))).not.toThrow()
+		} finally {
+			logSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
 	it('emits a JSON error payload on unknown target', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
