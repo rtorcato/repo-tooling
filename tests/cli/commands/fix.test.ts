@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -766,6 +767,27 @@ describe('fix --json', () => {
 			logSpy.mockRestore()
 			errSpy.mockRestore()
 		}
+	})
+
+	// The runtime test above only exercises the advisories a JS fixer happens to
+	// hit. This one is a source guard, because #357 came back within a minute of
+	// being fixed: the Python module (#356) merged 16s before the fix and landed
+	// its own `console.log`, which no behavioural test covered. A new language
+	// module is exactly when this regresses, so check every module's source.
+	it('no fixer module writes to stdout', async () => {
+		const languagesDir = fileURLToPath(new URL('../../../src/languages', import.meta.url))
+		const modules = await fs.readdir(languagesDir)
+		const sources = [
+			fileURLToPath(new URL('../../../src/base/fixers.ts', import.meta.url)),
+			...modules.map((m) => join(languagesDir, m, 'fixers.ts')),
+		]
+		const offenders: string[] = []
+		for (const file of sources) {
+			if (!(await fs.pathExists(file))) continue
+			if (/console\.log\s*\(/.test(await fs.readFile(file, 'utf-8'))) offenders.push(file)
+		}
+		// stdout carries the --json payload; advisories belong on stderr (#357).
+		expect(offenders).toEqual([])
 	})
 
 	it('emits a JSON error payload on unknown target', async () => {
