@@ -9,7 +9,7 @@ import { readPyproject, renderPythonWorkflow } from '../../languages/python/ci.j
 import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
-import { detectLanguage } from '../utils/detect-language.js'
+import { type DetectedLanguage, detectLanguage } from '../utils/detect-language.js'
 import { checkGitHubSettings } from '../../base/github-settings.js'
 import { checkGitIdentity } from '../../base/git-identity.js'
 import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
@@ -27,6 +27,7 @@ import {
 	checkGitHooks,
 	checkGitHubActions,
 	checkGitLabCI,
+	checkNestedLanguages,
 	checkPrePushHook,
 	checkReadmeBadges,
 	COMMITLINT_FILE_CHECK,
@@ -206,6 +207,8 @@ interface BaseCheckOptions {
 	 * with no CI generator — nothing to compare against.
 	 */
 	presetWorkflow: string | null
+	/** The root's detected language, so the monorepo notice can name what it skips (#317). */
+	language: DetectedLanguage
 }
 
 // The language-agnostic checks (src/base): repo hygiene, git hooks, CI,
@@ -219,6 +222,7 @@ async function runBaseChecks(
 ): Promise<CheckResult[]> {
 	const results: CheckResult[] = []
 	results.push(checkLockfile(lock))
+	results.push(await checkNestedLanguages(dir, opts.language))
 	results.push(await checkGitIdentity(dir))
 	results.push(await checkEditorConfig(dir))
 	results.push(await checkFile(dir, COMMITLINT_FILE_CHECK))
@@ -268,6 +272,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				hooks: null,
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: null,
+				language,
 			})),
 		]
 		return demoteDeclined(results, lock)
@@ -289,6 +294,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				// package.json name/repository, which a Swift repo hasn't got.
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderSwiftWorkflow(await readSwiftPackage(targetDir)),
+				language,
 			})),
 			...(await runSwiftChecks(targetDir)),
 		]
@@ -365,6 +371,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 			hooks: jsGitHooksProfile(pkg),
 			badges: { audience: jsBadgeAudience(pkg), fixTarget: 'badges' },
 			presetWorkflow: renderGitHubWorkflow(githubJobs(inferProjectConfig(pkg))),
+			language,
 		}))
 	)
 

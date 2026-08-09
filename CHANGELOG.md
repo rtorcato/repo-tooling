@@ -1,3 +1,10 @@
+# [3.5.0](https://github.com/rtorcato/repo-tooling/compare/v3.4.0...v3.5.0) (2026-08-09)
+
+
+### Features
+
+* **doctor:** report the languages a monorepo audit skips ([#355](https://github.com/rtorcato/repo-tooling/issues/355)) ([aa5b4b9](https://github.com/rtorcato/repo-tooling/commit/aa5b4b941196f574519c7e12a21935b63d6ee7c9)), closes [#317](https://github.com/rtorcato/repo-tooling/issues/317) [#317](https://github.com/rtorcato/repo-tooling/issues/317) [#317](https://github.com/rtorcato/repo-tooling/issues/317)
+
 # [3.4.0](https://github.com/rtorcato/repo-tooling/compare/v3.3.0...v3.4.0) (2026-08-08)
 
 

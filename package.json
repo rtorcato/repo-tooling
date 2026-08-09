@@ -1,6 +1,6 @@
 {
 	"name": "@rtorcato/repo-tooling",
-	"version": "3.4.0",
+	"version": "3.5.0",
 	"description": "One CLI to scaffold, audit and fix your repo's whole toolchain — linting, tests, commits, releases & CI.",
 	"type": "module",
 	"keywords": [
