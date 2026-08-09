@@ -4,6 +4,8 @@ import fs from 'fs-extra'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { githubJobs } from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
+import { PYTHON_GIT_HOOKS, runPythonChecks } from '../../languages/python/checks.js'
+import { readPyproject, renderPythonWorkflow } from '../../languages/python/ci.js'
 import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
@@ -246,10 +248,10 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 
 	// Per-module dispatch (#285): the base checks (repo hygiene, CI, security,
 	// GitHub settings) apply to any repo and run for every language. A supported
-	// module layers its own checks on top; an unsupported one (Swift/Perl/Python
-	// until their modules land) still gets the full base suite instead of the old
-	// wholesale skip. 'unknown' (bare dir mid-setup) resolves to JS so a fresh
-	// repo runs the full suite.
+	// module layers its own checks on top; an unsupported one (Perl, until #289)
+	// still gets the full base suite instead of the old wholesale skip.
+	// 'unknown' (bare dir mid-setup) resolves to JS so a fresh repo runs the
+	// full suite.
 	const language = await detectLanguage(targetDir)
 	const languageModule = resolveLanguageModule(language)
 	if (!languageModule.supported) {
@@ -259,9 +261,9 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				status: 'ok',
 				detail: `detected ${languageModule.label} — running language-agnostic checks; ${languageModule.label}-specific checks land with its module (#139)`,
 			},
-			// hooks: null — nothing here encodes a Python/Perl hook convention yet,
-			// and guessing one would nag every repo with a fix target that doesn't
-			// exist. #289/#290 fill it in.
+			// hooks: null — nothing here encodes a Perl hook convention yet, and
+			// guessing one would nag every repo with a fix target that doesn't
+			// exist. #289 fills it in.
 			...(await runBaseChecks(targetDir, lock, {
 				hooks: null,
 				badges: { audience: 'public', fixTarget: null },
@@ -289,6 +291,28 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				presetWorkflow: renderSwiftWorkflow(await readSwiftPackage(targetDir)),
 			})),
 			...(await runSwiftChecks(targetDir)),
+		]
+		return demoteDeclined(results, lock)
+	}
+
+	// Python suite (#290): same shape as Swift — base checks plus the module's
+	// own, and nothing JS-shaped, because a Python repo has no package.json.
+	if (languageModule.id === 'python') {
+		const results: CheckResult[] = [
+			{
+				check: 'language',
+				status: 'ok',
+				detail: 'detected Python (pyproject.toml / setup.py)',
+			},
+			...(await runBaseChecks(targetDir, lock, {
+				hooks: PYTHON_GIT_HOOKS,
+				// A Python package on PyPI is public by default, so badges apply. No
+				// fixer: `fix badges` derives the block from package.json name and
+				// repository, which a Python repo hasn't got.
+				badges: { audience: 'public', fixTarget: null },
+				presetWorkflow: renderPythonWorkflow(await readPyproject(targetDir)),
+			})),
+			...(await runPythonChecks(targetDir)),
 		]
 		return demoteDeclined(results, lock)
 	}

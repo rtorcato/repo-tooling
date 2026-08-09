@@ -268,6 +268,26 @@ const TOOL_CATALOG: ToolCatalogEntry[] = [
 		fixTarget: 'periphery',
 	},
 	{
+		name: 'Ruff',
+		description:
+			'Python linter and formatter in one tool (replaces flake8, isort, pyupgrade, black)',
+		exports: [],
+		fixTarget: 'ruff',
+	},
+	{
+		name: 'mypy',
+		description:
+			'Python static type checker configuration (strict on your code, lenient on untyped deps)',
+		exports: [],
+		fixTarget: 'mypy',
+	},
+	{
+		name: 'pytest',
+		description: 'Python test runner configuration (strict markers and config, warnings as errors)',
+		exports: [],
+		fixTarget: 'pytest',
+	},
+	{
 		name: 'AI Agent Setup',
 		description: 'Scaffold AGENTS.md, CLAUDE.md, Cursor/Copilot rules, Claude skill, MCP example',
 		exports: [],

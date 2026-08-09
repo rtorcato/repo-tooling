@@ -61,6 +61,7 @@ const sidebars: SidebarsConfig = {
         'reference/postcss',
         'reference/prettier',
         'reference/publint',
+        'reference/python',
         'reference/release-please',
         'reference/rolldown',
         'reference/rollup',
