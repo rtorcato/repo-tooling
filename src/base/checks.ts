@@ -1,7 +1,34 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import { BADGE_START, hasPublicOnlyBadges } from '../cli/generators/badges.js'
+import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { CheckResult } from './types.js'
+
+/**
+ * Root-only detection is the decision (#317), not an oversight — but it used to
+ * be a *silent* one: a Swift repo with a TypeScript docs app audited as Swift
+ * and never mentioned the half it skipped. This says so.
+ *
+ * Always `ok`. Nesting a second language is a legitimate repo shape, so failing
+ * on it would break every monorepo's CI to report a limitation of ours.
+ */
+export async function checkNestedLanguages(
+	dir: string,
+	rootLanguage: DetectedLanguage
+): Promise<CheckResult> {
+	const check = 'Monorepo'
+	const nested = await detectNestedLanguages(dir, rootLanguage)
+	if (nested.length === 0) {
+		return { check, status: 'ok', detail: 'single-language repo' }
+	}
+	const summary = nested.map((n) => `${n.dir} (${n.language})`).join(', ')
+	return {
+		check,
+		status: 'ok',
+		detail: `auditing the root only — ${summary} ${nested.length === 1 ? 'is' : 'are'} not audited`,
+		hint: 'Run doctor with `--directory <path>` to audit a nested project on its own',
+	}
+}
 
 /**
  * "Is one of these files present, and does it look like ours?" — the shape most

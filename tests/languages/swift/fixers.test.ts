@@ -67,9 +67,11 @@ describe('swift fixers', () => {
 		// `Git identity` is unfixable by design (#328) — only the operator knows
 		// their own address, so there is nothing for a fixer to write. `Swift
 		// tests` is the same shape as `Package.swift`: half of it is a manifest
-		// edit (#311).
+		// edit (#311). `Monorepo` states the audit's own root-only scope (#317) —
+		// there is no drift for a fixer to close.
 		expect(uncovered).toEqual([
 			'language',
+			'Monorepo',
 			'Git identity',
 			'README badges',
 			'Coverage upload',
