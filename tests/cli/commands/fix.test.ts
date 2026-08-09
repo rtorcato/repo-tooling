@@ -1,5 +1,4 @@
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -769,25 +768,25 @@ describe('fix --json', () => {
 		}
 	})
 
-	// The runtime test above only exercises the advisories a JS fixer happens to
-	// hit. This one is a source guard, because #357 came back within a minute of
-	// being fixed: the Python module (#356) merged 16s before the fix and landed
-	// its own `console.log`, which no behavioural test covered. A new language
-	// module is exactly when this regresses, so check every module's source.
-	it('no fixer module writes to stdout', async () => {
-		const languagesDir = fileURLToPath(new URL('../../../src/languages', import.meta.url))
-		const modules = await fs.readdir(languagesDir)
-		const sources = [
-			fileURLToPath(new URL('../../../src/base/fixers.ts', import.meta.url)),
-			...modules.map((m) => join(languagesDir, m, 'fixers.ts')),
-		]
-		const offenders: string[] = []
-		for (const file of sources) {
-			if (!(await fs.pathExists(file))) continue
-			if (/console\.log\s*\(/.test(await fs.readFile(file, 'utf-8'))) offenders.push(file)
+	// The same contract on the Python path. #358 landed 16 seconds after the
+	// Python module (#290) and so never saw its fixer, which shipped the bug the
+	// rest of the CLI had just been cured of.
+	it('keeps stdout parseable when a Python fixer prints an advisory', async () => {
+		const dir = newTmpDir()
+		// pyproject.toml is the marker that dispatches to the Python module, and
+		// the hooks fixer always notes that core.hooksPath is per-clone config.
+		await fs.writeFile(join(dir, 'pyproject.toml'), '[project]\nrequires-python = ">=3.10"\n')
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			await fixCommand('python-git-hooks', { directory: dir, json: true })
+			expect(errSpy.mock.calls.join('\n')).toContain('core.hooksPath')
+			expect(logSpy.mock.calls).toHaveLength(1)
+			expect(() => JSON.parse(logSpy.mock.calls.join(''))).not.toThrow()
+		} finally {
+			logSpy.mockRestore()
+			errSpy.mockRestore()
 		}
-		// stdout carries the --json payload; advisories belong on stderr (#357).
-		expect(offenders).toEqual([])
 	})
 
 	it('emits a JSON error payload on unknown target', async () => {

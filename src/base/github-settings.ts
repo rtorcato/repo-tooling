@@ -479,17 +479,22 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
  * on skip (no gh/auth/remote, or already compliant), logging the reason. Mirrors
  * the "no package.json found — skipping" fixer pattern. Read-only unless a delta
  * exists, so re-runs (walk-all hits it up to 3×) are safe.
+ *
+ * Reached from the `github-settings` fixer, so its advisories go to
+ * `console.error` for the same reason the fixers' do (#357): stdout carries the
+ * `--json` payload. #358 fixed the fixer files but not this one — it isn't a
+ * fixer file, it's just called by one.
  */
 export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<string[]> {
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
-		console.log(chalk.gray('   skipped — not a git repository'))
+		console.error(chalk.gray('   skipped — not a git repository'))
 		return []
 	}
 	// Bind gh's cwd to the target dir so its repo resolution honors `-d` (#218).
 	const gh: GhExec = exec ?? ((args, stdin) => realGhExec(args, stdin, dir))
 	const probe = await probeRepo(gh)
 	if ('skip' in probe) {
-		console.log(chalk.gray(`   skipped — ${probe.skip}`))
+		console.error(chalk.gray(`   skipped — ${probe.skip}`))
 		return []
 	}
 	const { info } = probe
@@ -511,7 +516,9 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 		const r = await gh(cmd.args, cmd.stdin)
 		if (r.ok) applied.push(cmd.label)
 		else
-			console.log(chalk.yellow(`   could not apply ${cmd.label}: ${r.stderr.trim() || 'gh error'}`))
+			console.error(
+				chalk.yellow(`   could not apply ${cmd.label}: ${r.stderr.trim() || 'gh error'}`)
+			)
 	}
 
 	// Code-scanning ruleset (#269): POST only when CodeQL is on and no active gate
@@ -524,9 +531,10 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 			CODE_SCANNING_RULESET_BODY
 		)
 		if (r.ok) applied.push(label)
-		else console.log(chalk.yellow(`   could not apply ${label}: ${r.stderr.trim() || 'gh error'}`))
+		else
+			console.error(chalk.yellow(`   could not apply ${label}: ${r.stderr.trim() || 'gh error'}`))
 	}
 
-	if (applied.length === 0) console.log(chalk.gray('   already configured — nothing to apply'))
+	if (applied.length === 0) console.error(chalk.gray('   already configured — nothing to apply'))
 	return applied
 }
