@@ -198,7 +198,7 @@ function demoteDeclined(results: CheckResult[], lock: Lockfile | null): CheckRes
  * the module hands the shape in rather than forking the check.
  */
 interface BaseCheckOptions {
-	/** Null for a language whose hook convention isn't encoded yet (Python/Perl). */
+	/** Null for a language whose hook convention isn't encoded yet (Perl). */
 	hooks: GitHooksProfile | null
 	badges: { audience: BadgeAudience; fixTarget: string | null }
 	/**
@@ -317,6 +317,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				// repository, which a Python repo hasn't got.
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderPythonWorkflow(await readPyproject(targetDir)),
+				language,
 			})),
 			...(await runPythonChecks(targetDir)),
 		]
