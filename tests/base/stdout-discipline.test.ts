@@ -10,10 +10,13 @@ import { describe, expect, it } from 'vitest'
  * #358 fixed the sites it could see by grepping the fixer files — which missed
  * `src/base/github-settings.ts` (reachable from the `github-settings` fixer but
  * not a fixer file) and `src/languages/python/fixers.ts` (merged 16 seconds
- * after it). Both are the same class of miss: an enumeration that has to be
- * kept in sync by hand.
+ * after it). #360 then caught the Python half and added a guard over
+ * `src/base/fixers.ts` + `src/languages/*` + `/fixers.ts`, which still can't see
+ * github-settings.ts. Three passes, same class of miss each time: an
+ * enumeration that has to be kept in sync by hand.
  *
- * So the invariant is stated over the *trees* rather than a file list — a new
+ * So the invariant is stated over the *trees* rather than a file list, and
+ * replaces #360's narrower scan rather than sitting alongside it — a new
  * language module is covered the day it lands, with no list to update.
  * Advisories still get printed; they just go to `console.error`, which is where
  * diagnostics belong whether or not `--json` is set.

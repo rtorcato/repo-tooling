@@ -85,9 +85,25 @@ const PYTHON_FIX_TARGETS: Record<string, string> = {
 	// `lockfile` too — see the note at the top of src/languages/python/fixers.ts.
 }
 
+/** The same shadowing for the Perl module (#289). */
+const PERL_FIX_TARGETS: Record<string, string> = {
+	'Git hooks': 'perl-git-hooks',
+	'Pre-push hook': 'perl-git-hooks',
+	'GitHub Actions': 'perl-ci',
+	'GitLab CI': 'perl-gitlab-ci',
+	'Perl::Critic': 'perlcritic',
+	perltidy: 'perltidy',
+	'Perl .gitignore': 'perl-gitignore',
+	// `Perl distribution` and `Perl tests` are deliberately absent, for the same
+	// reason `Swift tests` is: the fix is content only the project can write
+	// (dependency metadata, actual tests). Their own hints say what to add.
+	// `lockfile` too — see the note at the top of src/languages/perl/fixers.ts.
+}
+
 const FIX_TARGETS_BY_LANGUAGE: Record<string, Record<string, string>> = {
 	swift: SWIFT_FIX_TARGETS,
 	python: PYTHON_FIX_TARGETS,
+	perl: PERL_FIX_TARGETS,
 }
 
 export function getFixTargetForCheck(checkName: string, language?: string): string | null {
@@ -195,6 +211,7 @@ export function lockfilePatchForTarget(
 		case 'husky':
 		case 'swift-git-hooks':
 		case 'python-git-hooks':
+		case 'perl-git-hooks':
 			return c.gitHooks ? null : { gitHooks: true }
 		case 'semantic-release':
 		case 'swift-release':

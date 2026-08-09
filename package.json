@@ -1,6 +1,6 @@
 {
 	"name": "@rtorcato/repo-tooling",
-	"version": "3.5.0",
+	"version": "3.7.0",
 	"description": "One CLI to scaffold, audit and fix your repo's whole toolchain — linting, tests, commits, releases & CI.",
 	"type": "module",
 	"keywords": [
@@ -105,6 +105,8 @@
 		"tooling/swift/*.json",
 		"tooling/python/*.toml",
 		"tooling/python/*.ini",
+		"tooling/perl/perlcriticrc",
+		"tooling/perl/perltidyrc",
 		"tooling/github-actions/workflows/*.yml",
 		"README.md",
 		"AGENTS.md"

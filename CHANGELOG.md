@@ -1,3 +1,27 @@
+# [3.7.0](https://github.com/rtorcato/repo-tooling/compare/v3.6.0...v3.7.0) (2026-08-09)
+
+
+### Bug Fixes
+
+* **python:** send the git-hooks advisory to stderr, and guard the rule ([#360](https://github.com/rtorcato/repo-tooling/issues/360)) ([570a3cb](https://github.com/rtorcato/repo-tooling/commit/570a3cb020187670822978a7d87bb0909d4a3323)), closes [#356](https://github.com/rtorcato/repo-tooling/issues/356) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#356](https://github.com/rtorcato/repo-tooling/issues/356) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#358](https://github.com/rtorcato/repo-tooling/issues/358) [#359](https://github.com/rtorcato/repo-tooling/issues/359)
+
+
+### Features
+
+* **perl:** add src/languages/perl module ([#359](https://github.com/rtorcato/repo-tooling/issues/359)) ([665c76f](https://github.com/rtorcato/repo-tooling/commit/665c76f079e4f2fc3978157173e5cb74b97d849d)), closes [#289](https://github.com/rtorcato/repo-tooling/issues/289) [#356](https://github.com/rtorcato/repo-tooling/issues/356) [#356](https://github.com/rtorcato/repo-tooling/issues/356) [#286](https://github.com/rtorcato/repo-tooling/issues/286) [#290](https://github.com/rtorcato/repo-tooling/issues/290)
+
+# [3.6.0](https://github.com/rtorcato/repo-tooling/compare/v3.5.0...v3.6.0) (2026-08-09)
+
+
+### Bug Fixes
+
+* **cli:** send fixer advisories to stderr so --json stays parseable ([#358](https://github.com/rtorcato/repo-tooling/issues/358)) ([99789c1](https://github.com/rtorcato/repo-tooling/commit/99789c17ba2247563b5f44edf016634abe747376)), closes [#356](https://github.com/rtorcato/repo-tooling/issues/356)
+
+
+### Features
+
+* **python:** add src/languages/python module ([#356](https://github.com/rtorcato/repo-tooling/issues/356)) ([294a09b](https://github.com/rtorcato/repo-tooling/commit/294a09bc5576f563e9ae855e814d1b7f9b2ffab2)), closes [#286](https://github.com/rtorcato/repo-tooling/issues/286) [#288](https://github.com/rtorcato/repo-tooling/issues/288)
+
 # [3.5.0](https://github.com/rtorcato/repo-tooling/compare/v3.4.0...v3.5.0) (2026-08-09)
 
 

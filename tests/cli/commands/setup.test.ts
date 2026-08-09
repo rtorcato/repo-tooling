@@ -401,7 +401,7 @@ describe('setup language prompt', () => {
 		}
 	})
 
-	it('offers every registered language, flagging the ones without a module', async () => {
+	it('offers every registered language, flagging the ones without a setup preset', async () => {
 		const dir = newTmpDir()
 		const spy = mockPrompt({ language: 'js' }, JS_ANSWERS)
 		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -413,7 +413,10 @@ describe('setup language prompt', () => {
 			expect(choices.find((c) => c.value === 'js')?.name).toBe('JavaScript/TypeScript')
 			// Swift is fully scaffoldable since #288, so it gets a bare label like JS.
 			expect(choices.find((c) => c.value === 'swift')?.name).toBe('Swift')
-			expect(choices.find((c) => c.value === 'perl')?.name).toMatch(/lands with its module/)
+			// Python (#290) and Perl (#289) audit and fix, but neither scaffolds yet.
+			for (const id of ['python', 'perl']) {
+				expect(choices.find((c) => c.value === id)?.name).toMatch(/no setup preset yet/)
+			}
 		} finally {
 			logSpy.mockRestore()
 		}
