@@ -72,7 +72,7 @@ export const PYTHON_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			const { filesWritten, hooksPathSet } = await installPythonGitHooks(targetDir)
-			console.log(
+			console.error(
 				hooksPathSet
 					? chalk.dim(`   git config core.hooksPath ${PYTHON_HOOKS_DIR}`)
 					: chalk.yellow(
