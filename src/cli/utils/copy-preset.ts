@@ -15,6 +15,8 @@ export type PresetName =
 	| 'ruff'
 	| 'mypy'
 	| 'pytest'
+	| 'perlcritic'
+	| 'perltidy'
 	| 'claude-skill'
 	| 'mcp-example'
 	| 'docusaurus-sync-changelog'
@@ -94,6 +96,16 @@ export const PRESETS: Record<PresetName, PresetDefinition> = {
 		source: 'tooling/python/pytest.ini',
 		target: 'pytest.ini',
 		desc: 'pytest configuration (strict markers and config, warnings as errors)',
+	},
+	perlcritic: {
+		source: 'tooling/perl/perlcriticrc',
+		target: '.perlcriticrc',
+		desc: 'Perl::Critic configuration (severity 3, with the family rule exceptions)',
+	},
+	perltidy: {
+		source: 'tooling/perl/perltidyrc',
+		target: '.perltidyrc',
+		desc: 'perltidy configuration (Perl Best Practices layout at 100 columns)',
 	},
 	'claude-skill': {
 		source: 'tooling/claude/repo-tooling.md',

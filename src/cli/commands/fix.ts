@@ -18,14 +18,16 @@ import { declinedInLock, lockfilePatchForTarget } from './fix-targets.js'
 import { computeFileList } from './setup-presets.js'
 import { BASE_FIXERS, type Fixer, type FixRiskLevel, type Pkg } from '../../base/fixers.js'
 import { FIXERS, readPackageJson } from '../../languages/js/fixers.js'
+import { PERL_FIXERS } from '../../languages/perl/fixers.js'
 import { PYTHON_FIXERS } from '../../languages/python/fixers.js'
 import { SWIFT_FIXERS } from '../../languages/swift/fixers.js'
 import { detectLanguage } from '../utils/detect-language.js'
 
-/** The module-specific fixer set per detected language (#286, #290, #303). */
+/** The module-specific fixer set per detected language (#286, #289, #290, #303). */
 const LANGUAGE_FIXERS: Record<string, Fixer[]> = {
 	swift: SWIFT_FIXERS,
 	python: PYTHON_FIXERS,
+	perl: PERL_FIXERS,
 }
 
 /**
@@ -38,7 +40,13 @@ function fixersForLanguage(language: string): Fixer[] {
 }
 
 /** Every fixer across every language — for `--list` and the unknown-target hint. */
-const ALL_FIXERS: Fixer[] = [...BASE_FIXERS, ...FIXERS, ...SWIFT_FIXERS, ...PYTHON_FIXERS]
+const ALL_FIXERS: Fixer[] = [
+	...BASE_FIXERS,
+	...FIXERS,
+	...SWIFT_FIXERS,
+	...PYTHON_FIXERS,
+	...PERL_FIXERS,
+]
 
 export interface FixOptions {
 	directory?: string

@@ -288,6 +288,18 @@ const TOOL_CATALOG: ToolCatalogEntry[] = [
 		fixTarget: 'pytest',
 	},
 	{
+		name: 'Perl::Critic',
+		description: 'Perl linter configuration (severity 3, with the family rule exceptions)',
+		exports: [],
+		fixTarget: 'perlcritic',
+	},
+	{
+		name: 'perltidy',
+		description: 'Perl formatter configuration (Perl Best Practices layout at 100 columns)',
+		exports: [],
+		fixTarget: 'perltidy',
+	},
+	{
 		name: 'AI Agent Setup',
 		description: 'Scaffold AGENTS.md, CLAUDE.md, Cursor/Copilot rules, Claude skill, MCP example',
 		exports: [],
