@@ -54,6 +54,12 @@ export interface Fixer {
 	 */
 	riskLevel?: FixRiskLevel
 	canFixDrift?: boolean
+	/**
+	 * Advisories printed from here go to `console.error`, never `console.log`:
+	 * stdout is the `--json` payload's channel and a stray line lands in the
+	 * middle of it, breaking every parser downstream (#357). They're diagnostics,
+	 * not results, so stderr is the right stream regardless of the flag.
+	 */
 	run(ctx: FixerContext): Promise<{ filesWritten: string[] }>
 }
 
