@@ -240,7 +240,22 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 	}
 }
 
-export async function checkCodeQL(dir: string): Promise<CheckResult> {
+/**
+ * `languages` is the detected module's `codeqlLanguages`. An empty list means
+ * CodeQL ships no analyzer for this language at all (Perl, #289) — reporting it
+ * as missing would send the user to `fix codeql`, whose generator correctly
+ * writes nothing for an empty matrix, so they'd get a silent no-op and a check
+ * that never goes green.
+ */
+export async function checkCodeQL(dir: string, languages: readonly string[]): Promise<CheckResult> {
+	if (languages.length === 0) {
+		return {
+			check: 'CodeQL',
+			status: 'ok',
+			detail: 'not applicable — CodeQL has no analyzer for this language',
+		}
+	}
+
 	const workflowsDir = path.join(dir, '.github', 'workflows')
 	if (!(await fs.pathExists(workflowsDir))) {
 		return {

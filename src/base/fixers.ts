@@ -11,6 +11,7 @@
  * language-shaped (CI steps, recorded tool choices), so each module ships its
  * own — see src/base/ci.ts for the shell they share.
  */
+import chalk from 'chalk'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
@@ -117,7 +118,14 @@ export const BASE_FIXERS: Fixer[] = [
 		appliesTo: ['CodeQL'],
 		outputs: ['.github/workflows/codeql.yml'],
 		async run({ targetDir }) {
-			const { codeqlLanguages } = await moduleFor(targetDir)
+			const { codeqlLanguages, label } = await moduleFor(targetDir)
+			// Say so rather than reporting a successful fix that wrote nothing: the
+			// generator correctly emits no workflow for an empty matrix (Perl, #289),
+			// and a silent no-op reads as "done".
+			if (codeqlLanguages.length === 0) {
+				console.log(chalk.yellow(`   skipped — CodeQL has no ${label} analyzer`))
+				return { filesWritten: [] }
+			}
 			return { filesWritten: await generateCodeQLWorkflow(targetDir, codeqlLanguages) }
 		},
 	},

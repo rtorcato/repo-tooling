@@ -58,6 +58,7 @@ const sidebars: SidebarsConfig = {
         'reference/jest',
         'reference/nx',
         'reference/oxlint',
+        'reference/perl',
         'reference/postcss',
         'reference/prettier',
         'reference/publint',

@@ -23,9 +23,9 @@ export interface LanguageModule {
 	 */
 	dependabotEcosystem: string | null
 	/**
-	 * Whether repo-tooling's doctor/fix suite covers this language yet. JS, Swift
-	 * and Python today; Perl flips to `true` when its module lands (#289).
-	 * The coarse doctor gate keys off this until per-module dispatch (#285).
+	 * Whether repo-tooling's doctor/fix suite covers this language yet. Every
+	 * language in the registry does, as of the Perl module (#289) — the flag
+	 * stays because the seam is what a *new* language arrives through.
 	 */
 	supported: boolean
 }
@@ -57,7 +57,7 @@ export const LANGUAGES: Record<LanguageModule['id'], LanguageModule> = {
 		label: 'Perl',
 		codeqlLanguages: [],
 		dependabotEcosystem: null,
-		supported: false,
+		supported: true,
 	},
 }
 

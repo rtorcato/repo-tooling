@@ -1,0 +1,35 @@
+# .perlcriticrc — @rtorcato/repo-tooling Perl preset
+#
+# Perl::Critic is the linter; perltidy (see .perltidyrc) is the formatter.
+# They do not overlap: Perl::Critic never rewrites source, so unlike the
+# SwiftLint/SwiftFormat and ruff/black pairings there is no second rewriting
+# tool to fight — see src/languages/perl/checks.ts.
+
+# Severity 3 ("harsh") and above. Severity 1 turns on the whole Perl Best
+# Practices book, including rules modern code deliberately breaks; 4-5 catch
+# so little they stop functioning as a gate.
+severity = 3
+
+# One violation per line with a file:line:column prefix, which both an editor
+# and a CI log annotator can parse.
+verbose = %f:%l:%c %m (%p, severity %s)\n
+
+# --- Rule adjustments -------------------------------------------------------
+
+# RequireVersionVar wants a $VERSION in every .pm. Distributions that carry the
+# version in their metadata (Dist::Zilla) or in the main module alone would
+# have to repeat it in every file to satisfy it.
+[-Modules::RequireVersionVar]
+
+# RequirePodSections enforces a fixed POD skeleton in every file, including
+# private modules that have no public interface to document. The POD that
+# matters is on the distribution's entry points, which this cannot tell apart.
+[-Documentation::RequirePodSections]
+
+# These modules enable strict and warnings for you, so requiring the explicit
+# pragma alongside them is a false positive.
+[TestingAndDebugging::RequireUseStrict]
+equivalent_modules = Moose Moo Mojo::Base Test2::V0
+
+[TestingAndDebugging::RequireUseWarnings]
+equivalent_modules = Moose Moo Mojo::Base Test2::V0

@@ -105,6 +105,8 @@
 		"tooling/swift/*.json",
 		"tooling/python/*.toml",
 		"tooling/python/*.ini",
+		"tooling/perl/perlcriticrc",
+		"tooling/perl/perltidyrc",
 		"tooling/github-actions/workflows/*.yml",
 		"README.md",
 		"AGENTS.md"

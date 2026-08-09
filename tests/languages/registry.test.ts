@@ -10,12 +10,13 @@ describe('resolveLanguageModule', () => {
 		expect(resolveLanguageModule(id).id).toBe(id)
 	})
 
-	it('JS, Swift and Python carry modules; Perl gates out until its lands', () => {
-		expect(LANGUAGES.js.supported).toBe(true)
-		// Swift flipped with its module (#286), Python with its own (#290).
-		expect(LANGUAGES.swift.supported).toBe(true)
-		expect(LANGUAGES.python.supported).toBe(true)
-		expect(LANGUAGES.perl.supported).toBe(false)
+	it('every registered language now carries a module', () => {
+		// Swift flipped with its module (#286), Python with #290, Perl with #289.
+		// The flag stays as the on-ramp: a new language is registered with
+		// `supported: false` and gets the base suite until its module lands.
+		for (const language of Object.values(LANGUAGES)) {
+			expect(language.supported, language.id).toBe(true)
+		}
 	})
 
 	it('carries the CodeQL matrix identifier the code-scanning workflow uses', () => {

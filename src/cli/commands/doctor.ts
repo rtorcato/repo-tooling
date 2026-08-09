@@ -4,6 +4,8 @@ import fs from 'fs-extra'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { githubJobs } from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
+import { PERL_GIT_HOOKS, runPerlChecks } from '../../languages/perl/checks.js'
+import { readPerlProject, renderPerlWorkflow } from '../../languages/perl/ci.js'
 import { PYTHON_GIT_HOOKS, runPythonChecks } from '../../languages/python/checks.js'
 import { readPyproject, renderPythonWorkflow } from '../../languages/python/ci.js'
 import { resolveLanguageModule } from '../../languages/registry.js'
@@ -197,7 +199,7 @@ function demoteDeclined(results: CheckResult[], lock: Lockfile | null): CheckRes
  * the module hands the shape in rather than forking the check.
  */
 interface BaseCheckOptions {
-	/** Null for a language whose hook convention isn't encoded yet (Python/Perl). */
+	/** Null for a language whose hook convention isn't encoded yet. */
 	hooks: GitHooksProfile | null
 	badges: { audience: BadgeAudience; fixTarget: string | null }
 	/**
@@ -206,6 +208,8 @@ interface BaseCheckOptions {
 	 * with no CI generator — nothing to compare against.
 	 */
 	presetWorkflow: string | null
+	/** The module's `codeqlLanguages`; empty means CodeQL can't analyse it (#289). */
+	codeqlLanguages: readonly string[]
 }
 
 // The language-agnostic checks (src/base): repo hygiene, git hooks, CI,
@@ -228,7 +232,7 @@ async function runBaseChecks(
 	}
 	results.push(await checkGitHubActions(dir, opts.presetWorkflow))
 	results.push(await checkDependabot(dir))
-	results.push(await checkCodeQL(dir))
+	results.push(await checkCodeQL(dir, opts.codeqlLanguages))
 	// GitHub repo-settings drift (branch protection, merge settings, workflow
 	// permissions). Read-only; self-skips as `ok` outside a live GitHub repo.
 	results.push(...(await checkGitHubSettings(dir)))
@@ -248,12 +252,14 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 
 	// Per-module dispatch (#285): the base checks (repo hygiene, CI, security,
 	// GitHub settings) apply to any repo and run for every language. A supported
-	// module layers its own checks on top; an unsupported one (Perl, until #289)
-	// still gets the full base suite instead of the old wholesale skip.
-	// 'unknown' (bare dir mid-setup) resolves to JS so a fresh repo runs the
-	// full suite.
+	// module layers its own checks on top. 'unknown' (bare dir mid-setup)
+	// resolves to JS so a fresh repo runs the full suite.
 	const language = await detectLanguage(targetDir)
 	const languageModule = resolveLanguageModule(language)
+	// Every language in the registry has a module as of #289, so nothing reaches
+	// this today. It stays as the on-ramp: a language is added to the registry
+	// with `supported: false` first, and until its module lands its repos get the
+	// full base suite rather than the wholesale skip this replaced.
 	if (!languageModule.supported) {
 		const results: CheckResult[] = [
 			{
@@ -261,13 +267,13 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				status: 'ok',
 				detail: `detected ${languageModule.label} — running language-agnostic checks; ${languageModule.label}-specific checks land with its module (#139)`,
 			},
-			// hooks: null — nothing here encodes a Perl hook convention yet, and
-			// guessing one would nag every repo with a fix target that doesn't
-			// exist. #289 fills it in.
+			// hooks: null — guessing a hook convention would nag every repo with a
+			// fix target that doesn't exist.
 			...(await runBaseChecks(targetDir, lock, {
 				hooks: null,
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: null,
+				codeqlLanguages: languageModule.codeqlLanguages,
 			})),
 		]
 		return demoteDeclined(results, lock)
@@ -289,6 +295,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				// package.json name/repository, which a Swift repo hasn't got.
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderSwiftWorkflow(await readSwiftPackage(targetDir)),
+				codeqlLanguages: languageModule.codeqlLanguages,
 			})),
 			...(await runSwiftChecks(targetDir)),
 		]
@@ -311,8 +318,34 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				// repository, which a Python repo hasn't got.
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderPythonWorkflow(await readPyproject(targetDir)),
+				codeqlLanguages: languageModule.codeqlLanguages,
 			})),
 			...(await runPythonChecks(targetDir)),
+		]
+		return demoteDeclined(results, lock)
+	}
+
+	// Perl suite (#289): same shape as Swift and Python — base checks plus the
+	// module's own, and nothing JS-shaped, because a distribution has no
+	// package.json. CodeQL self-reports as not applicable: it ships no Perl
+	// analyzer, which `codeqlLanguages: []` in the registry encodes.
+	if (languageModule.id === 'perl') {
+		const results: CheckResult[] = [
+			{
+				check: 'language',
+				status: 'ok',
+				detail: 'detected Perl (cpanfile / Makefile.PL / dist.ini)',
+			},
+			...(await runBaseChecks(targetDir, lock, {
+				hooks: PERL_GIT_HOOKS,
+				// A distribution released to CPAN is public by definition, so badges
+				// apply. No fixer: `fix badges` derives the block from package.json
+				// name and repository, which a Perl repo hasn't got.
+				badges: { audience: 'public', fixTarget: null },
+				presetWorkflow: renderPerlWorkflow(await readPerlProject(targetDir)),
+				codeqlLanguages: languageModule.codeqlLanguages,
+			})),
+			...(await runPerlChecks(targetDir)),
 		]
 		return demoteDeclined(results, lock)
 	}
@@ -365,6 +398,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 			hooks: jsGitHooksProfile(pkg),
 			badges: { audience: jsBadgeAudience(pkg), fixTarget: 'badges' },
 			presetWorkflow: renderGitHubWorkflow(githubJobs(inferProjectConfig(pkg))),
+			codeqlLanguages: languageModule.codeqlLanguages,
 		}))
 	)
 
