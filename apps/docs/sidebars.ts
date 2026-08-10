@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
         'guides/git-flow',
         'guides/public-repo-issue-safety',
         'guides/docs-site',
+        'guides/brand-assets',
       ],
     },
     {
