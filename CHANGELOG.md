@@ -1,3 +1,10 @@
+## [3.8.2](https://github.com/rtorcato/repo-tooling/compare/v3.8.1...v3.8.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **js:** add the scripts that run knip, vitest and tsc ([#380](https://github.com/rtorcato/repo-tooling/issues/380)) ([3b8e978](https://github.com/rtorcato/repo-tooling/commit/3b8e9786b3d206562cc6c9e675bcbdb96a1218da)), closes [#364](https://github.com/rtorcato/repo-tooling/issues/364) [#374](https://github.com/rtorcato/repo-tooling/issues/374) [#377](https://github.com/rtorcato/repo-tooling/issues/377)
+
 ## [3.8.1](https://github.com/rtorcato/repo-tooling/compare/v3.8.0...v3.8.1) (2026-08-10)
 
 
