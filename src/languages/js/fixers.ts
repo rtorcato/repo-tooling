@@ -37,6 +37,17 @@ const BIOME_SCRIPTS: Record<string, string> = {
 	check: 'biome check .',
 	'check:fix': 'biome check --fix .',
 }
+
+/** Kept in step with the eslint branch of getScripts() in package-json.ts. */
+const ESLINT_SCRIPTS: Record<string, string> = {
+	lint: 'eslint .',
+	'lint:fix': 'eslint . --fix',
+}
+
+/** Kept in step with the eslint branch of getScripts() in package-json.ts. */
+const PRETTIER_SCRIPTS: Record<string, string> = {
+	format: 'prettier --write .',
+}
 import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
@@ -180,24 +191,31 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'eslint',
-		description: 'Scaffold eslint.config.mjs importing the @rtorcato/repo-tooling preset',
+		description:
+			'Scaffold eslint.config.mjs importing the @rtorcato/repo-tooling preset, plus the scripts that run it',
 		appliesTo: ['ESLint'],
-		outputs: ['eslint.config.mjs'],
+		outputs: ['eslint.config.mjs', 'package.json (scripts)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
 			await generateESLintConfig(inferProjectConfig(pkg), targetDir)
-			return { filesWritten: ['eslint.config.mjs'] }
+			const filesWritten = ['eslint.config.mjs']
+			// Without `lint` the generated CI drops its lint step and `fix verify`
+			// composes a chain with no linting in it at all (#371).
+			if (await ensureScripts(targetDir, ESLINT_SCRIPTS)) filesWritten.push('package.json')
+			return { filesWritten }
 		},
 	},
 	{
 		target: 'prettier',
-		description: 'Scaffold prettier.config.mjs re-exporting the preset',
+		description: 'Scaffold prettier.config.mjs re-exporting the preset, plus the `format` script',
 		appliesTo: ['Prettier'],
-		outputs: ['prettier.config.mjs'],
+		outputs: ['prettier.config.mjs', 'package.json (scripts)'],
 		canFixDrift: true,
 		async run({ targetDir }) {
 			await generatePrettierConfig(targetDir)
-			return { filesWritten: ['prettier.config.mjs'] }
+			const filesWritten = ['prettier.config.mjs']
+			if (await ensureScripts(targetDir, PRETTIER_SCRIPTS)) filesWritten.push('package.json')
+			return { filesWritten }
 		},
 	},
 	{
