@@ -79,7 +79,7 @@ Add each module to the sidebar's API Reference category:
 ```
 
 `docs/api/` is generated — gitignore it, and have biome ignore it (enable
-`vcs.useIgnoreFile` in your root `biome.jsonc` so it isn't linted).
+`vcs.useIgnoreFile` in your root `biome.json` so it isn't linted).
 
 ## 2. Deploy workflow
 

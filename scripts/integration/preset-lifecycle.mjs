@@ -221,7 +221,13 @@ function jsLifecycle() {
 
 	// 7. Format generated files — mirrors what `setup` does post-install (the
 	//    scaffold's biome/prettier config; templates are hand-written).
-	const formatter = fs.existsSync(path.join(projectDir, 'biome.jsonc'))
+	//    Both config names are accepted: the scaffold settled on biome.json (#365),
+	//    and a repo predating that still has biome.jsonc. Testing only one name
+	//    silently falls through to prettier, which the biome presets don't install.
+	const usesBiome = ['biome.json', 'biome.jsonc'].some((name) =>
+		fs.existsSync(path.join(projectDir, name))
+	)
+	const formatter = usesBiome
 		? ['exec', 'biome', 'check', '--write', '.']
 		: ['exec', 'prettier', '--write', '.']
 	run('pnpm', formatter, projectDir)
