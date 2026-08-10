@@ -57,6 +57,19 @@ export function evaluateNodeVersion(version: string): CheckResult {
 	}
 }
 
+/**
+ * Both shapes of a `biome.json` this package produces (#378): the thin
+ * `extends` pointer `fix biome` writes, and the whole preset inlined, which is
+ * what `copy biome` drops — it carries no `extends` at all, so matching only
+ * the first left every `copy biome` repo permanently drifted with no way out.
+ *
+ * The inline form is recognised by the biomejs `$schema` plus a `preset` key,
+ * via lookaheads so key order doesn't matter. A config that is merely valid
+ * JSON (`{"linter":{"enabled":false}}`) has neither and still reports drift.
+ */
+const BIOME_CONFIG =
+	/@rtorcato\/(?:js|repo)-tooling\/biome|^(?=[\s\S]*biomejs\.dev\/schemas\/)(?=[\s\S]*"preset"\s*:)/
+
 export const FILE_CHECKS: FileCheck[] = [
 	{
 		check: 'TypeScript',
@@ -68,11 +81,9 @@ export const FILE_CHECKS: FileCheck[] = [
 	{
 		check: 'Biome',
 		candidates: ['biome.json', 'biome.jsonc'],
-		expected: `extends "${PACKAGE}/biome"`,
-		matcher: /@rtorcato\/(?:js|repo)-tooling\/biome/,
+		expected: `extends "${PACKAGE}/biome" or inlines the preset`,
+		matcher: BIOME_CONFIG,
 		optional: true,
-		// `fix biome`, not `copy biome`: copy drops the whole preset inline, which
-		// carries no `extends` for the matcher above to find (#365).
 		hint: 'Run `npx @rtorcato/repo-tooling fix biome` to scaffold',
 	},
 	{
