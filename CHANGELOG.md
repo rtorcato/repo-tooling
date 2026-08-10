@@ -1,3 +1,15 @@
+# [3.8.0](https://github.com/rtorcato/repo-tooling/compare/v3.7.4...v3.8.0) (2026-08-10)
+
+
+### Bug Fixes
+
+* **js:** add the scripts that run eslint and prettier ([#374](https://github.com/rtorcato/repo-tooling/issues/374)) ([c6fef2f](https://github.com/rtorcato/repo-tooling/commit/c6fef2f85ed5dd2a8b8587a6d1c03b25faac399a)), closes [#364](https://github.com/rtorcato/repo-tooling/issues/364) [#371](https://github.com/rtorcato/repo-tooling/issues/371)
+
+
+### Features
+
+* **doctor:** report and fix a missing packageManager pin ([#376](https://github.com/rtorcato/repo-tooling/issues/376)) ([345a3df](https://github.com/rtorcato/repo-tooling/commit/345a3df125f1736da9fa12f4b2d2aabf652b6ce1)), closes [#372](https://github.com/rtorcato/repo-tooling/issues/372)
+
 ## [3.7.4](https://github.com/rtorcato/repo-tooling/compare/v3.7.3...v3.7.4) (2026-08-10)
 
 
