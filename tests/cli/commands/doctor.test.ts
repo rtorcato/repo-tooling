@@ -207,6 +207,38 @@ describe('doctor extended checks', () => {
 		expect(engines?.status).toBe('ok')
 	})
 
+	it('reports drift when a pnpm repo has no packageManager', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
+		const results = await runDoctor(dir)
+		const pm = results.find((r) => r.check === 'packageManager')
+		expect(pm?.status).toBe('drift')
+		expect(pm?.hint).toMatch(/fix engines/)
+	})
+
+	it('reports ok when packageManager is set', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			version: '0.0.0',
+			packageManager: 'pnpm@11.1.3',
+		})
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'packageManager')?.status).toBe('ok')
+	})
+
+	// Not applicable rather than drift: an npm or yarn repo has no pnpm version
+	// to pin, and inventing one would be noise.
+	it('reports ok when the repo does not use pnpm', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const results = await runDoctor(dir)
+		const pm = results.find((r) => r.check === 'packageManager')
+		expect(pm?.status).toBe('ok')
+		expect(pm?.detail).toBe('not a pnpm repo')
+	})
+
 	it('detects .editorconfig and .nvmrc presence', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

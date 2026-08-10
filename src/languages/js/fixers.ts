@@ -28,6 +28,7 @@ import {
 	generateVscodeExtensions,
 } from '../../cli/generators/misc.js'
 import { scriptsOf } from './ci.js'
+import { usesPnpm } from './checks.js'
 import { composeVerifyScriptFromPkg, ensureScripts } from '../../cli/generators/package-json.js'
 
 /** Kept in step with the biome branch of getScripts() in package-json.ts. */
@@ -525,14 +526,22 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'engines',
-		description: 'Add engines.node to package.json',
-		appliesTo: ['engines.node'],
-		outputs: ['package.json (engines.node field)'],
+		description: 'Add engines.node and packageManager to package.json',
+		appliesTo: ['engines.node', 'packageManager'],
+		outputs: ['package.json (engines.node + packageManager fields)'],
 		riskLevel: 'safe-merge',
 		canFixDrift: true,
-		async run({ targetDir }) {
-			const result = await ensureEnginesNode(targetDir)
-			return { filesWritten: result === 'added' ? ['package.json'] : [] }
+		async run({ targetDir, pkg }) {
+			// Same concern as engines.node — declaring the toolchain the repo
+			// expects. `fix github-actions` also pins it, but only reaches repos
+			// whose ci.yml is already drifted (#372). Guarded on pnpm because the
+			// value we write is a pnpm range; an npm or yarn repo must not get one.
+			const engines = await ensureEnginesNode(targetDir)
+			const manager = (await usesPnpm(targetDir, pkg))
+				? await ensurePackageManager(targetDir)
+				: 'already-set'
+			const changed = engines === 'added' || manager === 'added'
+			return { filesWritten: changed ? ['package.json'] : [] }
 		},
 	},
 	{

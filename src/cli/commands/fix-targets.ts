@@ -4,6 +4,7 @@ import type { ProjectConfig } from './setup.js'
 export const FIX_TARGETS: Record<string, string> = {
 	'package.json': 'package-json',
 	'engines.node': 'engines',
+	packageManager: 'engines',
 	EditorConfig: 'editorconfig',
 	'VS Code extensions': 'vscode-extensions',
 	'Node version pin': 'nvmrc',

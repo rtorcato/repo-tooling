@@ -361,6 +361,33 @@ describe('fix targeted', () => {
 		expect(pkg.engines.node).toBe('>=24')
 	})
 
+	it('fix engines pins packageManager on a pnpm repo', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
+		await fixCommand('engines', { directory: dir, yes: true })
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
+	})
+
+	it('fix engines leaves an existing packageManager alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { packageManager: 'pnpm@9.0.0' })
+		await fixCommand('engines', { directory: dir, yes: true })
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.packageManager).toBe('pnpm@9.0.0')
+	})
+
+	// The value written is a pnpm range, so a repo that installs with npm or
+	// yarn must not get one (#372).
+	it('fix engines does not pin packageManager on a non-pnpm repo', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('engines', { directory: dir, yes: true })
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.packageManager).toBeUndefined()
+	})
+
 	it('fix package-json adds @rtorcato/repo-tooling to devDependencies', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', version: '0.0.0' })

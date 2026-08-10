@@ -48,6 +48,7 @@ import {
 	checkNodeVersionConsistency,
 	checkNodeVersionPin,
 	checkPackageJson,
+	checkPackageManager,
 	checkPublint,
 	checkSemanticRelease,
 	checkSizeLimit,
@@ -368,6 +369,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	results.push(evaluateNodeVersion(process.version))
 	results.push(checkPackageJson(pkg))
 	results.push(checkEnginesNode(pkg))
+	results.push(await checkPackageManager(targetDir, pkg))
 	results.push(await checkConfigSchemaVersions(targetDir, pkg))
 	results.push(checkGitDependencies(pkg))
 	results.push(await checkVscodeExtensions(targetDir))
