@@ -1006,17 +1006,74 @@ export function decidedBuilds(yaml: string): Set<string> {
 }
 
 /**
- * Direct dependencies whose install would run a build script (#364).
+ * Package name encoded in a `node_modules/.pnpm` directory name (#373).
+ *
+ * Entries read `<name>@<version>` with `/` written as `+`, and the version may
+ * carry a peer suffix that contains further `@`s
+ * (`@babel+core@7.0.0_supports-color@8.0.0`), so the separator is the *first*
+ * `@` after index 0 — never the last.
+ */
+export function pnpmStoreDirToName(entry: string): string | null {
+	const at = entry.indexOf('@', 1)
+	if (at < 1) return null
+	return entry.slice(0, at).replace('+', '/')
+}
+
+/**
+ * Transitive packages that ship a build script and have no decision (#373).
+ *
+ * One `package.json` read per unique name — never a recursive walk — and the
+ * whole pass is skipped when `.pnpm` is absent (npm/yarn repos, or nothing
+ * installed). `skip` drops the names the direct pass already owns.
+ */
+async function undecidedTransitiveBuilds(
+	modulesDir: string,
+	skip: (name: string) => boolean
+): Promise<string[]> {
+	const store = path.join(modulesDir, '.pnpm')
+	if (!(await fs.pathExists(store))) return []
+
+	const seen = new Set<string>()
+	const undecided = new Set<string>()
+	for (const entry of await fs.readdir(store)) {
+		const name = pnpmStoreDirToName(entry)
+		// A package present at two versions has two store dirs; report it once.
+		if (!name || seen.has(name) || skip(name)) continue
+		seen.add(name)
+		// Store directory names come from registry metadata, and only the *first*
+		// `+` is decoded — the rest of the entry passes through literally, so a
+		// hostile name (`..+..@1.0.0` → `../..`) would climb out of the package
+		// directory and have `fs.readJson` read an unrelated file, whose `name`
+		// then lands in the report. Confirm the resolved path stays under this
+		// entry's `node_modules` before reading it.
+		const root = path.resolve(store, entry, 'node_modules')
+		const target = path.join(root, name, 'package.json')
+		if (!target.startsWith(root + path.sep)) continue
+		let depPkg: { name?: string; scripts?: Record<string, string> }
+		try {
+			depPkg = await fs.readJson(target)
+		} catch {
+			continue
+		}
+		const scripts = depPkg.scripts ?? {}
+		// `name` from the manifest is exact; the decoded dir name is the fallback.
+		if (BUILD_LIFECYCLE_SCRIPTS.some((s) => scripts[s])) undecided.add(depPkg.name ?? name)
+	}
+	return [...undecided].filter((n) => !skip(n)).sort()
+}
+
+/**
+ * Dependencies whose install would run a build script (#364, #373).
  *
  * pnpm 11 turned undecided build scripts into a hard error, so
  * `pnpm install --frozen-lockfile` exits non-zero with ERR_PNPM_IGNORED_BUILDS
  * — a guaranteed CI failure. Locally the same message reads as advisory, which
  * is exactly why it gets missed until the pipeline goes red.
  *
- * Only direct dependencies are inspected: reaching transitive ones means
- * walking node_modules/.pnpm, and the packages that trip this in practice
- * (better-sqlite3, @prisma/client, esbuild) are ones the repo asked for by
- * name. A transitive offender is a false negative, never a false positive.
+ * Direct and transitive offenders are graded apart. A direct one is `drift`:
+ * the repo asked for the package by name and can answer for it. A transitive
+ * one is `optional-missing` — still worth recording, but common enough that
+ * grading it as drift would drown the report in noise.
  */
 export async function checkBuildApprovals(dir: string, pkg: Pkg | null): Promise<CheckResult> {
 	const check = 'pnpm build approvals'
@@ -1048,13 +1105,29 @@ export async function checkBuildApprovals(dir: string, pkg: Pkg | null): Promise
 		if (BUILD_LIFECYCLE_SCRIPTS.some((s) => scripts[s])) undecided.push(name)
 	}
 
-	if (undecided.length === 0) {
+	const transitive = await undecidedTransitiveBuilds(
+		modulesDir,
+		(name) => decided.has(name) || name in deps
+	)
+
+	if (undecided.length === 0 && transitive.length === 0) {
 		return { check, status: 'ok', detail: 'every dependency with a build script has a decision' }
 	}
+
+	const parts: string[] = []
+	if (undecided.length)
+		parts.push(
+			`${undecided.length} dependenc${undecided.length === 1 ? 'y' : 'ies'} with undecided build scripts: ${undecided.join(', ')}`
+		)
+	if (transitive.length)
+		parts.push(
+			`${transitive.length} transitive dependenc${transitive.length === 1 ? 'y' : 'ies'} with undecided build scripts: ${transitive.join(', ')}`
+		)
+
 	return {
 		check,
-		status: 'drift',
-		detail: `${undecided.length} dependenc${undecided.length === 1 ? 'y' : 'ies'} with undecided build scripts: ${undecided.join(', ')}`,
+		status: undecided.length ? 'drift' : 'optional-missing',
+		detail: parts.join('; '),
 		hint: `Record a decision per package under \`allowBuilds:\` in ${WORKSPACE_FILE} (\`name: true\` to run it, \`false\` to skip). pnpm 11 fails \`pnpm install --frozen-lockfile\` outright while any is undecided, so CI cannot pass until each is answered.`,
 	}
 }
