@@ -217,7 +217,8 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'husky',
-		description: 'Set up Husky + lint-staged (and a `pnpm verify` pre-push hook)',
+		description:
+			'Set up Husky + lint-staged (and a `pnpm verify` pre-push hook). Commit-message linting is `fix commitlint`.',
 		appliesTo: ['Git hooks', 'lint-staged', 'Pre-push hook'],
 		outputs: ['.husky/pre-commit', '.husky/pre-push', 'package.json (lint-staged field)'],
 		riskLevel: 'safe-merge',
