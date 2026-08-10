@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import {
 	composeVerifyScript,
+	composeVerifyScriptFromPkg,
 	generatePackageJson,
 } from '../../../src/cli/generators/package-json.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -301,5 +302,25 @@ describe('composeVerifyScript', () => {
 			})
 		)
 		expect(result).toBeNull()
+	})
+})
+
+// #364: `fix verify` skipped on a repo with both typecheck and test scripts,
+// because the test half only counted when a runner it recognised was in deps.
+describe('composeVerifyScriptFromPkg test fallback', () => {
+	it('counts a test script from a runner it does not recognise', () => {
+		const verify = composeVerifyScriptFromPkg({
+			scripts: { typecheck: 'tsc --noEmit', test: 'node --test' },
+			devDependencies: { typescript: '^5.9.3' },
+		})
+		expect(verify).toBe('pnpm typecheck && pnpm test')
+	})
+
+	it('still prefers the recognised runner when one is installed', () => {
+		const verify = composeVerifyScriptFromPkg({
+			scripts: { typecheck: 'tsc --noEmit', test: 'vitest' },
+			devDependencies: { typescript: '^5.9.3', vitest: '^4.0.0' },
+		})
+		expect(verify).toBe('pnpm typecheck && pnpm exec vitest run')
 	})
 })

@@ -7,6 +7,7 @@ import {
 	runDoctor,
 	summarize,
 } from '../../../src/cli/commands/doctor.js'
+import { checkBuildApprovals } from '../../../src/languages/js/checks.js'
 import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -1202,5 +1203,53 @@ describe('doctor README badges check', () => {
 		expect(checks.has('package.json')).toBe(false)
 		expect(checks.has('TypeScript')).toBe(false)
 		expect(checks.has('Node')).toBe(false)
+	})
+})
+
+// #364: pnpm 11 turned undecided build scripts into a hard error, so
+// `pnpm install --frozen-lockfile` exits non-zero with ERR_PNPM_IGNORED_BUILDS.
+// Locally the same message reads as advisory, which is why it goes unnoticed
+// until the pipeline is red.
+describe('checkBuildApprovals', () => {
+	async function seedDep(dir: string, name: string, scripts: Record<string, string>) {
+		await fs.outputJson(join(dir, 'node_modules', name, 'package.json'), { name, scripts })
+	}
+
+	it('flags a dependency with an install script and no recorded decision', async () => {
+		const dir = newTmpDir()
+		const pkg = { name: 'demo', devDependencies: { 'better-sqlite3': '^12.0.0' } }
+		await seedDep(dir, 'better-sqlite3', { install: 'prebuild-install || node-gyp rebuild' })
+
+		const result = await checkBuildApprovals(dir, pkg)
+		expect(result.status).toBe('drift')
+		expect(result.detail).toContain('better-sqlite3')
+		expect(result.hint).toContain('allowBuilds')
+	})
+
+	it('accepts a decision either way — declining a build is still deciding', async () => {
+		const dir = newTmpDir()
+		const pkg = { name: 'demo', devDependencies: { esbuild: '^0.25.0', '@prisma/client': '^5.0.0' } }
+		await seedDep(dir, 'esbuild', { postinstall: 'node install.js' })
+		await seedDep(dir, '@prisma/client', { postinstall: 'prisma generate' })
+		await fs.writeFile(
+			join(dir, 'pnpm-workspace.yaml'),
+			'allowBuilds:\n  esbuild: true\n  "@prisma/client": false\n'
+		)
+
+		expect((await checkBuildApprovals(dir, pkg)).status).toBe('ok')
+	})
+
+	it('says nothing about dependencies that ship no build script', async () => {
+		const dir = newTmpDir()
+		const pkg = { name: 'demo', devDependencies: { chalk: '^5.0.0' } }
+		await seedDep(dir, 'chalk', { test: 'vitest' })
+
+		expect((await checkBuildApprovals(dir, pkg)).status).toBe('ok')
+	})
+
+	it('stays quiet when nothing is installed to inspect', async () => {
+		const result = await checkBuildApprovals(newTmpDir(), { name: 'demo', devDependencies: { x: '1' } })
+		expect(result.status).toBe('ok')
+		expect(result.detail).toContain('no installed dependencies')
 	})
 })

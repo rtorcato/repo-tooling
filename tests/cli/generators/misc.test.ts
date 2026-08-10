@@ -4,6 +4,7 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
 	ensureEnginesNode,
+	ensurePackageManager,
 	generateEditorConfig,
 	generateKnipConfig,
 	generateMiscBaseline,
@@ -280,5 +281,30 @@ describe('generateMiscBaseline', () => {
 		expect(await fs.pathExists(join(dir, 'knip.json'))).toBe(true)
 		const pkg = await fs.readJson(join(dir, 'package.json'))
 		expect(pkg.engines?.node).toBe('>=22')
+	})
+})
+
+// #364: `pnpm/action-setup` is emitted with no `version:` input, so without
+// `packageManager` every generated job died at setup with "No pnpm version is
+// specified" before a single check ran.
+describe('ensurePackageManager', () => {
+	it('pins packageManager when absent', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', version: '0.0.0' })
+
+		expect(await ensurePackageManager(dir, '11.20.0')).toBe('added')
+		expect((await fs.readJson(join(dir, 'package.json'))).packageManager).toBe('pnpm@11.20.0')
+	})
+
+	it('leaves an existing pin alone', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', packageManager: 'yarn@4.9.1' })
+
+		expect(await ensurePackageManager(dir, '11.20.0')).toBe('already-set')
+		expect((await fs.readJson(join(dir, 'package.json'))).packageManager).toBe('yarn@4.9.1')
+	})
+
+	it('reports no-package-json rather than creating one', async () => {
+		expect(await ensurePackageManager(newTmpDir(), '11.20.0')).toBe('no-package-json')
 	})
 })
