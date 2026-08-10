@@ -1,11 +1,7 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
-
-// Exact pnpm version for the `packageManager` field — corepack requires a
-// pinned `pnpm@x.y.z` (not a range), and it's the single source of truth for
-// pnpm/action-setup, so the generated workflows drop their `version:` inputs.
-const PNPM_VERSION = '11.1.3'
+import { PNPM_FALLBACK_VERSION, detectPnpmVersion } from './misc.js'
 
 export async function generatePackageJson(config: ProjectConfig, targetDir: string) {
 	const packageJsonPath = path.join(targetDir, 'package.json')
@@ -22,7 +18,9 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 		version: '0.1.0',
 		description: '',
 		type: 'module',
-		packageManager: `pnpm@${PNPM_VERSION}`,
+		// The single source of truth for pnpm/action-setup, which is why the
+		// generated workflows carry no `version:` input (#364).
+		packageManager: `pnpm@${detectPnpmVersion() ?? PNPM_FALLBACK_VERSION}`,
 		...existingPackageJson,
 		scripts: {
 			...getScripts(config, { includeTreeshake }),
@@ -182,6 +180,38 @@ function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record
 	return scripts
 }
 
+/**
+ * Add any of `scripts` the package.json doesn't already define, leaving every
+ * existing value alone. Returns true when something was written.
+ *
+ * A `fix` target that scaffolds a tool's config but no way to run it leaves the
+ * repo half-wired: the generated CI called `pnpm check`, and `fix verify`
+ * refused to compose a chain, both because no target ever created that script
+ * (#364).
+ */
+export async function ensureScripts(
+	targetDir: string,
+	scripts: Record<string, string>
+): Promise<boolean> {
+	const pkgPath = path.join(targetDir, 'package.json')
+	if (!(await fs.pathExists(pkgPath))) return false
+
+	const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
+	const existing = { ...((pkg.scripts as Record<string, string> | undefined) ?? {}) }
+	let added = false
+	for (const [name, command] of Object.entries(scripts)) {
+		if (!existing[name]) {
+			existing[name] = command
+			added = true
+		}
+	}
+	if (!added) return false
+
+	pkg.scripts = existing
+	await fs.writeJson(pkgPath, pkg, { spaces: 2 })
+	return true
+}
+
 export function composeVerifyScript(
 	config: ProjectConfig,
 	opts: { includeTreeshake?: boolean } = {}
@@ -230,6 +260,9 @@ export function composeVerifyScriptFromPkg(
 	if (deps.vitest) cmds.push('pnpm exec vitest run')
 	else if (deps.jest) cmds.push('pnpm test --ci')
 	else if (deps['@playwright/test'] || deps.cypress) cmds.push('pnpm test:e2e')
+	// A repo can run tests without any runner we recognise — `node --test`, for
+	// one. Its `test` script is still the thing verify should call (#364).
+	else if (scripts.test) cmds.push('pnpm test')
 	if (opts.includeTreeshake) cmds.push('pnpm treeshake')
 	if (deps.publint || scripts.publint) cmds.push('pnpm publint')
 	return cmds.length >= 2 ? cmds.join(' && ') : null

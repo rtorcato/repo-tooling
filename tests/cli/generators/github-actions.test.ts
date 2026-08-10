@@ -234,3 +234,68 @@ describe('generateGitHubActions', () => {
 		expect(content).toContain('pnpm lint')
 	})
 })
+
+// #364: the generated workflow called `pnpm check`, `pnpm knip` and
+// `pnpm coverage` on repos where no fix target had ever created those scripts,
+// so every run died with ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL.
+describe('generateGitHubActions script gating', () => {
+	const config = baseConfig({
+		testing: { framework: 'vitest' },
+		bundler: 'tsup',
+	})
+
+	it('omits steps whose scripts the repo does not define', async () => {
+		const dir = newTmpDir()
+		await generateGitHubActions(config, dir, {
+			scripts: { typecheck: 'tsc --noEmit', test: 'vitest run' },
+		})
+		const workflow = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
+
+		expect(workflow).toContain('run: pnpm typecheck')
+		// No check/knip script → the whole lint job goes, rather than a job with
+		// no steps.
+		expect(workflow).not.toContain('run: pnpm check')
+		expect(workflow).not.toContain('run: pnpm knip')
+		expect(workflow).not.toMatch(/^ {2}lint:$/m)
+		// No coverage script → run the tests that do exist, and drop the upload
+		// since there'd be no lcov to send.
+		expect(workflow).toContain('run: pnpm test')
+		expect(workflow).not.toContain('codecov-action')
+		// No build script → no build job.
+		expect(workflow).not.toContain('run: pnpm build')
+	})
+
+	it('keeps every step when the scripts are there', async () => {
+		const dir = newTmpDir()
+		await generateGitHubActions(config, dir, {
+			scripts: {
+				typecheck: 'tsc --noEmit',
+				check: 'biome check .',
+				knip: 'knip',
+				coverage: 'vitest run --coverage',
+				build: 'tsup',
+				attw: 'attw --pack',
+			},
+		})
+		const workflow = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
+
+		expect(workflow).toContain('run: pnpm check')
+		expect(workflow).toContain('run: pnpm knip')
+		expect(workflow).toContain('run: pnpm coverage')
+		expect(workflow).toContain('codecov-action')
+		expect(workflow).toContain('run: pnpm build')
+		expect(workflow).toContain('run: pnpm attw')
+	})
+
+	it('assumes the full setup shape when no scripts are supplied', async () => {
+		const dir = newTmpDir()
+		await generateGitHubActions(config, dir)
+		const workflow = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
+
+		// setup writes these scripts as part of the same scaffold, so gating on a
+		// package.json that doesn't exist yet would strip a working pipeline.
+		expect(workflow).toContain('run: pnpm check')
+		expect(workflow).toContain('run: pnpm knip')
+		expect(workflow).toContain('run: pnpm coverage')
+	})
+})

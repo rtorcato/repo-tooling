@@ -1,6 +1,13 @@
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'fs-extra'
 import type { ProjectConfig } from '../commands/setup.js'
+
+/**
+ * Only used when pnpm isn't on PATH to ask. corepack requires an exact
+ * `pnpm@x.y.z` — a range is rejected — so this has to be a concrete version.
+ */
+export const PNPM_FALLBACK_VERSION = '11.1.3'
 
 const EDITORCONFIG_CONTENT = `root = true
 
@@ -210,6 +217,51 @@ export async function ensureEnginesNode(
 	if (engines.node) return 'already-set'
 
 	pkg.engines = { ...engines, node: version }
+	await fs.writeJson(pkgPath, pkg, { spaces: 2 })
+	return 'added'
+}
+
+/** The pnpm this machine runs, or null when pnpm isn't on PATH. */
+export function detectPnpmVersion(): string | null {
+	try {
+		const out = execFileSync('pnpm', ['--version'], {
+			encoding: 'utf-8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		})
+		return /^\s*(\d+\.\d+\.\d+)/.exec(out)?.[1] ?? null
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Pin `packageManager` so `pnpm/action-setup` has a version to resolve (#364).
+ *
+ * The generated workflow uses `pnpm/action-setup` with no `version:` input,
+ * which is correct *provided* something declares the version. Nothing in the
+ * `fix` path did, so every scaffolded pipeline died at setup with "No pnpm
+ * version is specified" — before a single check ran.
+ *
+ * The value is detected from the pnpm actually running, not hardcoded: this is
+ * a public CLI and a baked-in version would pin strangers' repos to whatever
+ * was current when this file was last touched. `PNPM_FALLBACK_VERSION` is only
+ * for a machine with no pnpm on PATH, and corepack will fetch it either way.
+ *
+ * @returns 'added' | 'already-set' | 'no-package-json'
+ */
+export async function ensurePackageManager(
+	targetDir: string,
+	version = detectPnpmVersion() ?? PNPM_FALLBACK_VERSION
+): Promise<EnsureEnginesResult> {
+	const pkgPath = path.join(targetDir, 'package.json')
+	if (!(await fs.pathExists(pkgPath))) return 'no-package-json'
+
+	const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
+	if (typeof pkg.packageManager === 'string' && pkg.packageManager.trim() !== '') {
+		return 'already-set'
+	}
+
+	pkg.packageManager = `pnpm@${version}`
 	await fs.writeJson(pkgPath, pkg, { spaces: 2 })
 	return 'added'
 }

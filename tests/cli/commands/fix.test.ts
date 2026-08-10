@@ -701,6 +701,44 @@ describe('fix targeted', () => {
 		expect(pkg.scripts.treeshake).toBe('pnpm --filter=*treeshake-check run check')
 	})
 
+	// #362: `fix husky` used to emit a commit-msg hook running `npx --no --
+	// commitlint`, without installing commitlint. `--no` refuses to install a
+	// missing binary, so every `git commit` in the repo was rejected.
+	it('fix husky --yes leaves no commit-msg hook it cannot make work', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('husky', { directory: dir, yes: true })
+
+		expect(await fs.pathExists(join(dir, '.husky', 'pre-commit'))).toBe(true)
+		expect(await fs.pathExists(join(dir, '.husky', 'commit-msg'))).toBe(false)
+	})
+
+	it('fix commitlint --yes ships the hook, the config and the dependency together', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('husky', { directory: dir, yes: true })
+		await fixCommand('commitlint', { directory: dir, yes: true })
+
+		const hook = await fs.readFile(join(dir, '.husky', 'commit-msg'), 'utf-8')
+		expect(hook).toContain('commitlint --edit')
+		const config = await fs.readFile(join(dir, 'commitlint.config.mjs'), 'utf-8')
+		expect(config).toContain('@rtorcato/repo-tooling/commitlint/config')
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.devDependencies['@commitlint/cli']).toBeTruthy()
+		expect(pkg.devDependencies['@commitlint/config-conventional']).toBeTruthy()
+	})
+
+	// Swift and Perl repos drive hooks through core.hooksPath, so a .husky file
+	// there would sit on disk and never run.
+	it('fix commitlint --yes writes no husky hook when husky does not own the hooks', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('commitlint', { directory: dir, yes: true })
+
+		expect(await fs.pathExists(join(dir, 'commitlint.config.mjs'))).toBe(true)
+		expect(await fs.pathExists(join(dir, '.husky', 'commit-msg'))).toBe(false)
+	})
+
 	it('fix husky --yes skips the pre-push hook when no verify script exists', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
@@ -1180,5 +1218,44 @@ describe('fix --diff', () => {
 		} finally {
 			logSpy.mockRestore()
 		}
+	})
+})
+
+// #364: `fix biome` scaffolded a config with no way to run it, so the generated
+// CI's `pnpm check` step and `fix verify`'s lint half both had nothing to call.
+describe('fix biome scripts', () => {
+	it('adds the scripts that run Biome, without touching existing ones', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { check: 'my own check' } })
+		await fixCommand('biome', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.check).toBe('my own check')
+		expect(pkg.scripts.lint).toBe('biome lint .')
+		expect(pkg.scripts['check:fix']).toBe('biome check --fix .')
+	})
+})
+
+// #364: pnpm/action-setup has no `version:` input, so the workflow needs
+// packageManager or every job dies at setup.
+describe('fix github-actions packageManager', () => {
+	it('pins packageManager alongside the workflow', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
+	})
+
+	it('only references scripts the repo actually has', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { typecheck: 'tsc --noEmit' } })
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		const workflow = await fs.readFile(join(dir, '.github/workflows/ci.yml'), 'utf-8')
+		expect(workflow).toContain('run: pnpm typecheck')
+		expect(workflow).not.toContain('run: pnpm knip')
+		expect(workflow).not.toContain('run: pnpm coverage')
 	})
 })

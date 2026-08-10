@@ -2,7 +2,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { renderGitHubWorkflow } from '../../base/ci.js'
-import { githubJobs } from '../../languages/js/ci.js'
+import { githubJobs, scriptsOf } from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
 import { PERL_GIT_HOOKS, runPerlChecks } from '../../languages/perl/checks.js'
 import { readPerlProject, renderPerlWorkflow } from '../../languages/perl/ci.js'
@@ -52,6 +52,7 @@ import {
 	checkSemanticRelease,
 	checkSizeLimit,
 	checkTailwind,
+	checkBuildApprovals,
 	checkPnpmWorkspace,
 	checkTreeshakeSetup,
 	checkTurborepo,
@@ -387,6 +388,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	results.push(await checkPublint(targetDir, pkg))
 	results.push(await checkTreeshakeSetup(targetDir, pkg))
 	results.push(await checkPnpmWorkspace(targetDir, pkg))
+	results.push(await checkBuildApprovals(targetDir, pkg))
 	// Turborepo is monorepo-only — only surface the check when a workspace exists.
 	if (await fs.pathExists(path.join(targetDir, 'pnpm-workspace.yaml'))) {
 		results.push(await checkTurborepo(targetDir))
@@ -405,7 +407,11 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 		...(await runBaseChecks(targetDir, lock, {
 			hooks: jsGitHooksProfile(pkg),
 			badges: { audience: jsBadgeAudience(pkg), fixTarget: 'badges' },
-			presetWorkflow: renderGitHubWorkflow(githubJobs(inferProjectConfig(pkg))),
+			// Same `scripts` gating the fixer applies, or the workflow doctor
+			// compares against would reference steps the fixer never writes (#364).
+			presetWorkflow: renderGitHubWorkflow(
+				githubJobs(inferProjectConfig(pkg), { scripts: scriptsOf(pkg) })
+			),
 			language,
 			codeqlLanguages: languageModule.codeqlLanguages,
 		}))

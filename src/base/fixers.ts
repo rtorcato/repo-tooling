@@ -83,16 +83,22 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'commitlint',
-		description: 'Scaffold commitlint.config.mjs exporting the preset',
+		description:
+			'Scaffold commitlint.config.mjs + the husky commit-msg hook, and install @commitlint/cli',
 		// Conventional Commits is a repo convention, not a JS one (#309) — the
 		// config is identical in any repo. Running commitlint still needs node on
 		// PATH, which is why the Swift hooks don't wire a commit-msg hook.
 		appliesTo: ['Commitlint'],
-		outputs: ['commitlint.config.mjs'],
+		outputs: ['commitlint.config.mjs', '.husky/commit-msg', 'package.json (devDependencies)'],
+		// safe-merge: only missing devDependencies are added, existing ranges stand.
+		riskLevel: 'safe-merge',
 		canFixDrift: true,
 		async run({ targetDir }) {
-			await generateCommitlintConfig(targetDir)
-			return { filesWritten: ['commitlint.config.mjs'] }
+			const filesWritten = await generateCommitlintConfig(targetDir)
+			if (filesWritten.includes('package.json')) {
+				console.error(chalk.dim('   reminder: run `pnpm install` to install commitlint'))
+			}
+			return { filesWritten }
 		},
 	},
 	{

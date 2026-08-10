@@ -943,6 +943,90 @@ export async function checkPnpmWorkspace(dir: string, pkg: Pkg | null): Promise<
 	}
 }
 
+/** The lifecycle scripts pnpm refuses to run until the package is approved. */
+const BUILD_LIFECYCLE_SCRIPTS = ['preinstall', 'install', 'postinstall'] as const
+
+/**
+ * Package names that already have a build decision recorded — approved or
+ * declined, both count. `allowBuilds` is a map (pnpm 11); the older
+ * `onlyBuiltDependencies` / `ignoredBuiltDependencies` lists are still read so
+ * a repo that hasn't migrated isn't nagged about choices it already made.
+ */
+export function decidedBuilds(yaml: string): Set<string> {
+	const decided = new Set<string>()
+	const lines = yaml.split('\n')
+	let inBlock = false
+	for (const line of lines) {
+		if (/^(allowBuilds|onlyBuiltDependencies|ignoredBuiltDependencies):/.test(line)) {
+			inBlock = true
+			continue
+		}
+		if (/^\S/.test(line)) {
+			inBlock = false
+			continue
+		}
+		if (!inBlock) continue
+		// `  esbuild: true` (map) or `  - esbuild` (list).
+		const name = /^\s*-?\s*['"]?(@?[\w./-]+?)['"]?\s*:?\s*(?:true|false)?\s*$/.exec(line)?.[1]
+		if (name) decided.add(name)
+	}
+	return decided
+}
+
+/**
+ * Direct dependencies whose install would run a build script (#364).
+ *
+ * pnpm 11 turned undecided build scripts into a hard error, so
+ * `pnpm install --frozen-lockfile` exits non-zero with ERR_PNPM_IGNORED_BUILDS
+ * — a guaranteed CI failure. Locally the same message reads as advisory, which
+ * is exactly why it gets missed until the pipeline goes red.
+ *
+ * Only direct dependencies are inspected: reaching transitive ones means
+ * walking node_modules/.pnpm, and the packages that trip this in practice
+ * (better-sqlite3, @prisma/client, esbuild) are ones the repo asked for by
+ * name. A transitive offender is a false negative, never a false positive.
+ */
+export async function checkBuildApprovals(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+	const check = 'pnpm build approvals'
+	const deps = allDeps(pkg)
+	const modulesDir = path.join(dir, 'node_modules')
+	if (Object.keys(deps).length === 0 || !(await fs.pathExists(modulesDir))) {
+		// Nothing installed to inspect — the manifest alone can't say which
+		// packages ship an install script.
+		return { check, status: 'ok', detail: 'no installed dependencies to inspect' }
+	}
+
+	const yamlPath = path.join(dir, WORKSPACE_FILE)
+	const decided = decidedBuilds(
+		(await fs.pathExists(yamlPath)) ? await fs.readFile(yamlPath, 'utf-8') : ''
+	)
+
+	const undecided: string[] = []
+	for (const name of Object.keys(deps)) {
+		if (decided.has(name)) continue
+		const depPkgPath = path.join(modulesDir, name, 'package.json')
+		if (!(await fs.pathExists(depPkgPath))) continue
+		let scripts: Record<string, string> = {}
+		try {
+			const depPkg = (await fs.readJson(depPkgPath)) as Record<string, unknown>
+			scripts = (depPkg.scripts as Record<string, string> | undefined) ?? {}
+		} catch {
+			continue
+		}
+		if (BUILD_LIFECYCLE_SCRIPTS.some((s) => scripts[s])) undecided.push(name)
+	}
+
+	if (undecided.length === 0) {
+		return { check, status: 'ok', detail: 'every dependency with a build script has a decision' }
+	}
+	return {
+		check,
+		status: 'drift',
+		detail: `${undecided.length} dependenc${undecided.length === 1 ? 'y' : 'ies'} with undecided build scripts: ${undecided.join(', ')}`,
+		hint: `Record a decision per package under \`allowBuilds:\` in ${WORKSPACE_FILE} (\`name: true\` to run it, \`false\` to skip). pnpm 11 fails \`pnpm install --frozen-lockfile\` outright while any is undecided, so CI cannot pass until each is answered.`,
+	}
+}
+
 /** The docs app dir (apps/docs or apps/doc) if a Docusaurus config lives there. */
 export async function findDocsAppDir(dir: string): Promise<string | null> {
 	for (const app of ['apps/docs', 'apps/doc']) {

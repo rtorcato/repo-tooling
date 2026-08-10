@@ -21,12 +21,22 @@ import {
 import {
 	alignNodeVersion,
 	ensureEnginesNode,
+	ensurePackageManager,
 	generateKnipConfig,
 	generateNvmrc,
 	generateSizeLimitConfig,
 	generateVscodeExtensions,
 } from '../../cli/generators/misc.js'
-import { composeVerifyScriptFromPkg } from '../../cli/generators/package-json.js'
+import { scriptsOf } from './ci.js'
+import { composeVerifyScriptFromPkg, ensureScripts } from '../../cli/generators/package-json.js'
+
+/** Kept in step with the biome branch of getScripts() in package-json.ts. */
+const BIOME_SCRIPTS: Record<string, string> = {
+	lint: 'biome lint .',
+	format: 'biome format .',
+	check: 'biome check .',
+	'check:fix': 'biome check --fix .',
+}
 import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
@@ -142,15 +152,19 @@ const GH_WORKFLOW_FIXERS: Fixer[] = GH_WORKFLOWS.map((name) => ({
 export const FIXERS: Fixer[] = [
 	{
 		target: 'biome',
-		description: `Scaffold ${BIOME_CONFIG} extending the @rtorcato/repo-tooling preset`,
+		description: `Scaffold ${BIOME_CONFIG} extending the @rtorcato/repo-tooling preset, plus the scripts that run it`,
 		appliesTo: ['Biome'],
-		outputs: [BIOME_CONFIG],
+		outputs: [BIOME_CONFIG, 'package.json (scripts)'],
 		canFixDrift: true,
 		async run({ targetDir }) {
 			// Shares generateBiomeConfig with the setup/resync path — the two used to
 			// scaffold different filenames with different contents (#365).
 			const written = await generateBiomeConfig(targetDir)
-			return { filesWritten: [written] }
+			const filesWritten = [written]
+			// A config with no way to run it left `pnpm check` undefined, which the
+			// generated CI called and `fix verify` needed to compose a chain (#364).
+			if (await ensureScripts(targetDir, BIOME_SCRIPTS)) filesWritten.push('package.json')
+			return { filesWritten }
 		},
 	},
 	{
@@ -224,7 +238,8 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'husky',
-		description: 'Set up Husky + lint-staged (and a `pnpm verify` pre-push hook)',
+		description:
+			'Set up Husky + lint-staged (and a `pnpm verify` pre-push hook). Commit-message linting is `fix commitlint`.',
 		appliesTo: ['Git hooks', 'lint-staged', 'Pre-push hook'],
 		outputs: ['.husky/pre-commit', '.husky/pre-push', 'package.json (lint-staged field)'],
 		riskLevel: 'safe-merge',
@@ -343,7 +358,7 @@ export const FIXERS: Fixer[] = [
 		target: 'github-actions',
 		description: 'Scaffold .github/workflows/ci.yml (+ codecov.yml when tests run)',
 		appliesTo: ['GitHub Actions', 'Coverage upload', 'npm OIDC publish'],
-		outputs: [CI_WORKFLOW, 'codecov.yml'],
+		outputs: [CI_WORKFLOW, 'codecov.yml', 'package.json (packageManager field)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg, result }) {
 			// Only a `GitHub Actions` finding means the user was shown that the
@@ -352,7 +367,14 @@ export const FIXERS: Fixer[] = [
 			// customized ci.yml down with it (#349).
 			const filesWritten = await generateGitHubActions(inferProjectConfig(pkg), targetDir, {
 				overwrite: result.check === 'GitHub Actions',
+				// Only reference scripts this repo actually has (#364).
+				scripts: scriptsOf(pkg),
 			})
+			// `pnpm/action-setup` is emitted without a `version:` input, so without
+			// this every job dies at setup with "No pnpm version is specified".
+			if ((await ensurePackageManager(targetDir)) === 'added') {
+				filesWritten.push('package.json')
+			}
 			if (!filesWritten.includes(CI_WORKFLOW)) {
 				console.error(
 					chalk.yellow(
