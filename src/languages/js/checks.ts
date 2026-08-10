@@ -111,14 +111,60 @@ function matchesBiomeConfig(contents: string): boolean {
 	)
 }
 
+const TS_PRESET_REF = /@rtorcato\/(?:js|repo)-tooling\/typescript\//
+
+/**
+ * Options `tooling/typescript/tsconfig.base.json` sets that a tsconfig written
+ * by hand is unlikely to carry all of. `strict` alone is far too common to
+ * conclude anything from.
+ */
+const TS_PRESET_STRICTNESS = [
+	'strict',
+	'noUncheckedIndexedAccess',
+	'noImplicitOverride',
+	'noPropertyAccessFromIndexSignature',
+] as const
+
+/**
+ * The same two shapes as `matchesBiomeConfig`, for the same reason (#385): the
+ * `extends` pointer `fix tsconfig` writes, and the whole preset inlined, which
+ * is what `copy tsconfig` drops — `tooling/typescript/tsconfig.base.json` *is*
+ * the preset, so it names it nowhere, and every `copy tsconfig` repo was
+ * reported as drifted with no way out. This check isn't optional, so that read
+ * as a real problem rather than an optional one.
+ *
+ * Structural rather than textual, and for the same reason: `strict: false` is
+ * drift whichever shape the config takes, a marker sitting in a comment proves
+ * nothing, and unparseable counts as drift rather than being waved through.
+ */
+function matchesTsConfig(contents: string): boolean {
+	const config = parseJsonc(contents)
+	if (!config) return false
+
+	const compilerOptions = (config.compilerOptions ?? {}) as Record<string, unknown>
+	// Naming the preset and then switching strictness off is precisely the drift
+	// this check exists to catch, so it disqualifies either shape.
+	if (compilerOptions.strict === false) return false
+
+	if (TS_PRESET_REF.test(JSON.stringify(config.extends ?? ''))) return true
+
+	// The inlined preset: a `${configDir}`-anchored rootDir — how a preset meant
+	// to be extended resolves against the consuming repo — plus the strict block
+	// the shipped preset sets.
+	const rootDir = compilerOptions.rootDir
+	return (
+		typeof rootDir === 'string' &&
+		rootDir.includes('${configDir}') &&
+		TS_PRESET_STRICTNESS.every((key) => compilerOptions[key] === true)
+	)
+}
+
 export const FILE_CHECKS: FileCheck[] = [
 	{
 		check: 'TypeScript',
 		candidates: ['tsconfig.json'],
-		expected: `extends "${PACKAGE}/typescript/*"`,
-		matcher: /@rtorcato\/(?:js|repo)-tooling\/typescript\//,
-		// `fix tsconfig`, not `copy tsconfig`: copy drops the whole preset inline,
-		// which carries no `extends` for the matcher above to find (#381).
+		expected: `extends "${PACKAGE}/typescript/*" or inlines the preset, with strict on`,
+		matcher: matchesTsConfig,
 		hint: 'Run `npx @rtorcato/repo-tooling fix tsconfig` to scaffold',
 	},
 	{
