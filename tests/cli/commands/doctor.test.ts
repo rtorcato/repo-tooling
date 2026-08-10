@@ -7,7 +7,7 @@ import {
 	runDoctor,
 	summarize,
 } from '../../../src/cli/commands/doctor.js'
-import { checkBuildApprovals } from '../../../src/languages/js/checks.js'
+import { checkBuildApprovals, pnpmStoreDirToName } from '../../../src/languages/js/checks.js'
 import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -1251,5 +1251,99 @@ describe('checkBuildApprovals', () => {
 		const result = await checkBuildApprovals(newTmpDir(), { name: 'demo', devDependencies: { x: '1' } })
 		expect(result.status).toBe('ok')
 		expect(result.detail).toContain('no installed dependencies')
+	})
+
+	// #373: pnpm names transitive packages in ERR_PNPM_IGNORED_BUILDS too, so a
+	// direct-only scan reports clean while CI goes red.
+	describe('transitive dependencies', () => {
+		async function seedStoreDep(
+			dir: string,
+			storeEntry: string,
+			name: string,
+			scripts: Record<string, string>
+		) {
+			await fs.outputJson(
+				join(dir, 'node_modules', '.pnpm', storeEntry, 'node_modules', name, 'package.json'),
+				{ name, scripts }
+			)
+		}
+
+		it('flags a transitive package with an install script and no decision', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { vite: '^7.0.0' } }
+			await seedDep(dir, 'vite', { test: 'vitest' })
+			await seedStoreDep(dir, 'esbuild@0.25.0', 'esbuild', { postinstall: 'node install.js' })
+
+			const result = await checkBuildApprovals(dir, pkg)
+			expect(result.status).toBe('optional-missing')
+			expect(result.detail).toContain('esbuild')
+			expect(result.detail).toContain('transitive')
+		})
+
+		it('decodes a scoped store directory back to its package name', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { vite: '^7.0.0' } }
+			await seedDep(dir, 'vite', { test: 'vitest' })
+			await seedStoreDep(dir, '@prisma+client@5.22.0', '@prisma/client', {
+				postinstall: 'prisma generate',
+			})
+
+			expect((await checkBuildApprovals(dir, pkg)).detail).toContain('@prisma/client')
+		})
+
+		it('says nothing about a transitive package already under allowBuilds', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { vite: '^7.0.0' } }
+			await seedDep(dir, 'vite', { test: 'vitest' })
+			await seedStoreDep(dir, 'esbuild@0.25.0', 'esbuild', { postinstall: 'node install.js' })
+			await fs.writeFile(join(dir, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: true\n')
+
+			expect((await checkBuildApprovals(dir, pkg)).status).toBe('ok')
+		})
+
+		it('reports a package present at two versions once', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { vite: '^7.0.0' } }
+			await seedDep(dir, 'vite', { test: 'vitest' })
+			await seedStoreDep(dir, 'esbuild@0.24.0', 'esbuild', { postinstall: 'node install.js' })
+			await seedStoreDep(dir, 'esbuild@0.25.0', 'esbuild', { postinstall: 'node install.js' })
+
+			const detail = (await checkBuildApprovals(dir, pkg)).detail ?? ''
+			expect(detail.match(/esbuild/g)).toHaveLength(1)
+			expect(detail).toContain('1 transitive dependency')
+		})
+
+		it('grades a direct offender as drift even when transitive ones exist', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { 'better-sqlite3': '^12.0.0' } }
+			await seedDep(dir, 'better-sqlite3', { install: 'node-gyp rebuild' })
+			await seedStoreDep(dir, 'esbuild@0.25.0', 'esbuild', { postinstall: 'node install.js' })
+
+			const result = await checkBuildApprovals(dir, pkg)
+			expect(result.status).toBe('drift')
+			expect(result.detail).toContain('better-sqlite3')
+			expect(result.detail).toContain('esbuild')
+		})
+
+		it('does not double-report a direct dependency that also sits in the store', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { esbuild: '^0.25.0' } }
+			await seedDep(dir, 'esbuild', { postinstall: 'node install.js' })
+			await seedStoreDep(dir, 'esbuild@0.25.0', 'esbuild', { postinstall: 'node install.js' })
+
+			const detail = (await checkBuildApprovals(dir, pkg)).detail ?? ''
+			expect(detail.match(/esbuild/g)).toHaveLength(1)
+			expect(detail).not.toContain('transitive')
+		})
+	})
+})
+
+describe('pnpmStoreDirToName', () => {
+	it('decodes plain, scoped, and peer-suffixed store directories', () => {
+		expect(pnpmStoreDirToName('esbuild@0.25.0')).toBe('esbuild')
+		expect(pnpmStoreDirToName('@prisma+client@5.22.0')).toBe('@prisma/client')
+		// The peer suffix carries its own `@` — the first one still wins.
+		expect(pnpmStoreDirToName('@babel+core@7.0.0_supports-color@8.0.0')).toBe('@babel/core')
+		expect(pnpmStoreDirToName('node_modules')).toBeNull()
 	})
 })
