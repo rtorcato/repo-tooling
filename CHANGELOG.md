@@ -1,3 +1,10 @@
+## [3.7.3](https://github.com/rtorcato/repo-tooling/compare/v3.7.2...v3.7.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* **biome:** scaffold one biome.json from one code path ([#366](https://github.com/rtorcato/repo-tooling/issues/366)) ([ca19aea](https://github.com/rtorcato/repo-tooling/commit/ca19aea2e93a11311e5789d4e7bfac4ba47848ab)), closes [#365](https://github.com/rtorcato/repo-tooling/issues/365) [#363](https://github.com/rtorcato/repo-tooling/issues/363) [#363](https://github.com/rtorcato/repo-tooling/issues/363)
+
 ## [3.7.2](https://github.com/rtorcato/repo-tooling/compare/v3.7.1...v3.7.2) (2026-08-10)
 
 
