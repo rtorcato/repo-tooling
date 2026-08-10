@@ -1,3 +1,10 @@
+## [3.8.1](https://github.com/rtorcato/repo-tooling/compare/v3.8.0...v3.8.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **doctor:** flag transitive pnpm build approvals ([#375](https://github.com/rtorcato/repo-tooling/issues/375)) ([da20a6a](https://github.com/rtorcato/repo-tooling/commit/da20a6ac20c1f4bc60ed9d2d75e8859700bd0c0a)), closes [#373](https://github.com/rtorcato/repo-tooling/issues/373)
+
 # [3.8.0](https://github.com/rtorcato/repo-tooling/compare/v3.7.4...v3.8.0) (2026-08-10)
 
 
