@@ -10,9 +10,30 @@ import {
 	PRESET_NAMES,
 	validateProjectConfig,
 } from '../../../src/cli/commands/setup-presets.js'
+import { generateConfigs } from '../../../src/cli/generators/index.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
+
+// #382: computeFileList is a promise about what generateConfigs writes — the
+// budget has to actually land, or the `size-limit` script has nothing to run.
+describe('generateConfigs size-limit budget', () => {
+	it('writes the budget for a library and nothing for an app', async () => {
+		const libDir = newTmpDir()
+		await generateConfigs(
+			{ ...buildPresetConfig('library', 'demo'), aiSetup: false, securityAutomation: false },
+			libDir
+		)
+		expect(await fs.pathExists(join(libDir, '.size-limit.json'))).toBe(true)
+
+		const appDir = newTmpDir()
+		await generateConfigs(
+			{ ...buildPresetConfig('react-app', 'demo'), aiSetup: false, securityAutomation: false },
+			appDir
+		)
+		expect(await fs.pathExists(join(appDir, '.size-limit.json'))).toBe(false)
+	})
+})
 
 describe('setup-presets', () => {
 	it('builds a valid config for every preset', () => {
@@ -117,6 +138,14 @@ describe('computeFileList', () => {
 		expect(files).toContain('tsup.config.ts')
 		expect(files).toContain('release.config.mjs')
 		expect(files).toContain('.github/dependabot.yml')
+	})
+
+	// #382: the `size-limit` script getScripts() emits needs a budget to run on.
+	it('lists the size-limit budget for libraries only', () => {
+		expect(computeFileList(buildPresetConfig('library', 'demo'))).toContain('.size-limit.json')
+		expect(computeFileList(buildPresetConfig('react-app', 'demo'))).not.toContain(
+			'.size-limit.json'
+		)
 	})
 
 	it('omits release.config.mjs for non-library presets', () => {

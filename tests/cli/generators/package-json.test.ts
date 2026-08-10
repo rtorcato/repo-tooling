@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import {
+	SIZE_LIMIT_VERSION,
 	composeVerifyScript,
 	composeVerifyScriptFromPkg,
 	generatePackageJson,
@@ -99,6 +100,23 @@ describe('generatePackageJson', () => {
 		const pkg = await fs.readJson(join(dir, 'package.json'))
 		expect(pkg.scripts.attw).toBeUndefined()
 		expect(pkg.devDependencies['@arethetypeswrong/cli']).toBeUndefined()
+	})
+
+	// #382: the budget the library scaffold writes needs a way to run it.
+	it('wires the size-limit script + dependency for library projects only', async () => {
+		const dir = newTmpDir()
+		await generatePackageJson(baseConfig({ projectType: 'library' }), dir)
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts['size-limit']).toBe('size-limit')
+		expect(pkg.devDependencies['size-limit']).toBe(SIZE_LIMIT_VERSION)
+
+		const appDir = newTmpDir()
+		await generatePackageJson(baseConfig({ projectType: 'react-app' }), appDir)
+
+		const appPkg = await fs.readJson(join(appDir, 'package.json'))
+		expect(appPkg.scripts['size-limit']).toBeUndefined()
+		expect(appPkg.devDependencies['size-limit']).toBeUndefined()
 	})
 
 	it('adds library fields for library project type', async () => {

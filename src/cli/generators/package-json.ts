@@ -155,6 +155,10 @@ function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record
 	// profile fits the dual (cjs+esm) exports the library scaffold emits.
 	if (config.projectType === 'library') {
 		scripts['attw'] = 'attw --pack'
+		// The budget scaffolded alongside it (generateConfigs) is inert without a
+		// way to run it — a size budget nothing runs implies an enforcement that
+		// isn't there (#382).
+		Object.assign(scripts, SIZE_LIMIT_SCRIPTS)
 	}
 
 	// Git hooks
@@ -189,6 +193,16 @@ function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record
  * refused to compose a chain, both because no target ever created that script
  * (#364).
  */
+/**
+ * The one definition of the `size-limit` script, shared by `getScripts()` (setup)
+ * and the `size-limit` fixer, so the two paths can't drift (#382 — the divergence
+ * behind #371 and #377).
+ */
+export const SIZE_LIMIT_SCRIPTS: Record<string, string> = { 'size-limit': 'size-limit' }
+
+/** Shared by the same two paths, for the same reason. */
+export const SIZE_LIMIT_VERSION = '^11.2.0'
+
 export async function ensureScripts(
 	targetDir: string,
 	scripts: Record<string, string>
@@ -367,8 +381,11 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 	}
 
 	// are-the-types-wrong — validate published type resolution for libraries.
+	// size-limit enforces the bundle-size budget scaffolded next to it; without
+	// the dependency the script dies with "command not found" (#382).
 	if (config.projectType === 'library') {
 		deps['@arethetypeswrong/cli'] = '^0.18.2'
+		deps['size-limit'] = SIZE_LIMIT_VERSION
 	}
 
 	// Commit linting (enforcement) + commitizen (assistance)
