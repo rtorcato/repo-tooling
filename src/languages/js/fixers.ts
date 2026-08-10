@@ -49,6 +49,25 @@ const ESLINT_SCRIPTS: Record<string, string> = {
 const PRETTIER_SCRIPTS: Record<string, string> = {
 	format: 'prettier --write .',
 }
+
+/** Kept in step with the knip line of getScripts() in package-json.ts. */
+const KNIP_SCRIPTS: Record<string, string> = {
+	knip: 'knip',
+}
+
+/** Kept in step with the typescript branch of getScripts() in package-json.ts. */
+const TSCONFIG_SCRIPTS: Record<string, string> = {
+	typecheck: 'tsc --noEmit',
+}
+
+// getScripts() also emits `test:ui`, but only the browser/both environments
+// install @vitest/ui, so a fixed-up repo would get a script it can't run.
+/** Kept in step with the vitest branch of getScripts() in package-json.ts. */
+const VITEST_SCRIPTS: Record<string, string> = {
+	test: 'vitest',
+	'test:watch': 'vitest --watch',
+	coverage: 'vitest run --coverage',
+}
 import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
@@ -181,13 +200,19 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'tsconfig',
-		description: 'Scaffold tsconfig.json extending the @rtorcato/repo-tooling preset',
+		description:
+			'Scaffold tsconfig.json extending the @rtorcato/repo-tooling preset, plus the `typecheck` script',
 		appliesTo: ['TypeScript'],
-		outputs: ['tsconfig.json'],
+		outputs: ['tsconfig.json', 'package.json (scripts)'],
 		canFixDrift: true,
 		async run({ targetDir }) {
 			const result = await copyPreset('tsconfig', targetDir)
-			return { filesWritten: [result.target] }
+			const filesWritten = [result.target]
+			// Without `typecheck` the generated CI drops its typecheck job entirely
+			// (#377). Shared with non-JS paths, so this is a no-op when there's no
+			// package.json to add it to.
+			if (await ensureScripts(targetDir, TSCONFIG_SCRIPTS)) filesWritten.push('package.json')
+			return { filesWritten }
 		},
 	},
 	{
@@ -221,9 +246,10 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'vitest',
-		description: 'Scaffold vitest.config.ts (preserves vitest.setup.ts if present)',
+		description:
+			'Scaffold vitest.config.ts (preserves vitest.setup.ts if present), plus the scripts that run it',
 		appliesTo: ['Vitest'],
-		outputs: ['vitest.config.ts'],
+		outputs: ['vitest.config.ts', 'package.json (scripts)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
 			const setupPath = path.join(targetDir, 'vitest.setup.ts')
@@ -233,7 +259,11 @@ export const FIXERS: Fixer[] = [
 			if (hadSetup && savedSetup !== null) {
 				await fs.writeFile(setupPath, savedSetup)
 			}
-			return { filesWritten: ['vitest.config.ts'] }
+			const filesWritten = ['vitest.config.ts']
+			// Without `coverage`/`test` the generated CI drops the whole test job,
+			// Codecov upload included (#377).
+			if (await ensureScripts(targetDir, VITEST_SCRIPTS)) filesWritten.push('package.json')
+			return { filesWritten }
 		},
 	},
 	{
@@ -546,13 +576,18 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'knip',
-		description: 'Scaffold knip.json (entry globs matched to the package.json build model)',
+		description:
+			'Scaffold knip.json (entry globs matched to the package.json build model), plus the `knip` script',
 		appliesTo: ['knip'],
-		outputs: ['knip.json'],
+		outputs: ['knip.json', 'package.json (scripts)'],
 		canFixDrift: true,
 		async run({ targetDir }) {
 			await generateKnipConfig(targetDir)
-			return { filesWritten: ['knip.json'] }
+			const filesWritten = ['knip.json']
+			// Without `knip` the generated CI drops its unused-code step, and with no
+			// check/lint script either the whole lint job disappears (#377).
+			if (await ensureScripts(targetDir, KNIP_SCRIPTS)) filesWritten.push('package.json')
+			return { filesWritten }
 		},
 	},
 	{
