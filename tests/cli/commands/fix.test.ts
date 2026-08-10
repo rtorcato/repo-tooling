@@ -1236,6 +1236,42 @@ describe('fix biome scripts', () => {
 	})
 })
 
+// #371: `fix eslint` / `fix prettier` had the same gap #364 closed for biome —
+// a config with no script to run it, so CI dropped its lint step silently.
+describe('fix eslint/prettier scripts', () => {
+	it('adds the scripts that run ESLint, without touching existing ones', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { lint: 'my own lint' } })
+		await fixCommand('eslint', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.lint).toBe('my own lint')
+		expect(pkg.scripts['lint:fix']).toBe('eslint . --fix')
+	})
+
+	it('adds the `format` script alongside the Prettier config', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('prettier', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.format).toBe('prettier --write .')
+	})
+
+	it('lets `fix verify` compose a chain that includes linting', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, {
+			scripts: { typecheck: 'tsc --noEmit' },
+			devDependencies: { eslint: '^9.0.0', typescript: '^5.9.3', vitest: '^3.0.0' },
+		})
+		await fixCommand('eslint', { directory: dir, yes: true })
+		await fixCommand('verify', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.verify).toContain('pnpm lint')
+	})
+})
+
 // #364: pnpm/action-setup has no `version:` input, so the workflow needs
 // packageManager or every job dies at setup.
 describe('fix github-actions packageManager', () => {
