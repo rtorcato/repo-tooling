@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runDoctor } from '../../../src/cli/commands/doctor.js'
 import { fixCommand, getFixers, listFixers } from '../../../src/cli/commands/fix.js'
 import {
+	SIZE_LIMIT_VERSION,
+	generatePackageJson,
+} from '../../../src/cli/generators/package-json.js'
+import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
 	DEPENDABOT_CONFIG,
 } from '../../../src/cli/generators/security.js'
@@ -1408,6 +1412,64 @@ describe('fix knip/tsconfig/vitest scripts', () => {
 		expect(pkg.scripts.test).toBe('my own test')
 		expect(pkg.scripts['test:watch']).toBe('vitest --watch')
 		expect(pkg.scripts.coverage).toBe('vitest run --coverage')
+	})
+})
+
+// #382: the budget was scaffolded with no script and no CLI to run it, so its
+// presence implied an enforcement that wasn't there.
+describe('fix size-limit', () => {
+	it('adds the `size-limit` script and devDependency alongside the budget', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('size-limit', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(await fs.pathExists(join(dir, '.size-limit.json'))).toBe(true)
+		expect(pkg.scripts['size-limit']).toBe('size-limit')
+		expect(pkg.devDependencies['size-limit']).toBe(SIZE_LIMIT_VERSION)
+	})
+
+	it('leaves an existing script and pin alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, {
+			scripts: { 'size-limit': 'size-limit --why' },
+			devDependencies: { 'size-limit': '^10.0.0' },
+		})
+		await fixCommand('size-limit', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts['size-limit']).toBe('size-limit --why')
+		expect(pkg.devDependencies['size-limit']).toBe('^10.0.0')
+	})
+
+	// The divergence between getScripts() and the fixers is the root cause behind
+	// #371 and #377 — assert the two paths emit the same command.
+	it('emits the same command as the setup path', async () => {
+		const setupDir = newTmpDir()
+		await generatePackageJson(
+			{
+				projectName: 'lib',
+				projectType: 'library',
+				typescript: { enabled: false, config: 'base' },
+				linting: { tool: 'none' },
+				formatting: { tool: 'none' },
+				testing: { framework: 'none' },
+				gitHooks: false,
+				commitLint: false,
+				semanticRelease: false,
+				bundler: 'none',
+			},
+			setupDir
+		)
+
+		const fixDir = newTmpDir()
+		await seedPackageJson(fixDir)
+		await fixCommand('size-limit', { directory: fixDir, yes: true })
+
+		const setupPkg = await fs.readJson(join(setupDir, 'package.json'))
+		const fixPkg = await fs.readJson(join(fixDir, 'package.json'))
+		expect(setupPkg.scripts['size-limit']).toBe(fixPkg.scripts['size-limit'])
+		expect(setupPkg.devDependencies['size-limit']).toBe(fixPkg.devDependencies['size-limit'])
 	})
 })
 

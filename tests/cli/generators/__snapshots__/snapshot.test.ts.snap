@@ -267,6 +267,7 @@ exports[`generator output snapshots > package.json (library) 1`] = `
     "commit": "cz",
     "knip": "knip",
     "attw": "attw --pack",
+    "size-limit": "size-limit",
     "prepare": "husky",
     "release": "semantic-release",
     "verify": "pnpm typecheck && pnpm check && pnpm exec vitest run && pnpm attw"
@@ -284,6 +285,7 @@ exports[`generator output snapshots > package.json (library) 1`] = `
     "husky": "^9.0.0",
     "lint-staged": "^16.0.0",
     "@arethetypeswrong/cli": "^0.18.2",
+    "size-limit": "^11.2.0",
     "@commitlint/cli": "^20.0.0",
     "@commitlint/config-conventional": "^20.0.0",
     "commitizen": "^4.3.1",

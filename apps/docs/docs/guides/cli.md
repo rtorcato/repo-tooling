@@ -204,7 +204,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `bun` | `bunfig.toml` + a Bun-typed `tsconfig.json` for Bun runtime/test users |
 | `rollup` | `rollup.config.mjs` re-exporting the shared library preset |
 | `rolldown` | `rolldown.config.mjs` re-exporting the shared library preset |
-| `size-limit` | a size-limit budget (`.size-limit.cjs`/`.json`) |
+| `size-limit` | a size-limit budget (`.size-limit.cjs`/`.json`), plus the `size-limit` script and devDependency that run it |
 | `treeshake-check` | `apps/treeshake-check` — esbuild + metafile bundle assertion |
 | `pnpm-workspace` | merges the family-wide pnpm settings into `pnpm-workspace.yaml` (`verifyDepsBeforeRun`, `minimumReleaseAgeExclude`, esbuild's build approval) — never rewrites the file |
 | `turborepo` | `turbo.json` task pipeline (pnpm-workspace monorepos) |

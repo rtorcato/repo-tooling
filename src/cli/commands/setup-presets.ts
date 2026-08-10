@@ -231,6 +231,9 @@ export function computeFileList(config: ProjectConfig): string[] {
 	if (config.typescript.enabled) {
 		files.push('tsconfig.json', 'reset.d.ts')
 	}
+	// Libraries get a bundle-size budget plus the `size-limit` script that runs it
+	// (#382). The scaffold's exports are root-only, so it's always the static form.
+	if (config.projectType === 'library') files.push('.size-limit.json')
 	if (config.linting.tool === 'biome' || config.linting.tool === 'both') {
 		files.push(BIOME_CONFIG)
 	}
