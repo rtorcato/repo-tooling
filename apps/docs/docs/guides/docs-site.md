@@ -78,8 +78,9 @@ Add each module to the sidebar's API Reference category:
 { type: 'doc', id: 'api/kv/index', label: 'kv' }
 ```
 
-`docs/api/` is generated — gitignore it, and have biome ignore it (enable
-`vcs.useIgnoreFile` in your root `biome.json` so it isn't linted).
+`docs/api/` is generated — gitignore it, and biome skips it too: the preset
+enables `vcs.enabled` alongside `vcs.useIgnoreFile`, so your `.gitignore` is
+the one list you have to keep.
 
 ## 2. Deploy workflow
 
