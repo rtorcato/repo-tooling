@@ -1,3 +1,10 @@
+## [3.8.3](https://github.com/rtorcato/repo-tooling/compare/v3.8.2...v3.8.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* **doctor:** accept an inlined biome preset, not just an extends pointer ([#379](https://github.com/rtorcato/repo-tooling/issues/379)) ([2c75d80](https://github.com/rtorcato/repo-tooling/commit/2c75d8087ed1b012968ca1d561db7f2dbc063b6a)), closes [#378](https://github.com/rtorcato/repo-tooling/issues/378)
+
 ## [3.8.2](https://github.com/rtorcato/repo-tooling/compare/v3.8.1...v3.8.2) (2026-08-10)
 
 
