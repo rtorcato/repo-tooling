@@ -112,6 +112,97 @@ describe('doctor', () => {
 		expect(ts?.hint).toMatch(/tsconfig/)
 	})
 
+	// #385: `copy tsconfig` writes the preset inline — the preset names itself
+	// nowhere, so the old text matcher could never match what copy produced and
+	// the repo stayed drifted however many times it re-ran.
+	it('reports ok for the tsconfig.json `copy tsconfig` writes', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await copyPreset('tsconfig', dir)
+
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('ok')
+	})
+
+	it('still reports drift for a tsconfig that is neither a pointer nor the preset', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'tsconfig.json'), { compilerOptions: { strict: false } })
+
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+	})
+
+	// Keeping the preset's shape while turning strictness off is exactly the
+	// drift this check exists to catch — the bypass the #379 security review
+	// caught on the Biome side, one preset over.
+	it('reports drift for a preset-shaped tsconfig with strict disabled', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		// The real preset, one option flipped: every other marker still present.
+		await copyPreset('tsconfig', dir)
+		const tsconfigPath = join(dir, 'tsconfig.json')
+		const inlined = await fs.readFile(tsconfigPath, 'utf-8')
+		const disabled = inlined.replace('"strict": true', '"strict": false')
+		expect(disabled).not.toBe(inlined)
+		await fs.writeFile(tsconfigPath, disabled)
+
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+	})
+
+	it('reports drift when the preset it extends has strict switched back off', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'tsconfig.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { strict: false },
+		})
+
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+	})
+
+	// `strict: true` can stay literally present while any one flag it implies is
+	// overridden to false — the override wins, so both shapes above would keep
+	// every marker and still ship with type safety off.
+	it('reports drift when a strict-implied flag is switched off on either shape', async () => {
+		const pointer = newTmpDir()
+		await seedPackageJson(pointer)
+		await fs.writeJson(join(pointer, 'tsconfig.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { noImplicitAny: false },
+		})
+
+		const inlined = newTmpDir()
+		await seedPackageJson(inlined)
+		await copyPreset('tsconfig', inlined)
+		const tsconfigPath = join(inlined, 'tsconfig.json')
+		const preset = await fs.readFile(tsconfigPath, 'utf-8')
+		// `strict` itself stays true, as do all four TS_PRESET_STRICTNESS keys.
+		const weakened = preset.replace('"strict": true', '"strict": true, "strictNullChecks": false')
+		expect(weakened).not.toBe(preset)
+		await fs.writeFile(tsconfigPath, weakened)
+
+		expect((await runDoctor(pointer)).find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+		expect((await runDoctor(inlined)).find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+	})
+
+	it('accepts a commented tsconfig.json and does not crash on a corrupt one', async () => {
+		const commented = newTmpDir()
+		await seedPackageJson(commented)
+		await fs.writeFile(
+			join(commented, 'tsconfig.json'),
+			'// shared preset\n{ "extends": "@rtorcato/repo-tooling/typescript/base" /* base */ }\n'
+		)
+		const corrupt = newTmpDir()
+		await seedPackageJson(corrupt)
+		await fs.writeFile(join(corrupt, 'tsconfig.json'), '{ "extends": "…/typescript/base"')
+
+		expect((await runDoctor(commented)).find((r) => r.check === 'TypeScript')?.status).toBe('ok')
+		expect((await runDoctor(corrupt)).find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+	})
+
 	it('detects biome.jsonc and eslint configs that import our presets', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
