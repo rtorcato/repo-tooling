@@ -14,10 +14,13 @@ export function usesCoverage(config: ProjectConfig): boolean {
 	return config.testing.framework === 'vitest'
 }
 
+/** The package.json script the lint job runs — `check` under Biome, else `lint`. */
+function lintScript(config: ProjectConfig): string {
+	return config.linting.tool === 'biome' || config.linting.tool === 'both' ? 'check' : 'lint'
+}
+
 function lintCommand(config: ProjectConfig): string {
-	return config.linting.tool === 'biome' || config.linting.tool === 'both'
-		? 'pnpm check'
-		: 'pnpm lint'
+	return `pnpm ${lintScript(config)}`
 }
 
 /**
@@ -78,41 +81,84 @@ const DEPENDENCIES_JOB: CiJob = {
 }
 
 /**
+ * The repo's `package.json` scripts, when we have a real one to read (#364).
+ *
+ * `setup` renders a workflow for a project it is about to *create*, so every
+ * script it references is one it also writes. `fix github-actions` renders one
+ * for a project that already exists and may have none of them: the generated
+ * pipeline called `pnpm check`, `pnpm knip` and `pnpm coverage` on repos where
+ * no target had created those scripts, and died with ERR_PNPM_RECURSIVE_EXEC.
+ *
+ * Undefined means "assume the setup shape" — omitting the steps there would
+ * drop them from a project whose scripts simply don't exist yet.
+ */
+export interface JobOptions {
+	scripts?: Record<string, string>
+}
+
+/**
+ * `JobOptions.scripts` for a real repo. A package.json with no `scripts` block
+ * yields `{}` — "this repo has no scripts", which gates every step off —
+ * whereas no package.json at all yields undefined, the setup shape.
+ */
+export function scriptsOf(pkg: Record<string, unknown> | null): Record<string, string> | undefined {
+	if (!pkg) return undefined
+	return (pkg.scripts as Record<string, string> | undefined) ?? {}
+}
+
+/** Emit a step only when the script it runs exists (or we can't know yet). */
+function stepFor(opts: JobOptions, script: string, step: string): string | null {
+	return !opts.scripts || script in opts.scripts ? step : null
+}
+
+/** Join the steps that survived gating onto the shared setup preamble. */
+function jobSteps(steps: (string | null)[]): string | null {
+	const kept = steps.filter((s): s is string => s !== null)
+	return kept.length > 0 ? [SETUP_STEPS, ...kept].join('\n\n') : null
+}
+
+/**
  * The GitHub Actions jobs for a JS repo, in workflow order. The `release` job
  * needs the ids of everything that ran before it, so the list is assembled
  * rather than filtered from a fixed shape.
  */
-export function githubJobs(config: ProjectConfig): CiJob[] {
+export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[] {
 	const hasTypeScript = config.typescript.enabled
 	const hasTests = config.testing.framework !== 'none'
 	const hasBuild = config.bundler !== 'none'
 	const isLibrary = config.projectType === 'library'
 	const hasCoverage = usesCoverage(config)
 
-	const jobs: CiJob[] = [
-		DEPENDENCIES_JOB,
-		{
-			id: 'lint',
-			needs: ['dependencies'],
-			steps: `${SETUP_STEPS}
+	const jobs: CiJob[] = [DEPENDENCIES_JOB]
 
-      - name: 🔍 Run linting
-        run: ${lintCommand(config)}
-
-      - name: 🧹 Check for unused files, exports, and dependencies
-        run: pnpm knip`,
-		},
-	]
+	const lintSteps = jobSteps([
+		stepFor(
+			opts,
+			lintScript(config),
+			`      - name: 🔍 Run linting
+        run: ${lintCommand(config)}`
+		),
+		stepFor(
+			opts,
+			'knip',
+			`      - name: 🧹 Check for unused files, exports, and dependencies
+        run: pnpm knip`
+		),
+	])
+	if (lintSteps) {
+		jobs.push({ id: 'lint', needs: ['dependencies'], steps: lintSteps })
+	}
 
 	if (hasTypeScript) {
-		jobs.push({
-			id: 'typecheck',
-			needs: ['dependencies'],
-			steps: `${SETUP_STEPS}
-
-      - name: 🔍 Type check
-        run: pnpm typecheck`,
-		})
+		const steps = jobSteps([
+			stepFor(
+				opts,
+				'typecheck',
+				`      - name: 🔍 Type check
+        run: pnpm typecheck`
+			),
+		])
+		if (steps) jobs.push({ id: 'typecheck', needs: ['dependencies'], steps })
 	}
 
 	if (hasTests) {
@@ -125,21 +171,26 @@ export function githubJobs(config: ProjectConfig): CiJob[] {
           token: \${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false`
 			: ''
-		jobs.push({
-			id: 'test',
-			needs: ['dependencies'],
-			steps: `${SETUP_STEPS}
-
-      - name: 🧪 Run tests
-        run: ${hasCoverage ? 'pnpm coverage' : 'pnpm test'}${coverageUpload}`,
-		})
+		// Fall back to `pnpm test` when the repo has no coverage script — the
+		// coverage upload goes with it, since there'd be no lcov to upload.
+		const useCoverage = hasCoverage && (!opts.scripts || 'coverage' in opts.scripts)
+		const steps = jobSteps([
+			stepFor(
+				opts,
+				useCoverage ? 'coverage' : 'test',
+				`      - name: 🧪 Run tests
+        run: ${useCoverage ? 'pnpm coverage' : 'pnpm test'}${useCoverage ? coverageUpload : ''}`
+			),
+		])
+		if (steps) jobs.push({ id: 'test', needs: ['dependencies'], steps })
 	}
 
-	if (hasBuild) {
+	if (hasBuild && (!opts.scripts || 'build' in opts.scripts)) {
 		// attw and publint validate what's about to be published — libraries only.
-		const attw = isLibrary
-			? '\n      - name: 🔍 Validate type resolution (are-the-types-wrong)\n        run: pnpm attw\n'
-			: ''
+		const attw =
+			isLibrary && (!opts.scripts || 'attw' in opts.scripts)
+				? '\n      - name: 🔍 Validate type resolution (are-the-types-wrong)\n        run: pnpm attw\n'
+				: ''
 		const publint = config.publint
 			? '\n      - name: 🔍 Validate package with publint\n        run: pnpm exec publint --strict\n'
 			: ''

@@ -1182,3 +1182,42 @@ describe('fix --diff', () => {
 		}
 	})
 })
+
+// #364: `fix biome` scaffolded a config with no way to run it, so the generated
+// CI's `pnpm check` step and `fix verify`'s lint half both had nothing to call.
+describe('fix biome scripts', () => {
+	it('adds the scripts that run Biome, without touching existing ones', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { check: 'my own check' } })
+		await fixCommand('biome', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.check).toBe('my own check')
+		expect(pkg.scripts.lint).toBe('biome lint .')
+		expect(pkg.scripts['check:fix']).toBe('biome check --fix .')
+	})
+})
+
+// #364: pnpm/action-setup has no `version:` input, so the workflow needs
+// packageManager or every job dies at setup.
+describe('fix github-actions packageManager', () => {
+	it('pins packageManager alongside the workflow', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
+	})
+
+	it('only references scripts the repo actually has', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { typecheck: 'tsc --noEmit' } })
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		const workflow = await fs.readFile(join(dir, '.github/workflows/ci.yml'), 'utf-8')
+		expect(workflow).toContain('run: pnpm typecheck')
+		expect(workflow).not.toContain('run: pnpm knip')
+		expect(workflow).not.toContain('run: pnpm coverage')
+	})
+})
