@@ -63,7 +63,9 @@ export const FILE_CHECKS: FileCheck[] = [
 		candidates: ['tsconfig.json'],
 		expected: `extends "${PACKAGE}/typescript/*"`,
 		matcher: /@rtorcato\/(?:js|repo)-tooling\/typescript\//,
-		hint: 'Set `"extends": "@rtorcato/repo-tooling/typescript/base"` in tsconfig.json',
+		// `fix tsconfig`, not `copy tsconfig`: copy drops the whole preset inline,
+		// which carries no `extends` for the matcher above to find (#381).
+		hint: 'Run `npx @rtorcato/repo-tooling fix tsconfig` to scaffold',
 	},
 	{
 		check: 'Biome',

@@ -77,6 +77,7 @@ import {
 import { generatePostcss } from '../../cli/generators/postcss.js'
 import { generateCypressConfig, generateVitestConfig } from '../../cli/generators/testing.js'
 import { generateTreeshakeCheck, inferSubpathsFromExports } from '../../cli/generators/treeshake.js'
+import { generateTSConfig } from '../../cli/generators/tsconfig.js'
 import { generateTailwind } from '../../cli/generators/tailwind.js'
 import { generateTurborepo } from '../../cli/generators/turborepo.js'
 import { generateNx } from '../../cli/generators/nx.js'
@@ -104,7 +105,13 @@ export function inferProjectConfig(pkg: Pkg): ProjectConfig {
 	return {
 		projectName: (pkg?.name as string) ?? 'project',
 		projectType,
-		typescript: { enabled: true, config: projectType === 'nextjs-app' ? 'next' : 'base' },
+		typescript: {
+			enabled: true,
+			// Same mapping the react-app/nextjs-app setup presets use — a react-app on
+			// the base preset has no DOM libs, so `document`/`window` don't typecheck.
+			config:
+				projectType === 'nextjs-app' ? 'next' : projectType === 'react-app' ? 'react' : 'base',
+		},
 		linting: {
 			tool: 'biome',
 			eslintConfig: projectType === 'nextjs-app' ? 'nextjs' : 'base',
@@ -205,9 +212,17 @@ export const FIXERS: Fixer[] = [
 		appliesTo: ['TypeScript'],
 		outputs: ['tsconfig.json', 'package.json (scripts)'],
 		canFixDrift: true,
-		async run({ targetDir }) {
-			const result = await copyPreset('tsconfig', targetDir)
-			const filesWritten = [result.target]
+		async run({ targetDir, pkg }) {
+			// Shares generateTSConfig with the setup path — copyPreset used to inline
+			// the whole base preset, which carries no `extends` for doctor's matcher
+			// and threw away the project-type settings setup emits (#381).
+			const config = inferProjectConfig(pkg)
+			// Bun leaves no package.json trace, so inferProjectConfig can't see it; a
+			// bunfig.toml is the signal, and without it this would strip `types: ['bun']`
+			// off a Bun repo by dropping it back onto the base preset.
+			if (await fs.pathExists(path.join(targetDir, 'bunfig.toml'))) config.bun = true
+			await generateTSConfig(config, targetDir)
+			const filesWritten = ['tsconfig.json']
 			// Without `typecheck` the generated CI drops its typecheck job entirely
 			// (#377). Shared with non-JS paths, so this is a no-op when there's no
 			// package.json to add it to.
