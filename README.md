@@ -53,6 +53,20 @@ npx @rtorcato/repo-tooling copy oxlint       # → .oxlintrc.json
 npx @rtorcato/repo-tooling copy claude-skill # → .claude/skills/repo-tooling.md
 ```
 
+The Biome preset honours your `.gitignore`, so build output stays unlinted. One
+known gap: Biome cannot parse Tailwind CSS v4 stylesheets (`@theme`, `@source`,
+`@custom-variant`, `@apply`) and reports a parse error on them. If you use
+Tailwind v4, exclude your stylesheet in `biome.json`:
+
+```jsonc
+{
+  "extends": ["@rtorcato/repo-tooling/biome"],
+  // `includes` replaces the preset's list rather than extending it — restate
+  // the exclusions you still want alongside the CSS one.
+  "files": { "includes": ["**", "!**/node_modules", "!**/dist", "!**/*.css"] }
+}
+```
+
 **Already have a project?** Don't rerun `setup` — use `doctor` + `fix`:
 
 ```bash

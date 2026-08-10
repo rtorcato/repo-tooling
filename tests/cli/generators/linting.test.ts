@@ -7,6 +7,7 @@ import {
 	BIOME_CONFIG,
 	generateBiomeConfig,
 	generateLintingConfigs,
+	resolveBiomeSchemaVersion,
 } from '../../../src/cli/generators/linting.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -115,6 +116,45 @@ describe('generateLintingConfigs', () => {
 		expect(computeFileList(baseConfig({ linting: { tool: 'biome' } }))).toContain(BIOME_CONFIG)
 		const contents = await fs.readFile(join(dir, BIOME_CONFIG), 'utf-8')
 		expect(contents).toMatch(/@rtorcato\/repo-tooling\/biome/)
+	})
+
+	// #363: `useIgnoreFile` does nothing while `vcs.enabled` is false, so the
+	// preset linted build output — 1477 errors from .next/ on a Next.js app.
+	it('ships a preset whose .gitignore setting is actually switched on', async () => {
+		const preset = await fs.readJson(
+			join(import.meta.dirname, '../../../tooling/biome/biome.json')
+		)
+		expect(preset.vcs).toMatchObject({ enabled: true, clientKind: 'git', useIgnoreFile: true })
+	})
+
+	// #363: a hardcoded 2.5.0 made Biome print a schema-version warning on every
+	// single run once the consumer's CLI moved past it.
+	it('derives $schema from the installed Biome, not a hardcoded version', async () => {
+		const dir = newTmpDir()
+		const biomePkg = join(dir, 'node_modules', '@biomejs', 'biome')
+		await fs.ensureDir(biomePkg)
+		await fs.writeJson(join(biomePkg, 'package.json'), { name: '@biomejs/biome', version: '2.9.3' })
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			devDependencies: { '@biomejs/biome': '^2.5.0' },
+		})
+
+		await generateBiomeConfig(dir)
+
+		const biome = await fs.readJson(join(dir, BIOME_CONFIG))
+		expect(biome.$schema).toBe('https://biomejs.dev/schemas/2.9.3/schema.json')
+	})
+
+	it('falls back to the declared range, then to the preset version', async () => {
+		const withRange = newTmpDir()
+		await fs.writeJson(join(withRange, 'package.json'), {
+			name: 'demo',
+			devDependencies: { '@biomejs/biome': '^2.7.1' },
+		})
+		expect(await resolveBiomeSchemaVersion(withRange)).toBe('2.7.1')
+
+		// Bare directory mid-setup — nothing installed, nothing declared.
+		expect(await resolveBiomeSchemaVersion(newTmpDir())).toBe('2.5.0')
 	})
 
 	it('skips .oxlintrc.json when oxlint flag is unset', async () => {
