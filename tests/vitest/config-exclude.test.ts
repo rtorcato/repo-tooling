@@ -12,4 +12,15 @@ describe('vitest preset exclude', () => {
 			expect(exclude).toContain(def)
 		}
 	})
+
+	it('declares no resolve.alias — generated configs import this preset now', () => {
+		// An alias built from the preset's own __dirname points inside
+		// node_modules, so it would resolve `@/…` to a directory that doesn't
+		// exist in any consumer (#387).
+		expect(config.resolve?.alias).toBeUndefined()
+	})
+
+	it('emits lcov so the CI we generate has something to upload to Codecov', () => {
+		expect(config.test?.coverage?.reporter).toContain('lcov')
+	})
 })

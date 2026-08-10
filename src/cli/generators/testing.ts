@@ -24,26 +24,28 @@ export async function generateVitestConfig(config: ProjectConfig, targetDir: str
 	// and Vite 8 silently ignores the old `esbuild` key.
 	const jsxOverride =
 		config.projectType === 'nextjs-app'
-			? `  // tsconfig sets jsx: "preserve" for Next's compiler; vitest needs a
-  // transform of its own or .tsx tests won't parse.
-  oxc: { jsx: { runtime: 'automatic' } },
+			? `    // tsconfig sets jsx: "preserve" for Next's compiler; vitest needs a
+    // transform of its own or .tsx tests won't parse.
+    oxc: { jsx: { runtime: 'automatic' } },
 `
 			: ''
 
-	const vitestConfig = `import { defineConfig } from 'vitest/config'
+	// Layered on the shipped preset rather than hand-rolled: the preset owns
+	// globals, the shared excludes and the v8/lcov coverage reporters, so preset
+	// improvements reach consumers — and doctor's `Vitest` check (which looks for
+	// this import) can actually pass after `fix vitest` (#387).
+	const vitestConfig = `import base from '@rtorcato/repo-tooling/vitest/config'
+import { defineConfig, mergeConfig } from 'vitest/config'
 
-export default defineConfig({
-${jsxOverride}  test: {
-    globals: true,
-    environment: '${config.testing.environment === 'browser' ? 'jsdom' : 'node'}',
-    setupFiles: ['./vitest.setup.ts'],
-    coverage: {
-      provider: 'v8',
-      // lcov feeds Codecov; text is the local console summary.
-      reporter: ['text', 'lcov']
+export default mergeConfig(
+  base,
+  defineConfig({
+${jsxOverride}    test: {
+      environment: '${config.testing.environment === 'browser' ? 'jsdom' : 'node'}',
+      setupFiles: ['./vitest.setup.ts']
     }
-  }
-})
+  })
+)
 `
 
 	await fs.writeFile(vitestConfigPath, vitestConfig)

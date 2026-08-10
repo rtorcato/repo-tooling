@@ -1044,6 +1044,16 @@ describe('fix + lockfile', () => {
 		expect(lock.config.linting.tool).toBe('biome')
 	})
 
+	it('fix vitest --yes regenerates the config but keeps an existing vitest.setup.ts', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(join(dir, 'vitest.setup.ts'), '// my real setup\n')
+		await fixCommand('vitest', { directory: dir, yes: true })
+		expect(await fs.readFile(join(dir, 'vitest.setup.ts'), 'utf-8')).toBe('// my real setup\n')
+		const config = await fs.readFile(join(dir, 'vitest.config.ts'), 'utf-8')
+		expect(config).toContain("from '@rtorcato/repo-tooling/vitest/config'")
+	})
+
 	it('fix vitest --yes on a jest-locked project auto-resyncs the lockfile', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
