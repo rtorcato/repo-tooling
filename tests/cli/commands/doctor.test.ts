@@ -115,7 +115,12 @@ describe('doctor', () => {
 	it('detects biome.jsonc and eslint configs that import our presets', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fs.writeFile(join(dir, 'biome.jsonc'), '{ "extends": ["@rtorcato/repo-tooling/biome"] }\n')
+		// The comment is the point: biome.jsonc is a candidate, so the matcher has
+		// to tolerate what the format allows rather than assume strict JSON.
+		await fs.writeFile(
+			join(dir, 'biome.jsonc'),
+			'// shared preset\n{ "extends": ["@rtorcato/repo-tooling/biome"] }\n'
+		)
 		await fs.writeFile(
 			join(dir, 'eslint.config.mjs'),
 			"export { default } from '@rtorcato/repo-tooling/eslint/base'\n"
@@ -144,6 +149,30 @@ describe('doctor', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fs.writeJson(join(dir, 'biome.json'), { linter: { enabled: false } })
+
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'Biome')?.status).toBe('drift')
+	})
+
+	// Keeping the preset's markers while switching the linter off is exactly the
+	// drift this check exists to catch, so the shape has to be parsed rather than
+	// scanned for `$schema` / `preset` as text.
+	it('reports drift for a preset-shaped biome.json with the linter disabled', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'biome.json'), {
+			$schema: 'https://biomejs.dev/schemas/2.5.0/schema.json',
+			linter: { enabled: false, rules: { preset: 'recommended' } },
+		})
+
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'Biome')?.status).toBe('drift')
+	})
+
+	it('reports drift for a biome.json that is too corrupt to parse', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(join(dir, 'biome.json'), '{ "extends": ["@rtorcato/repo-tooling/biome"')
 
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'Biome')?.status).toBe('drift')

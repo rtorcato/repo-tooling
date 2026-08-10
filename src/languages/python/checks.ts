@@ -18,7 +18,7 @@
  */
 import path from 'node:path'
 import fs from 'fs-extra'
-import { type FileCheck, type GitHooksProfile, checkFile } from '../../base/checks.js'
+import { type FileCheck, type GitHooksProfile, checkFile, matches } from '../../base/checks.js'
 import type { CheckResult } from '../../base/types.js'
 import { PYTHON_GITIGNORE_SENTINELS } from './gitignore.js'
 import { PYTHON_HOOKS_DIR } from './git-hooks.js'
@@ -88,7 +88,7 @@ async function checkPythonTool(dir: string, spec: PythonToolCheck): Promise<Chec
 	for (const candidate of spec.shared) {
 		const filepath = path.join(dir, candidate)
 		if (!(await fs.pathExists(filepath))) continue
-		if (spec.dedicated.matcher.test(await fs.readFile(filepath, 'utf-8'))) {
+		if (matches(spec.dedicated.matcher, await fs.readFile(filepath, 'utf-8'))) {
 			return {
 				check: spec.dedicated.check,
 				status: 'ok',

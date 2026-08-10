@@ -40,9 +40,18 @@ export interface FileCheck {
 	candidates: string[]
 	/** Phrased to read after the filename: `.swiftlint.yml ${expected}`. */
 	expected: string
-	matcher: RegExp
+	/**
+	 * A regex over the raw text, or — where presence of a marker isn't enough to
+	 * conclude the config is still ours — a predicate that parses it (#378).
+	 */
+	matcher: RegExp | ((contents: string) => boolean)
 	optional?: boolean
 	hint?: string
+}
+
+/** Applies a `FileCheck` matcher of either form to a file's contents. */
+export function matches(matcher: FileCheck['matcher'], contents: string): boolean {
+	return typeof matcher === 'function' ? matcher(contents) : matcher.test(contents)
 }
 
 export async function checkFile(dir: string, spec: FileCheck): Promise<CheckResult> {
@@ -51,7 +60,7 @@ export async function checkFile(dir: string, spec: FileCheck): Promise<CheckResu
 		if (!(await fs.pathExists(filepath))) continue
 
 		const contents = await fs.readFile(filepath, 'utf-8')
-		if (spec.matcher.test(contents)) {
+		if (matches(spec.matcher, contents)) {
 			return {
 				check: spec.check,
 				status: 'ok',
