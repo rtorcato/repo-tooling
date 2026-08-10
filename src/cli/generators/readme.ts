@@ -54,7 +54,7 @@ ${config.testing.framework !== 'none' ? '├── tests/              # Test fi
 ├── dist/               # Build output${config.projectType === 'library' ? ' (library)' : ''}
 ├── package.json
 ${config.typescript.enabled ? '├── tsconfig.json        # TypeScript configuration' : ''}
-${config.linting.tool === 'biome' || config.linting.tool === 'both' ? '├── biome.jsonc          # Biome configuration' : ''}
+${config.linting.tool === 'biome' || config.linting.tool === 'both' ? '├── biome.json           # Biome configuration' : ''}
 ${config.linting.tool === 'eslint' || config.linting.tool === 'both' ? '├── eslint.config.mjs    # ESLint configuration' : ''}
 ${config.linting.tool === 'eslint' ? '├── prettier.config.mjs  # Prettier configuration' : ''}
 ${config.testing.framework === 'vitest' ? '├── vitest.config.ts     # Vitest configuration' : ''}

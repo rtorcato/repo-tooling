@@ -26,15 +26,30 @@ export async function generateLintingConfigs(config: ProjectConfig, targetDir: s
 
 export async function generateOxlintConfig(targetDir: string) {
 	// Oxlint's `extends` resolution from npm packages isn't reliably supported,
-	// so we copy the full preset rather than write a thin pointer file (same
-	// pattern as biome.jsonc — the user owns the file once it's in their repo).
+	// so we copy the full preset rather than write a thin pointer file.
 	const { copyPreset } = await import('../utils/copy-preset.js')
 	await copyPreset('oxlint', targetDir)
 }
 
-export async function generateBiomeConfig(targetDir: string) {
-	const biomeConfigPath = path.join(targetDir, 'biome.jsonc')
+/** The one Biome config filename every code path writes. See BIOME_LEGACY_CONFIG. */
+export const BIOME_CONFIG = 'biome.json'
 
+/**
+ * The name this generator used to write. Biome resolves `biome.json` first and
+ * says nothing about a `biome.jsonc` sitting next to it, so a repo that had run
+ * both `fix biome` (biome.json) and `fix --resync` (biome.jsonc) ended up with
+ * two configs, one of them silently dead (#365). Both paths now write
+ * BIOME_CONFIG and delete this on the way past, so the ambiguity can't persist.
+ */
+export const BIOME_LEGACY_CONFIG = 'biome.jsonc'
+
+/**
+ * The thin pointer config — the same shape this repo dogfoods. `fix biome` used
+ * to copy the whole preset inline instead, which meant the scaffolded file
+ * carried no `@rtorcato/repo-tooling/biome` reference for doctor's Biome check
+ * to match, and preset improvements never reached consumers.
+ */
+export async function generateBiomeConfig(targetDir: string): Promise<string> {
 	// Biome 2.x schema + shape. The base preset (extends) already defines the
 	// file globs via `files.includes`; emitting the old 1.x `include`/`ignore`
 	// keys here forced consumers to run `biome migrate` before `biome check`
@@ -44,7 +59,9 @@ export async function generateBiomeConfig(targetDir: string) {
 		extends: ['@rtorcato/repo-tooling/biome'],
 	}
 
-	await fs.writeJson(biomeConfigPath, biomeConfig, { spaces: 2 })
+	await fs.writeJson(path.join(targetDir, BIOME_CONFIG), biomeConfig, { spaces: 2 })
+	await fs.remove(path.join(targetDir, BIOME_LEGACY_CONFIG))
+	return BIOME_CONFIG
 }
 
 export async function generateESLintConfig(config: ProjectConfig, targetDir: string) {

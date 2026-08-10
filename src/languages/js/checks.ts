@@ -71,7 +71,9 @@ export const FILE_CHECKS: FileCheck[] = [
 		expected: `extends "${PACKAGE}/biome"`,
 		matcher: /@rtorcato\/(?:js|repo)-tooling\/biome/,
 		optional: true,
-		hint: 'Run `npx @rtorcato/repo-tooling copy biome` to scaffold',
+		// `fix biome`, not `copy biome`: copy drops the whole preset inline, which
+		// carries no `extends` for the matcher above to find (#365).
+		hint: 'Run `npx @rtorcato/repo-tooling fix biome` to scaffold',
 	},
 	{
 		check: 'ESLint',

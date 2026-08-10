@@ -1069,7 +1069,7 @@ describe('fix --resync', () => {
 		expect(await fs.pathExists(join(dir, '.editorconfig'))).toBe(true)
 		expect(await fs.pathExists(join(dir, '.nvmrc'))).toBe(true)
 		expect(await fs.pathExists(join(dir, 'tsconfig.json'))).toBe(true)
-		expect(await fs.pathExists(join(dir, 'biome.jsonc'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(true)
 		expect(await fs.pathExists(join(dir, 'vitest.config.ts'))).toBe(true)
 		expect(await fs.pathExists(join(dir, 'tsup.config.ts'))).toBe(true)
 	})
@@ -1081,7 +1081,7 @@ describe('fix --resync', () => {
 		await fixCommand(undefined, { directory: dir, resync: true, dryRun: true, yes: true })
 		// None of the expected files materialize in dry-run.
 		expect(await fs.pathExists(join(dir, '.editorconfig'))).toBe(false)
-		expect(await fs.pathExists(join(dir, 'biome.jsonc'))).toBe(false)
+		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(false)
 	})
 
 	it('--resync --json emits a structured payload listing files written', async () => {
