@@ -418,6 +418,14 @@ const PROTECTION_BODY = JSON.stringify({
 	// enforce_admins off so the App/RELEASE_TOKEN can bypass to push release commits.
 	enforce_admins: false,
 	// Required human review would deadlock solo Dependabot auto-merge.
+	//
+	// Note this is *applied*, not merely tolerated: checkBranchProtection reports
+	// any required_pull_request_reviews as drift, so `fix github-settings` PUTs it
+	// back to null. A repo that deliberately requires approvals will have that
+	// silently reverted by the next unrelated fix run, with nothing in the output
+	// naming the rule that was removed. Known downstream case: the ai-issue-loop
+	// pipeline works around it with approval labels precisely because of this.
+	// Loosen the standard here first if a repo ever genuinely needs review gating.
 	required_pull_request_reviews: null,
 	restrictions: null,
 	allow_force_pushes: false,
