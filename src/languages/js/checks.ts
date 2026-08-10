@@ -126,6 +126,25 @@ const TS_PRESET_STRICTNESS = [
 ] as const
 
 /**
+ * `strict` and every flag it implies. TypeScript lets any one of these be
+ * switched off individually while `strict: true` is still literally present —
+ * the explicit override wins — so a config can keep every marker this check
+ * looks for and still ship with type safety off. Any of them explicitly
+ * `false` is drift.
+ */
+const TS_STRICT_FLAGS = [
+	'strict',
+	'noImplicitAny',
+	'strictNullChecks',
+	'strictFunctionTypes',
+	'strictBindCallApply',
+	'strictPropertyInitialization',
+	'noImplicitThis',
+	'useUnknownInCatchVariables',
+	'alwaysStrict',
+] as const
+
+/**
  * The same two shapes as `matchesBiomeConfig`, for the same reason (#385): the
  * `extends` pointer `fix tsconfig` writes, and the whole preset inlined, which
  * is what `copy tsconfig` drops — `tooling/typescript/tsconfig.base.json` *is*
@@ -143,8 +162,9 @@ function matchesTsConfig(contents: string): boolean {
 
 	const compilerOptions = (config.compilerOptions ?? {}) as Record<string, unknown>
 	// Naming the preset and then switching strictness off is precisely the drift
-	// this check exists to catch, so it disqualifies either shape.
-	if (compilerOptions.strict === false) return false
+	// this check exists to catch, so it disqualifies either shape — `strict`
+	// itself or any single flag it implies.
+	if (TS_STRICT_FLAGS.some((key) => compilerOptions[key] === false)) return false
 
 	if (TS_PRESET_REF.test(JSON.stringify(config.extends ?? ''))) return true
 

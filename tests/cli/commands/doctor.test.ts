@@ -163,6 +163,31 @@ describe('doctor', () => {
 		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('drift')
 	})
 
+	// `strict: true` can stay literally present while any one flag it implies is
+	// overridden to false — the override wins, so both shapes above would keep
+	// every marker and still ship with type safety off.
+	it('reports drift when a strict-implied flag is switched off on either shape', async () => {
+		const pointer = newTmpDir()
+		await seedPackageJson(pointer)
+		await fs.writeJson(join(pointer, 'tsconfig.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { noImplicitAny: false },
+		})
+
+		const inlined = newTmpDir()
+		await seedPackageJson(inlined)
+		await copyPreset('tsconfig', inlined)
+		const tsconfigPath = join(inlined, 'tsconfig.json')
+		const preset = await fs.readFile(tsconfigPath, 'utf-8')
+		// `strict` itself stays true, as do all four TS_PRESET_STRICTNESS keys.
+		const weakened = preset.replace('"strict": true', '"strict": true, "strictNullChecks": false')
+		expect(weakened).not.toBe(preset)
+		await fs.writeFile(tsconfigPath, weakened)
+
+		expect((await runDoctor(pointer)).find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+		expect((await runDoctor(inlined)).find((r) => r.check === 'TypeScript')?.status).toBe('drift')
+	})
+
 	it('accepts a commented tsconfig.json and does not crash on a corrupt one', async () => {
 		const commented = newTmpDir()
 		await seedPackageJson(commented)
