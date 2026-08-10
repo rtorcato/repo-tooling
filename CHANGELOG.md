@@ -1,3 +1,11 @@
+## [3.7.2](https://github.com/rtorcato/repo-tooling/compare/v3.7.1...v3.7.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **ci:** make the generated workflow pass on the repo that generated it ([#370](https://github.com/rtorcato/repo-tooling/issues/370)) ([7f86128](https://github.com/rtorcato/repo-tooling/commit/7f86128388200ca2c8acaea250d8cddca517d7fb))
+* **husky:** give commit-msg to the target that installs commitlint ([#368](https://github.com/rtorcato/repo-tooling/issues/368)) ([6473ce7](https://github.com/rtorcato/repo-tooling/commit/6473ce7e6acaa5ade5d8d5929f93d1f159bd644e))
+
 ## [3.7.1](https://github.com/rtorcato/repo-tooling/compare/v3.7.0...v3.7.1) (2026-08-09)
 
 
