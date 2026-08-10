@@ -44,6 +44,50 @@ export const BIOME_CONFIG = 'biome.json'
 export const BIOME_LEGACY_CONFIG = 'biome.jsonc'
 
 /**
+ * Used when nothing in the target repo says which Biome will read the config —
+ * a bare directory mid-`setup`, before `pnpm install` has run. Matches the
+ * `$schema` the shipped preset carries.
+ */
+const BIOME_SCHEMA_FALLBACK = '2.5.0'
+
+async function readJsonOrNull(filepath: string): Promise<Record<string, unknown> | null> {
+	try {
+		return (await fs.readJson(filepath)) as Record<string, unknown>
+	} catch {
+		return null
+	}
+}
+
+/**
+ * The Biome version the scaffolded `$schema` URL should name (#363).
+ *
+ * A hardcoded version drifts the moment the consumer's Biome moves, and Biome
+ * reports the mismatch on *every* invocation ("The configuration schema version
+ * does not match the CLI version 2.5.7") — noise on a file the consumer never
+ * wrote. The installed package wins because it is literally the binary that
+ * will parse the file and emit that warning; the declared range is the next
+ * best statement of intent when node_modules isn't populated yet.
+ */
+export async function resolveBiomeSchemaVersion(targetDir: string): Promise<string> {
+	const installed = await readJsonOrNull(
+		path.join(targetDir, 'node_modules', '@biomejs', 'biome', 'package.json')
+	)
+	const pkg = await readJsonOrNull(path.join(targetDir, 'package.json'))
+	const deps = {
+		...((pkg?.dependencies as Record<string, string> | undefined) ?? {}),
+		...((pkg?.devDependencies as Record<string, string> | undefined) ?? {}),
+	}
+
+	// Both an exact version ("2.5.7") and a range ("^2.5.0") carry the x.y.z we
+	// need, so one pattern covers every source.
+	for (const candidate of [installed?.version, deps['@biomejs/biome']]) {
+		const match = typeof candidate === 'string' ? /(\d+\.\d+\.\d+)/.exec(candidate) : null
+		if (match?.[1]) return match[1]
+	}
+	return BIOME_SCHEMA_FALLBACK
+}
+
+/**
  * The thin pointer config — the same shape this repo dogfoods. `fix biome` used
  * to copy the whole preset inline instead, which meant the scaffolded file
  * carried no `@rtorcato/repo-tooling/biome` reference for doctor's Biome check
@@ -54,8 +98,9 @@ export async function generateBiomeConfig(targetDir: string): Promise<string> {
 	// file globs via `files.includes`; emitting the old 1.x `include`/`ignore`
 	// keys here forced consumers to run `biome migrate` before `biome check`
 	// would run at all.
+	const version = await resolveBiomeSchemaVersion(targetDir)
 	const biomeConfig = {
-		$schema: 'https://biomejs.dev/schemas/2.5.0/schema.json',
+		$schema: `https://biomejs.dev/schemas/${version}/schema.json`,
 		extends: ['@rtorcato/repo-tooling/biome'],
 	}
 
