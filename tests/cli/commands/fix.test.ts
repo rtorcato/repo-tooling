@@ -1299,6 +1299,59 @@ describe('fix eslint/prettier scripts', () => {
 	})
 })
 
+// #377: the same gap on the three targets whose scripts the generated CI calls
+// — no script means the step (or the whole job) silently disappears.
+describe('fix knip/tsconfig/vitest scripts', () => {
+	it('adds the `knip` script, without touching an existing one', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('knip', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'package.json'))).scripts.knip).toBe('knip')
+
+		await seedPackageJson(dir, { scripts: { knip: 'my own knip' } })
+		await fixCommand('knip', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'package.json'))).scripts.knip).toBe('my own knip')
+	})
+
+	it('adds the `typecheck` script, without touching an existing one', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'package.json'))).scripts.typecheck).toBe('tsc --noEmit')
+
+		await seedPackageJson(dir, { scripts: { typecheck: 'my own typecheck' } })
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'package.json'))).scripts.typecheck).toBe(
+			'my own typecheck'
+		)
+	})
+
+	// tsconfig is shared with non-JS paths, so it has to survive a repo that has
+	// no package.json to add the script to.
+	it('still writes tsconfig.json when there is no package.json', async () => {
+		const dir = newTmpDir()
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect(await fs.pathExists(join(dir, 'tsconfig.json'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'package.json'))).toBe(false)
+	})
+
+	it('adds the scripts that run Vitest, without touching existing ones', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { test: 'my own test' } })
+		await fixCommand('vitest', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.test).toBe('my own test')
+		expect(pkg.scripts['test:watch']).toBe('vitest --watch')
+		expect(pkg.scripts.coverage).toBe('vitest run --coverage')
+	})
+})
+
 // #364: pnpm/action-setup has no `version:` input, so the workflow needs
 // packageManager or every job dies at setup.
 describe('fix github-actions packageManager', () => {
