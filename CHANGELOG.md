@@ -1,3 +1,10 @@
+## [3.8.4](https://github.com/rtorcato/repo-tooling/compare/v3.8.3...v3.8.4) (2026-08-10)
+
+
+### Bug Fixes
+
+* **cli:** route fix tsconfig through generateTSConfig ([#383](https://github.com/rtorcato/repo-tooling/issues/383)) ([58c5c0a](https://github.com/rtorcato/repo-tooling/commit/58c5c0ab74b1f8ed4104645efa700ef7064bc7d5)), closes [#366](https://github.com/rtorcato/repo-tooling/issues/366) [#378](https://github.com/rtorcato/repo-tooling/issues/378) [#366](https://github.com/rtorcato/repo-tooling/issues/366) [#381](https://github.com/rtorcato/repo-tooling/issues/381)
+
 ## [3.8.3](https://github.com/rtorcato/repo-tooling/compare/v3.8.2...v3.8.3) (2026-08-10)
 
 
