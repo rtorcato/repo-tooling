@@ -106,9 +106,14 @@ export function scriptsOf(pkg: Record<string, unknown> | null): Record<string, s
 	return (pkg.scripts as Record<string, string> | undefined) ?? {}
 }
 
+/** The repo defines this script — or we have no scripts to check it against. */
+function hasScript(opts: JobOptions, script: string): boolean {
+	return !opts.scripts || script in opts.scripts
+}
+
 /** Emit a step only when the script it runs exists (or we can't know yet). */
 function stepFor(opts: JobOptions, script: string, step: string): string | null {
-	return !opts.scripts || script in opts.scripts ? step : null
+	return hasScript(opts, script) ? step : null
 }
 
 /** Join the steps that survived gating onto the shared setup preamble. */
@@ -269,18 +274,34 @@ ${attw}${publint}
 	return jobs
 }
 
-/** The `.gitlab-ci.yml` spec for a JS repo — node image, pnpm store cache, pnpm scripts. */
-export function gitlabSpec(config: ProjectConfig): GitLabSpec {
+/**
+ * The `.gitlab-ci.yml` spec for a JS repo — node image, pnpm store cache, pnpm
+ * scripts. `opts.scripts` gates each job on the script it runs exactly as
+ * `githubJobs` does (#386): `fix gitlab-ci` renders for a repo that already
+ * exists and may have none of them, and a job calling a missing script dies
+ * with ERR_PNPM_RECURSIVE_EXEC. Undefined still means "assume the setup shape".
+ *
+ * Dropping the `build` job takes its `artifacts` block with it; no other job
+ * references that artifact, so the pipeline stays coherent without it.
+ */
+export function gitlabSpec(config: ProjectConfig, opts: JobOptions = {}): GitLabSpec {
 	const hasTypeScript = config.typescript.enabled
 	const hasTests = config.testing.framework !== 'none'
 	const hasLint = config.linting.tool !== 'none'
 	const hasBuild = config.bundler !== 'none'
+	const test = gitlabTest(config)
 
 	const jobs: GitLabSpec['jobs'] = [
-		...(hasLint ? [{ id: 'lint', stage: 'test', script: [lintCommand(config)] }] : []),
-		...(hasTypeScript ? [{ id: 'typecheck', stage: 'test', script: ['pnpm typecheck'] }] : []),
-		...(hasTests ? [{ id: 'test', stage: 'test', script: [gitlabTestCommand(config)] }] : []),
-		...(hasBuild
+		...(hasLint && hasScript(opts, lintScript(config))
+			? [{ id: 'lint', stage: 'test', script: [lintCommand(config)] }]
+			: []),
+		...(hasTypeScript && hasScript(opts, 'typecheck')
+			? [{ id: 'typecheck', stage: 'test', script: ['pnpm typecheck'] }]
+			: []),
+		...(hasTests && (test.script === null || hasScript(opts, test.script))
+			? [{ id: 'test', stage: 'test', script: [test.command] }]
+			: []),
+		...(hasBuild && hasScript(opts, 'build')
 			? [
 					{
 						id: 'build',
@@ -318,9 +339,16 @@ default:
 	}
 }
 
-function gitlabTestCommand(config: ProjectConfig): string {
-	if (config.testing.framework === 'vitest') return 'pnpm exec vitest run'
+/**
+ * The GitLab test command, paired with the package.json script it needs.
+ * Vitest is invoked through `pnpm exec` — a direct binary call, so `script` is
+ * null and the job is never gated away; the other frameworks run a script that
+ * has to exist.
+ */
+function gitlabTest(config: ProjectConfig): { command: string; script: string | null } {
+	if (config.testing.framework === 'vitest')
+		return { command: 'pnpm exec vitest run', script: null }
 	if (config.testing.framework === 'playwright' || config.testing.framework === 'cypress')
-		return 'pnpm test:e2e'
-	return 'pnpm test'
+		return { command: 'pnpm test:e2e', script: 'test:e2e' }
+	return { command: 'pnpm test', script: 'test' }
 }

@@ -480,7 +480,10 @@ export const FIXERS: Fixer[] = [
 		outputs: ['.gitlab-ci.yml'],
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
-			const written = await generateGitLabCI(inferProjectConfig(pkg), targetDir)
+			// Only reference scripts this repo actually has (#386).
+			const written = await generateGitLabCI(inferProjectConfig(pkg), targetDir, {
+				scripts: scriptsOf(pkg),
+			})
 			return { filesWritten: [written] }
 		},
 	},
