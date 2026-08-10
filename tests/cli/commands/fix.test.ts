@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { runDoctor } from '../../../src/cli/commands/doctor.js'
 import { fixCommand, getFixers, listFixers } from '../../../src/cli/commands/fix.js'
 import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
@@ -137,6 +138,64 @@ describe('fix bun', () => {
 		await seedPackageJson(dir)
 		await fixCommand('bun', { directory: dir, yes: true })
 		expect(await fs.pathExists(join(dir, 'bunfig.toml'))).toBe(true)
+		expect((await fs.readJson(join(dir, 'tsconfig.json'))).extends).toBe(
+			'@rtorcato/repo-tooling/typescript/bun'
+		)
+	})
+})
+
+// #381: `fix tsconfig` used to copy the base preset inline — no `extends` for
+// doctor's TypeScript matcher, and none of the project-type settings setup emits.
+describe('fix tsconfig', () => {
+	it('writes an extends pointer doctor reads as ok', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'tsconfig.json'))).extends).toBe(
+			'@rtorcato/repo-tooling/typescript/base'
+		)
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('ok')
+	})
+
+	it('keeps the library outDir/rootDir', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		const tsconfig = await fs.readJson(join(dir, 'tsconfig.json'))
+		expect(tsconfig.compilerOptions.outDir).toBe('./dist')
+		expect(tsconfig.compilerOptions.rootDir).toBe('./src')
+	})
+
+	it('carries the Next wiring on a Next.js app', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { dependencies: { next: '^15.0.0' } })
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		const tsconfig = await fs.readJson(join(dir, 'tsconfig.json'))
+		expect(tsconfig.extends).toBe('@rtorcato/repo-tooling/typescript/next')
+		expect(tsconfig.include).toContain('next-env.d.ts')
+		expect(tsconfig.exclude).toContain('.next')
+	})
+
+	it('uses the react preset on a React app, for the DOM libs', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { dependencies: { 'react-dom': '^19.0.0' } })
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'tsconfig.json'))).extends).toBe(
+			'@rtorcato/repo-tooling/typescript/react'
+		)
+	})
+
+	it('keeps a Bun repo on the Bun-typed preset', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(join(dir, 'bunfig.toml'), '[install]\n')
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
 		expect((await fs.readJson(join(dir, 'tsconfig.json'))).extends).toBe(
 			'@rtorcato/repo-tooling/typescript/bun'
 		)
