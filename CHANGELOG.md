@@ -1,3 +1,10 @@
+## [3.8.5](https://github.com/rtorcato/repo-tooling/compare/v3.8.4...v3.8.5) (2026-08-10)
+
+
+### Bug Fixes
+
+* **js:** give the size-limit budget a script and a CLI to run it ([#384](https://github.com/rtorcato/repo-tooling/issues/384)) ([b6293bd](https://github.com/rtorcato/repo-tooling/commit/b6293bd8e9ee19f12ff4a37cb7b92ce5a1855857)), closes [#371](https://github.com/rtorcato/repo-tooling/issues/371) [#377](https://github.com/rtorcato/repo-tooling/issues/377) [#382](https://github.com/rtorcato/repo-tooling/issues/382)
+
 ## [3.8.4](https://github.com/rtorcato/repo-tooling/compare/v3.8.3...v3.8.4) (2026-08-10)
 
 
