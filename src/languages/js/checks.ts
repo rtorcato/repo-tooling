@@ -177,6 +177,42 @@ export function checkPackageJson(pkg: Pkg | null): CheckResult {
 	}
 }
 
+/**
+ * Whether the repo installs with pnpm. Three independent signals, any of which
+ * is enough: the workspace file, the lockfile, or a `packageManager` that
+ * already names pnpm. Shared so `packageManager` and `pnpm settings` agree on
+ * what "a pnpm repo" means.
+ */
+export async function usesPnpm(dir: string, pkg: Pkg | null): Promise<boolean> {
+	return (
+		(await fs.pathExists(path.join(dir, WORKSPACE_FILE))) ||
+		(await fs.pathExists(path.join(dir, 'pnpm-lock.yaml'))) ||
+		((pkg?.packageManager as string | undefined) ?? '').startsWith('pnpm')
+	)
+}
+
+/**
+ * `packageManager` pins the pnpm that `pnpm/action-setup` resolves (#364). The
+ * generated workflow passes no `version:` input, so a pnpm repo without this
+ * field fails CI at setup — before a single check runs (#372).
+ */
+export async function checkPackageManager(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+	const check = 'packageManager'
+	if (!(await usesPnpm(dir, pkg))) {
+		return { check, status: 'ok', detail: 'not a pnpm repo' }
+	}
+	const declared = (pkg?.packageManager as string | undefined) ?? ''
+	if (declared.trim() !== '') {
+		return { check, status: 'ok', detail: `packageManager = ${declared}` }
+	}
+	return {
+		check,
+		status: 'drift',
+		detail: 'packageManager not set in package.json',
+		hint: `Run \`npx ${PACKAGE} fix engines\` to pin the pnpm version CI resolves`,
+	}
+}
+
 export function checkEnginesNode(pkg: Pkg | null): CheckResult {
 	if (!pkg) {
 		return {
@@ -921,11 +957,7 @@ export async function checkPnpmWorkspace(dir: string, pkg: Pkg | null): Promise<
 	const hint = `Run \`npx ${PACKAGE} fix pnpm-workspace\` to merge them in`
 	const file = path.join(dir, WORKSPACE_FILE)
 	const exists = await fs.pathExists(file)
-	const usesPnpm =
-		exists ||
-		(await fs.pathExists(path.join(dir, 'pnpm-lock.yaml'))) ||
-		((pkg?.packageManager as string | undefined) ?? '').startsWith('pnpm')
-	if (!usesPnpm) {
+	if (!(await usesPnpm(dir, pkg))) {
 		return { check, status: 'ok', detail: 'not a pnpm repo' }
 	}
 
