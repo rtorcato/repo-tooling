@@ -1,3 +1,10 @@
+## [3.7.4](https://github.com/rtorcato/repo-tooling/compare/v3.7.3...v3.7.4) (2026-08-10)
+
+
+### Bug Fixes
+
+* **biome:** honour .gitignore and track the installed schema version ([#367](https://github.com/rtorcato/repo-tooling/issues/367)) ([04135a6](https://github.com/rtorcato/repo-tooling/commit/04135a68b3a139a705f24910eec00ada9ea3d0e6)), closes [#365](https://github.com/rtorcato/repo-tooling/issues/365) [#366](https://github.com/rtorcato/repo-tooling/issues/366)
+
 ## [3.7.3](https://github.com/rtorcato/repo-tooling/compare/v3.7.2...v3.7.3) (2026-08-10)
 
 
