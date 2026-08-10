@@ -50,14 +50,10 @@ export async function generateHuskyConfig(config: ProjectConfig, targetDir: stri
 		}
 	}
 
-	// Commit-msg hook (if commitlint is enabled). husky v10 format — no v9
-	// bootstrap. $1 is still the commit-message file path git passes through.
-	if (config.commitLint) {
-		const commitMsgPath = path.join(huskyDir, 'commit-msg')
-		const commitMsgContent = 'npx --no -- commitlint --edit $1\n'
-		await fs.writeFile(commitMsgPath, commitMsgContent)
-		await fs.chmod(commitMsgPath, 0o755)
-	}
+	// The commit-msg hook is NOT written here (#362). It runs commitlint via
+	// `npx --no`, which refuses to install a missing binary, so emitting it
+	// without also installing @commitlint/cli rejected every commit in the repo.
+	// It belongs to generateCommitlintConfig, which owns both halves.
 
 	// lint-staged configuration in package.json
 	const packageJsonPath = path.join(targetDir, 'package.json')
@@ -85,13 +81,80 @@ export async function generatePrePushHook(targetDir: string) {
 	await fs.chmod(prePushPath, 0o755)
 }
 
-export async function generateCommitlintConfig(targetDir: string) {
-	const commitlintConfigPath = path.join(targetDir, 'commitlint.config.mjs')
+/** Package versions the commit-msg hook needs on disk to run at all. */
+export const COMMITLINT_DEPS: Record<string, string> = {
+	'@commitlint/cli': '^20.0.0',
+	'@commitlint/config-conventional': '^20.0.0',
+}
 
-	const commitlintConfig = `export { default } from '@rtorcato/repo-tooling/commitlint/config'
-`
+/** True when husky owns this repo's hooks — the only case where .husky/commit-msg runs. */
+async function usesHusky(targetDir: string): Promise<boolean> {
+	if (await fs.pathExists(path.join(targetDir, '.husky'))) return true
+	const pkgPath = path.join(targetDir, 'package.json')
+	if (!(await fs.pathExists(pkgPath))) return false
+	const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
+	const deps = {
+		...((pkg.dependencies as Record<string, string> | undefined) ?? {}),
+		...((pkg.devDependencies as Record<string, string> | undefined) ?? {}),
+	}
+	return 'husky' in deps
+}
 
-	await fs.writeFile(commitlintConfigPath, commitlintConfig)
+/**
+ * commitlint's config *and* the hook that runs it, as one unit (#362).
+ *
+ * These used to be split across two targets: `fix husky` wrote
+ * `.husky/commit-msg`, `fix commitlint` wrote the config, and neither installed
+ * `@commitlint/cli`. Since the hook body is `npx --no -- commitlint --edit $1`
+ * and `--no` refuses to install anything, a repo that ran only `fix husky` had
+ * every `git commit` rejected — discovered at the worst possible moment, and
+ * looking like a broken repo rather than a missing opt-in.
+ *
+ * The hook is only written when husky owns the repo's hooks. The Swift path
+ * uses `core.hooksPath` and deliberately wires no commit-msg hook, so a
+ * `.husky/` file there would simply never run.
+ *
+ * @returns the files written, relative to targetDir.
+ */
+export async function generateCommitlintConfig(targetDir: string): Promise<string[]> {
+	const filesWritten = ['commitlint.config.mjs']
+	await fs.writeFile(
+		path.join(targetDir, 'commitlint.config.mjs'),
+		`export { default } from '@rtorcato/repo-tooling/commitlint/config'\n`
+	)
+
+	if (await usesHusky(targetDir)) {
+		// husky v10 format — no v9 bootstrap. $1 is the commit-message file path
+		// git passes through.
+		const huskyDir = path.join(targetDir, '.husky')
+		await fs.ensureDir(huskyDir)
+		const commitMsgPath = path.join(huskyDir, 'commit-msg')
+		await fs.writeFile(commitMsgPath, 'npx --no -- commitlint --edit $1\n')
+		await fs.chmod(commitMsgPath, 0o755)
+		filesWritten.push('.husky/commit-msg')
+	}
+
+	// @commitlint/cli is an *optional* peer of repo-tooling, so it never arrives
+	// transitively — without this the hook we just wrote cannot run.
+	const pkgPath = path.join(targetDir, 'package.json')
+	if (await fs.pathExists(pkgPath)) {
+		const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
+		const devDeps = { ...((pkg.devDependencies as Record<string, string> | undefined) ?? {}) }
+		let added = false
+		for (const [name, range] of Object.entries(COMMITLINT_DEPS)) {
+			if (!devDeps[name]) {
+				devDeps[name] = range
+				added = true
+			}
+		}
+		if (added) {
+			pkg.devDependencies = devDeps
+			await fs.writeJson(pkgPath, pkg, { spaces: 2 })
+			filesWritten.push('package.json')
+		}
+	}
+
+	return filesWritten
 }
 
 async function generateGitignore(config: ProjectConfig, targetDir: string) {
