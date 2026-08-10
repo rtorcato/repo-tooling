@@ -328,11 +328,22 @@ describe('fix targeted', () => {
 
 	it('fix gitlab-ci --yes writes .gitlab-ci.yml with expected stages', async () => {
 		const dir = newTmpDir()
-		await seedPackageJson(dir)
+		await seedPackageJson(dir, { scripts: { check: 'biome check .' } })
 		await fixCommand('gitlab-ci', { directory: dir, yes: true })
 		const yaml = await fs.readFile(join(dir, '.gitlab-ci.yml'), 'utf-8')
 		expect(yaml).toMatch(/^lint:$/m)
+		// vitest runs via `pnpm exec`, so the test job needs no script (#386).
 		expect(yaml).toMatch(/^test:$/m)
+	})
+
+	it('fix gitlab-ci only references scripts the repo actually has', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { typecheck: 'tsc --noEmit' } })
+		await fixCommand('gitlab-ci', { directory: dir, yes: true })
+		const yaml = await fs.readFile(join(dir, '.gitlab-ci.yml'), 'utf-8')
+		expect(yaml).toContain('pnpm typecheck')
+		expect(yaml).not.toContain('pnpm check')
+		expect(yaml).not.toContain('pnpm build')
 	})
 
 	it('fix codeowners --yes writes .github/CODEOWNERS', async () => {

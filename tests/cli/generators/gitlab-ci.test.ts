@@ -78,3 +78,70 @@ describe('generateGitLabCI', () => {
 		expect(yaml).toContain('pnpm test:e2e')
 	})
 })
+
+describe('generateGitLabCI script gating', () => {
+	async function render(config: ProjectConfig, scripts?: Record<string, string>) {
+		const dir = newTmpDir()
+		await generateGitLabCI(config, dir, { scripts })
+		return fs.readFile(join(dir, '.gitlab-ci.yml'), 'utf-8')
+	}
+
+	it('omits jobs whose scripts the repo does not define', async () => {
+		const yaml = await render(baseConfig(), { typecheck: 'tsc --noEmit' })
+
+		expect(yaml).toMatch(/^typecheck:$/m)
+		expect(yaml).not.toMatch(/^lint:$/m)
+		expect(yaml).not.toContain('pnpm check')
+		// No build script → no build job, and the artifacts block goes with it.
+		expect(yaml).not.toMatch(/^build:$/m)
+		expect(yaml).not.toContain('pnpm build')
+		expect(yaml).not.toContain('dist/')
+	})
+
+	it('keeps the vitest job without a test script — pnpm exec needs none', async () => {
+		const yaml = await render(baseConfig(), {})
+
+		expect(yaml).toMatch(/^test:$/m)
+		expect(yaml).toContain('pnpm exec vitest run')
+	})
+
+	it('drops the e2e job when test:e2e is missing, keeps it when present', async () => {
+		const config = baseConfig({ testing: { framework: 'playwright' } })
+
+		expect(await render(config, {})).not.toMatch(/^test:$/m)
+		expect(await render(config, { 'test:e2e': 'playwright test' })).toContain('pnpm test:e2e')
+	})
+
+	it('keeps every job when the scripts are there', async () => {
+		const yaml = await render(baseConfig(), {
+			check: 'biome check .',
+			typecheck: 'tsc --noEmit',
+			build: 'tsup',
+		})
+
+		expect(yaml).toContain('pnpm check')
+		expect(yaml).toContain('pnpm typecheck')
+		expect(yaml).toContain('pnpm build')
+		expect(yaml).toContain('- dist/')
+	})
+
+	it('assumes the full setup shape when no scripts are supplied', async () => {
+		// setup writes these scripts as part of the same scaffold, so gating on a
+		// package.json that doesn't exist yet would strip a working pipeline.
+		const yaml = await render(baseConfig())
+
+		expect(yaml).toContain('pnpm check')
+		expect(yaml).toContain('pnpm typecheck')
+		expect(yaml).toContain('pnpm build')
+	})
+
+	it('still emits a valid stages: key when every job is dropped', async () => {
+		const yaml = await render(baseConfig({ testing: { framework: 'jest' } }), {})
+
+		expect(yaml).toContain('stages:\n  - test\n')
+		expect(yaml).not.toMatch(/^lint:$/m)
+		expect(yaml).not.toMatch(/^typecheck:$/m)
+		expect(yaml).not.toMatch(/^test:$/m)
+		expect(yaml).not.toMatch(/^build:$/m)
+	})
+})
