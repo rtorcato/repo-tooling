@@ -1008,9 +1008,18 @@ async function undecidedTransitiveBuilds(
 		// A package present at two versions has two store dirs; report it once.
 		if (!name || seen.has(name) || skip(name)) continue
 		seen.add(name)
+		// Store directory names come from registry metadata, and only the *first*
+		// `+` is decoded — the rest of the entry passes through literally, so a
+		// hostile name (`..+..@1.0.0` → `../..`) would climb out of the package
+		// directory and have `fs.readJson` read an unrelated file, whose `name`
+		// then lands in the report. Confirm the resolved path stays under this
+		// entry's `node_modules` before reading it.
+		const root = path.resolve(store, entry, 'node_modules')
+		const target = path.join(root, name, 'package.json')
+		if (!target.startsWith(root + path.sep)) continue
 		let depPkg: { name?: string; scripts?: Record<string, string> }
 		try {
-			depPkg = await fs.readJson(path.join(store, entry, 'node_modules', name, 'package.json'))
+			depPkg = await fs.readJson(target)
 		} catch {
 			continue
 		}

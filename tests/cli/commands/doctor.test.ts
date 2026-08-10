@@ -1325,6 +1325,26 @@ describe('checkBuildApprovals', () => {
 			expect(result.detail).toContain('esbuild')
 		})
 
+		// Only the first `+` is decoded, so a hostile entry name can leave `..`
+		// segments in the decoded package name and point the read outside the
+		// package directory.
+		it('refuses a store entry whose decoded name escapes its package directory', async () => {
+			const dir = newTmpDir()
+			const pkg = { name: 'demo', devDependencies: { vite: '^7.0.0' } }
+			await seedDep(dir, 'vite', { test: 'vitest' })
+			// `..+..@1.0.0` decodes to `../..`, so the unguarded read climbs out of
+			// the entry's `node_modules` and resolves to this file in the store root.
+			await fs.ensureDir(join(dir, 'node_modules', '.pnpm', '..+..@1.0.0'))
+			await fs.outputJson(join(dir, 'node_modules', '.pnpm', 'package.json'), {
+				name: 'pwned',
+				scripts: { postinstall: 'node steal.js' },
+			})
+
+			const result = await checkBuildApprovals(dir, pkg)
+			expect(result.status).toBe('ok')
+			expect(result.detail ?? '').not.toContain('pwned')
+		})
+
 		it('does not double-report a direct dependency that also sits in the store', async () => {
 			const dir = newTmpDir()
 			const pkg = { name: 'demo', devDependencies: { esbuild: '^0.25.0' } }
