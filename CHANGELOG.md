@@ -1,3 +1,12 @@
+## [3.8.6](https://github.com/rtorcato/repo-tooling/compare/v3.8.5...v3.8.6) (2026-08-10)
+
+
+### Bug Fixes
+
+* **doctor:** accept an inlined TypeScript preset ([#388](https://github.com/rtorcato/repo-tooling/issues/388)) ([c7300f7](https://github.com/rtorcato/repo-tooling/commit/c7300f77fee81e7badbb245620de9abf9ded4220)), closes [#379](https://github.com/rtorcato/repo-tooling/issues/379) [#379](https://github.com/rtorcato/repo-tooling/issues/379) [#383](https://github.com/rtorcato/repo-tooling/issues/383) [#385](https://github.com/rtorcato/repo-tooling/issues/385)
+* **gitlab-ci:** only emit jobs whose scripts the repo has ([#389](https://github.com/rtorcato/repo-tooling/issues/389)) ([40a9e6d](https://github.com/rtorcato/repo-tooling/commit/40a9e6d2dbadc951c77bffa55dc14302daeedcc7)), closes [#364](https://github.com/rtorcato/repo-tooling/issues/364) [#386](https://github.com/rtorcato/repo-tooling/issues/386)
+* **vitest:** emit a config that imports the shipped preset ([#390](https://github.com/rtorcato/repo-tooling/issues/390)) ([a7f3ef9](https://github.com/rtorcato/repo-tooling/commit/a7f3ef982199999cb249b0a330a60dcfcc4b913f)), closes [#387](https://github.com/rtorcato/repo-tooling/issues/387)
+
 ## [3.8.5](https://github.com/rtorcato/repo-tooling/compare/v3.8.4...v3.8.5) (2026-08-10)
 
 
