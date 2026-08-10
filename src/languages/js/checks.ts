@@ -57,6 +57,60 @@ export function evaluateNodeVersion(version: string): CheckResult {
 	}
 }
 
+/**
+ * JSONC → object, or null when it genuinely won't parse. `biome.jsonc` is a
+ * declared candidate and the format allows comments and trailing commas, so
+ * bare `JSON.parse` would reject configs Biome itself accepts.
+ *
+ * The first alternative consumes whole string literals, so a `//` or `/*`
+ * inside one (a `$schema` URL, most obviously) is never mistaken for a comment.
+ */
+function parseJsonc(text: string): Record<string, any> | null {
+	const withoutComments = text.replace(
+		/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+		(_, str: string | undefined) => str ?? ''
+	)
+	try {
+		return JSON.parse(withoutComments.replace(/,(\s*[}\]])/g, '$1')) as Record<string, any>
+	} catch {
+		return null
+	}
+}
+
+const BIOME_PRESET_REF = /@rtorcato\/(?:js|repo)-tooling\/biome/
+
+/**
+ * Both shapes of a `biome.json` this package produces (#378): the thin
+ * `extends` pointer `fix biome` writes, and the whole preset inlined, which is
+ * what `copy biome` drops — it carries no `extends` at all, so matching only
+ * the first left every `copy biome` repo permanently drifted with no way out.
+ *
+ * Read structurally, not as text. Accepting the inline form on the presence of
+ * a `$schema` URL and a `preset` key alone would pass a config that keeps both
+ * markers and turns the linter off — the very drift this check exists to catch
+ * — and the markers could even sit in a `biome.jsonc` comment. So the config is
+ * parsed, `linter.enabled: false` disqualifies either shape, and anything
+ * unparseable counts as drift rather than being waved through.
+ */
+function matchesBiomeConfig(contents: string): boolean {
+	const config = parseJsonc(contents)
+	if (!config) return false
+
+	const linter = config.linter as { enabled?: unknown; rules?: Record<string, unknown> } | undefined
+	if (linter?.enabled === false) return false
+
+	if (BIOME_PRESET_REF.test(JSON.stringify(config.extends ?? ''))) return true
+
+	// The inlined preset: biome's own `$schema` plus the `linter.rules.preset`
+	// key the shipped `tooling/biome/biome.json` sets.
+	const schema = config.$schema
+	return (
+		typeof schema === 'string' &&
+		schema.includes('biomejs.dev/schemas/') &&
+		linter?.rules?.preset !== undefined
+	)
+}
+
 export const FILE_CHECKS: FileCheck[] = [
 	{
 		check: 'TypeScript',
@@ -68,11 +122,9 @@ export const FILE_CHECKS: FileCheck[] = [
 	{
 		check: 'Biome',
 		candidates: ['biome.json', 'biome.jsonc'],
-		expected: `extends "${PACKAGE}/biome"`,
-		matcher: /@rtorcato\/(?:js|repo)-tooling\/biome/,
+		expected: `extends "${PACKAGE}/biome" or inlines the preset, with the linter on`,
+		matcher: matchesBiomeConfig,
 		optional: true,
-		// `fix biome`, not `copy biome`: copy drops the whole preset inline, which
-		// carries no `extends` for the matcher above to find (#365).
 		hint: 'Run `npx @rtorcato/repo-tooling fix biome` to scaffold',
 	},
 	{
