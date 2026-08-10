@@ -1,11 +1,9 @@
 import base from '@rtorcato/repo-tooling/vitest/config'
 import react from '@vitejs/plugin-react'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
+// Same reason as the base preset: an alias built from this file's `__dirname`
+// points inside node_modules, never at the consumer's `src`.
 export default mergeConfig(
 	base,
 	defineConfig({
@@ -16,12 +14,6 @@ export default mergeConfig(
 			css: true, // ← Vitest will stub every *.css / *.module.css import
 			exclude: ['OLD/**'],
 			setupFiles: ['./vitest.setup.ts'],
-		},
-		resolve: {
-			alias: [
-				{ find: '@', replacement: resolve(__dirname, './src') },
-				{ find: '~', replacement: resolve(__dirname, './src') },
-			],
 		},
 	})
 )

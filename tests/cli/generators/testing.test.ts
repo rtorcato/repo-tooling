@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import { generateTestingConfigs } from '../../../src/cli/generators/testing.js'
+import { FILE_CHECKS } from '../../../src/languages/js/checks.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -31,6 +32,30 @@ describe('generateTestingConfigs', () => {
 		const vitestConfig = await fs.readFile(join(dir, 'vitest.config.ts'), 'utf-8')
 		expect(vitestConfig).toContain("environment: 'node'")
 		expect(await fs.pathExists(join(dir, 'vitest.setup.ts'))).toBe(true)
+	})
+
+	it('writes a vitest config that satisfies the doctor Vitest check', async () => {
+		const dir = newTmpDir()
+		await generateTestingConfigs(baseConfig({ testing: { framework: 'vitest' } }), dir)
+
+		const vitestConfig = await fs.readFile(join(dir, 'vitest.config.ts'), 'utf-8')
+		const matcher = FILE_CHECKS.find((c) => c.check === 'Vitest')?.matcher as RegExp
+		expect(matcher).toBeDefined()
+		expect(vitestConfig).toMatch(matcher)
+		// …and the check still has teeth: an unrelated config must not match.
+		expect('export default {}\n').not.toMatch(matcher)
+	})
+
+	it('keeps the Next.js jsx transform override on top of the preset', async () => {
+		const dir = newTmpDir()
+		await generateTestingConfigs(
+			baseConfig({ projectType: 'nextjs-app', testing: { framework: 'vitest' } }),
+			dir
+		)
+
+		const vitestConfig = await fs.readFile(join(dir, 'vitest.config.ts'), 'utf-8')
+		expect(vitestConfig).toContain("oxc: { jsx: { runtime: 'automatic' } }")
+		expect(vitestConfig).toContain('mergeConfig(')
 	})
 
 	it('uses jsdom environment when browser is requested', async () => {

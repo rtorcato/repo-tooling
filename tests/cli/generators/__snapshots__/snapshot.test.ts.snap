@@ -324,19 +324,17 @@ exports[`generator output snapshots > package.json (library) 1`] = `
 `;
 
 exports[`generator output snapshots > vitest.config.ts (node library) 1`] = `
-"import { defineConfig } from 'vitest/config'
+"import base from '@rtorcato/repo-tooling/vitest/config'
+import { defineConfig, mergeConfig } from 'vitest/config'
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-    setupFiles: ['./vitest.setup.ts'],
-    coverage: {
-      provider: 'v8',
-      // lcov feeds Codecov; text is the local console summary.
-      reporter: ['text', 'lcov']
+export default mergeConfig(
+  base,
+  defineConfig({
+    test: {
+      environment: 'node',
+      setupFiles: ['./vitest.setup.ts']
     }
-  }
-})
+  })
+)
 "
 `;

@@ -1,9 +1,10 @@
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { configDefaults, defineConfig } from 'vitest/config'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
+// No `resolve.alias` here on purpose: this file's `__dirname` is wherever the
+// package got installed, so a `@` → `<preset dir>/src` alias resolves to a
+// directory that exists in no consumer (nor in the published tarball). Now that
+// generated configs actually import this preset, that alias would poison them.
+// Consumers that want `@`/`~` declare them in their own config.
 export default defineConfig({
 	test: {
 		globals: true,
@@ -13,13 +14,9 @@ export default defineConfig({
 		exclude: [...configDefaults.exclude, '.claude/**'],
 		coverage: {
 			provider: 'v8',
-			reporter: ['text', 'json', 'html', 'json-summary'],
+			// lcov feeds Codecov (the CI we generate uploads it); text is the local
+			// console summary; the rest back the HTML report.
+			reporter: ['text', 'lcov', 'json', 'html', 'json-summary'],
 		},
-	},
-	resolve: {
-		alias: [
-			{ find: '@', replacement: resolve(__dirname, './src') },
-			{ find: '~', replacement: resolve(__dirname, './src') },
-		],
 	},
 })
