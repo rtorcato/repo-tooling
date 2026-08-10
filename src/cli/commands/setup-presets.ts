@@ -1,4 +1,5 @@
 import { swiftFileList } from '../../languages/swift/scaffold.js'
+import { BIOME_CONFIG } from '../generators/linting.js'
 import type { ProjectConfig } from './setup.js'
 
 export type PresetName =
@@ -231,7 +232,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 		files.push('tsconfig.json', 'reset.d.ts')
 	}
 	if (config.linting.tool === 'biome' || config.linting.tool === 'both') {
-		files.push('biome.jsonc')
+		files.push(BIOME_CONFIG)
 	}
 	if (config.linting.tool === 'eslint' || config.linting.tool === 'both') {
 		files.push('eslint.config.mjs')

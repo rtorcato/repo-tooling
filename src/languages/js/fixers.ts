@@ -12,7 +12,12 @@ import { generateHuskyConfig, generatePrePushHook } from '../../cli/generators/g
 import { CI_WORKFLOW, generateGitHubActions } from '../../cli/generators/github-actions.js'
 import { generateGitLabCI } from '../../cli/generators/gitlab-ci.js'
 import { GH_WORKFLOWS, generateGhWorkflow } from '../../cli/generators/github-workflows.js'
-import { generateESLintConfig, generatePrettierConfig } from '../../cli/generators/linting.js'
+import {
+	BIOME_CONFIG,
+	generateBiomeConfig,
+	generateESLintConfig,
+	generatePrettierConfig,
+} from '../../cli/generators/linting.js'
 import {
 	alignNodeVersion,
 	ensureEnginesNode,
@@ -137,13 +142,15 @@ const GH_WORKFLOW_FIXERS: Fixer[] = GH_WORKFLOWS.map((name) => ({
 export const FIXERS: Fixer[] = [
 	{
 		target: 'biome',
-		description: 'Scaffold biome.json extending the @rtorcato/repo-tooling preset',
+		description: `Scaffold ${BIOME_CONFIG} extending the @rtorcato/repo-tooling preset`,
 		appliesTo: ['Biome'],
-		outputs: ['biome.json'],
+		outputs: [BIOME_CONFIG],
 		canFixDrift: true,
 		async run({ targetDir }) {
-			const result = await copyPreset('biome', targetDir)
-			return { filesWritten: [result.target] }
+			// Shares generateBiomeConfig with the setup/resync path — the two used to
+			// scaffold different filenames with different contents (#365).
+			const written = await generateBiomeConfig(targetDir)
+			return { filesWritten: [written] }
 		},
 	},
 	{

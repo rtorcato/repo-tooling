@@ -54,7 +54,7 @@ describe('generateSwiftProject', () => {
 	// The whole point of the Swift arm: none of the package.json-rooted generators run.
 	it('writes no JS artefacts', async () => {
 		const dir = await scaffold()
-		for (const file of ['package.json', 'tsconfig.json', 'biome.jsonc', 'vitest.config.ts']) {
+		for (const file of ['package.json', 'tsconfig.json', 'biome.json', 'vitest.config.ts']) {
 			expect(await fs.pathExists(join(dir, file)), file).toBe(false)
 		}
 	})
