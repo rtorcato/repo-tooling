@@ -385,6 +385,25 @@ describe('fix targeted', () => {
 		expect(agents.match(/<!-- js-tooling:start -->/g)).toHaveLength(1)
 	})
 
+	it('fix ai --yes refreshes a block that still names the dead js-tooling bin (#393)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const stale =
+			'<!-- js-tooling:start -->\nSee @AGENTS.md (kept in sync by `js-tooling fix ai`).\n<!-- js-tooling:end -->\n'
+		await fs.writeFile(join(dir, 'CLAUDE.md'), stale)
+		await fs.writeFile(join(dir, 'AGENTS.md'), `# Mine\n\n${stale}`)
+
+		await fixCommand('ai', { directory: dir, yes: true })
+
+		const claude = await fs.readFile(join(dir, 'CLAUDE.md'), 'utf8')
+		expect(claude).toContain('`repo-tooling fix ai`')
+		expect(claude).not.toContain('`js-tooling fix ai`')
+		const agents = await fs.readFile(join(dir, 'AGENTS.md'), 'utf8')
+		expect(agents).toContain('# Mine') // surrounding content preserved
+		expect(agents).toContain('# repo-tooling')
+		expect(agents).not.toContain('js-tooling fix ai')
+	})
+
 	it('fix node-version --yes rewrites hardcoded workflow versions to node-version-file', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir, { engines: { node: '>=22' } })

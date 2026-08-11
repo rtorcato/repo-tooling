@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'fs-extra'
+import { BLOCK_START, hasStaleAgentBlock } from '../cli/generators/agent-rules.js'
 import { BADGE_START, hasPublicOnlyBadges } from '../cli/generators/badges.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { CheckResult } from './types.js'
@@ -378,21 +379,35 @@ export async function checkCoverageUpload(dir: string): Promise<CheckResult> {
 }
 
 export async function checkAiSetup(dir: string): Promise<CheckResult> {
-	// Consider AI setup present if AGENTS.md carries the js-tooling block or the
-	// Claude skill is installed — the two primary markers `fix ai` writes.
-	const agentsPath = path.join(dir, 'AGENTS.md')
-	const hasAgentsBlock =
-		(await fs.pathExists(agentsPath)) &&
-		(await fs.readFile(agentsPath, 'utf8')).includes('<!-- js-tooling:start -->')
+	// Consider AI setup present if one of the block-managed files carries the
+	// agent block or the Claude skill is installed — the markers `fix ai` writes.
+	let blockFile: string | null = null
+	const stale: string[] = []
+	for (const rel of ['AGENTS.md', 'CLAUDE.md', path.join('.github', 'copilot-instructions.md')]) {
+		const filepath = path.join(dir, rel)
+		if (!(await fs.pathExists(filepath))) continue
+		const content = await fs.readFile(filepath, 'utf8')
+		if (!content.includes(BLOCK_START)) continue
+		blockFile ??= rel
+		if (hasStaleAgentBlock(content)) stale.push(rel)
+	}
 	const hasSkill =
 		(await fs.pathExists(path.join(dir, '.claude', 'skills', 'repo-tooling.md'))) ||
 		// Pre-rename name — still counts as present until `fix` migrates it.
 		(await fs.pathExists(path.join(dir, '.claude', 'skills', 'js-tooling.md')))
-	if (hasAgentsBlock || hasSkill) {
+	if (stale.length > 0) {
+		return {
+			check: 'AI setup',
+			status: 'drift',
+			detail: `${stale.join(', ')} still point agents at the dead \`js-tooling\` package/bin`,
+			hint: 'Run `npx @rtorcato/repo-tooling fix ai` to refresh the agent instructions in place',
+		}
+	}
+	if (blockFile || hasSkill) {
 		return {
 			check: 'AI setup',
 			status: 'ok',
-			detail: hasAgentsBlock ? 'AGENTS.md has the js-tooling block' : '.claude skill installed',
+			detail: blockFile ? `${blockFile} has the agent block` : '.claude skill installed',
 		}
 	}
 	return {
