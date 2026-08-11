@@ -219,6 +219,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 |---|---|
 | `typedoc` | `typedoc.json` + `.github/workflows/docs.yml` (GitHub Pages) |
 | `docs-site` | a Docusaurus site under `apps/docs` (config/sidebars/tokens + Pages deploy) — see [Docs site](./docs-site.md) |
+| `brand` | `brand/` — banner, mobile-banner and social-card SVG sources + `render.sh`, and repoints a README still on root-level banner paths — see [Brand assets](./brand-assets.md) |
 
 **AI agents** _(opt-in)_
 

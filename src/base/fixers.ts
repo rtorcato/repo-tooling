@@ -13,6 +13,7 @@
  */
 import chalk from 'chalk'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
+import { generateBrand } from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
 import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc.js'
@@ -203,6 +204,34 @@ export const BASE_FIXERS: Fixer[] = [
 		canFixDrift: false,
 		async run({ targetDir }) {
 			const filesWritten = await generateCommunityHealth(targetDir)
+			return { filesWritten }
+		},
+	},
+	{
+		target: 'brand',
+		description:
+			'Scaffold brand/ — banner, mobile-banner and social-card SVG sources + render.sh, and repoint a README still on root-level banner paths',
+		appliesTo: ['Brand assets'],
+		outputs: [
+			'brand/banner.svg',
+			'brand/banner-mobile.svg',
+			'brand/social-card.svg',
+			'brand/render.sh',
+			'README.md',
+		],
+		// Every SVG is written only when absent and the README edit rewrites two
+		// image paths — hand-edited art is never clobbered.
+		riskLevel: 'safe-merge',
+		canFixDrift: true,
+		async run({ targetDir, pkg }) {
+			const filesWritten = await generateBrand(pkg, targetDir)
+			if (filesWritten.some((f) => f.endsWith('.svg'))) {
+				console.error(
+					chalk.dim(
+						'   next: run `brand/render.sh` to render the PNGs (needs librsvg — `brew install librsvg`)'
+					)
+				)
+			}
 			return { filesWritten }
 		},
 	},
