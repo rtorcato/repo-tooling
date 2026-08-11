@@ -476,6 +476,19 @@ describe('doctor extended checks', () => {
 		expect(results.find((r) => r.check === 'AI setup')?.status).toBe('ok')
 	})
 
+	it('AI setup: drift when a managed block still names the dead js-tooling bin (#393)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling.md'), '# skill\n')
+		await fs.writeFile(
+			join(dir, 'CLAUDE.md'),
+			'<!-- js-tooling:start -->\nSee @AGENTS.md (kept in sync by `js-tooling fix ai`).\n<!-- js-tooling:end -->\n'
+		)
+		const result = (await runDoctor(dir)).find((r) => r.check === 'AI setup')
+		expect(result?.status).toBe('drift')
+		expect(result?.detail).toContain('CLAUDE.md')
+	})
+
 	it('AI setup: ok when the Claude skill is present without AGENTS.md', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

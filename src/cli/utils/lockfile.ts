@@ -5,10 +5,14 @@ import { validateProjectConfig } from '../commands/setup-presets.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 export const LOCKFILE_NAME = '.repo-tooling.json'
-// Name used before the js-tooling→repo-tooling rename (#272). Repos set up on an
-// older version still have it: readLockfile falls back to it, and writeLockfile
-// migrates to the new name (removing the old file) on the next write.
-export const LEGACY_LOCKFILE_NAME = '.js-tooling.json'
+// Package and bin name used before the js-tooling→repo-tooling rename (#272).
+// The bin no longer exists and the package is 404 on the registry, so any
+// generated file still naming it is stale (#393).
+export const LEGACY_TOOL_NAME = 'js-tooling'
+// Lockfile name from the same era. Repos set up on an older version still have
+// it: readLockfile falls back to it, and writeLockfile migrates to the new name
+// (removing the old file) on the next write.
+export const LEGACY_LOCKFILE_NAME = `.${LEGACY_TOOL_NAME}.json`
 // v2 added ProjectConfig.language (multi-language seam, #140). v1 files are
 // migrated to v2 on read, defaulting language to 'js'.
 export const LOCKFILE_VERSION = 2

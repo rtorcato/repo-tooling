@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import { copyPreset, getPackageRoot } from '../utils/copy-preset.js'
+import { LEGACY_TOOL_NAME } from '../utils/lockfile.js'
 import { installSkillsInstallDocs } from './skills-install.js'
 
 /**
@@ -9,8 +10,25 @@ import { installSkillsInstallDocs } from './skills-install.js'
  * location and the frontmatter differ per agent.
  */
 const SOURCE = 'tooling/claude/repo-tooling.md'
-const BLOCK_START = '<!-- js-tooling:start -->'
-const BLOCK_END = '<!-- js-tooling:end -->'
+// The markers keep the pre-rename text on purpose: changing them would orphan
+// every block already written and append a second one on the next fix.
+export const BLOCK_START = '<!-- js-tooling:start -->'
+export const BLOCK_END = '<!-- js-tooling:end -->'
+
+/**
+ * True when a managed block still names the pre-rename package or bin — a repo
+ * scaffolded before the rename tells agents to run `js-tooling fix ai`, which
+ * is not a runnable command (#393). Only the block *body* is inspected: the
+ * markers carry the legacy name by design, so matching on the whole file would
+ * report every repo as permanently stale.
+ */
+export function hasStaleAgentBlock(content: string): boolean {
+	const start = content.indexOf(BLOCK_START)
+	if (start === -1) return false
+	const bodyStart = start + BLOCK_START.length
+	const end = content.indexOf(BLOCK_END, bodyStart)
+	return content.slice(bodyStart, end === -1 ? undefined : end).includes(LEGACY_TOOL_NAME)
+}
 
 export type AgentTarget = 'cursor' | 'copilot' | 'agents-md'
 
