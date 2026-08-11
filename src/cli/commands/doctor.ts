@@ -40,6 +40,7 @@ import type { CheckResult, CheckStatus } from '../../base/types.js'
 import {
 	allDeps,
 	checkAreTheTypesWrong,
+	checkClaudeWorktreeSettings,
 	checkConfigSchemaVersions,
 	checkDocsSite,
 	checkEnginesNode,
@@ -394,6 +395,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	results.push(await checkTreeshakeSetup(targetDir, pkg))
 	results.push(await checkPnpmWorkspace(targetDir, pkg))
 	results.push(await checkBuildApprovals(targetDir, pkg))
+	results.push(await checkClaudeWorktreeSettings(targetDir))
 	// Turborepo is monorepo-only — only surface the check when a workspace exists.
 	if (await fs.pathExists(path.join(targetDir, 'pnpm-workspace.yaml'))) {
 		results.push(await checkTurborepo(targetDir))

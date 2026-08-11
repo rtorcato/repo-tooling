@@ -47,6 +47,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	'README badges': 'badges',
 	TypeDoc: 'typedoc',
 	'AI setup': 'ai',
+	'Claude worktree settings': 'ai',
 }
 
 /**
@@ -165,6 +166,9 @@ export function declinedInLock(lock: Lockfile | null, checkName: string): boolea
 		case 'README badges':
 			return c.badges === false
 		case 'AI setup':
+		// The same recorded choice: the worktree settings are part of what
+		// `fix ai` writes, so a repo that declined AI setup declined them too.
+		case 'Claude worktree settings':
 			return c.aiSetup === false
 		case 'Turborepo':
 			return c.turborepo === false
