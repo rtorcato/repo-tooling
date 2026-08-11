@@ -1,3 +1,12 @@
+# [3.9.0](https://github.com/rtorcato/repo-tooling/compare/v3.8.7...v3.9.0) (2026-08-11)
+
+
+### Features
+
+* **ai:** scaffold .claude/settings.json worktree symlinks ([#399](https://github.com/rtorcato/repo-tooling/issues/399)) ([62459a8](https://github.com/rtorcato/repo-tooling/commit/62459a8874b4958a473504b32deb66e746ac5d38)), closes [#396](https://github.com/rtorcato/repo-tooling/issues/396) [rtorcato/js-common#171](https://github.com/rtorcato/js-common/issues/171)
+* **brand:** scaffold brand/ sources and audit them in doctor ([#400](https://github.com/rtorcato/repo-tooling/issues/400)) ([461b0b0](https://github.com/rtorcato/repo-tooling/commit/461b0b045d0f320c2d957ddfc90a9cd5ad51517c)), closes [#395](https://github.com/rtorcato/repo-tooling/issues/395)
+* **doctor:** audit milestone hygiene, close completed milestones ([#398](https://github.com/rtorcato/repo-tooling/issues/398)) ([e4b34c2](https://github.com/rtorcato/repo-tooling/commit/e4b34c2062a6310c3f17acd36f5cb70ae174bd2f)), closes [#397](https://github.com/rtorcato/repo-tooling/issues/397)
+
 ## [3.8.7](https://github.com/rtorcato/repo-tooling/compare/v3.8.6...v3.8.7) (2026-08-11)
 
 
