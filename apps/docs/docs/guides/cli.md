@@ -193,6 +193,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `renovate` | `renovate.json` (alternative to Dependabot) |
 | `codeql` | `.github/workflows/codeql.yml` (security scanning) |
 | `github-settings` | branch protection + auto-merge + workflow permissions + a code-scanning branch ruleset (when CodeQL is on) via `gh api` (mutates the remote repo) |
+| `milestones` | closes 100%-complete open milestones via `gh api` (mutates the remote repo). Never deletes or creates one — see [milestone hygiene](./git-flow.md#milestones) |
 | `codeowners` | `.github/CODEOWNERS` with commented examples |
 | `community-health` | `CONTRIBUTING.md`, `SECURITY.md`, PR + issue templates |
 | `lockfile` | records current tool choices in the repo-tooling lockfile |
