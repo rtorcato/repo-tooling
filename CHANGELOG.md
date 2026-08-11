@@ -1,3 +1,10 @@
+## [3.8.7](https://github.com/rtorcato/repo-tooling/compare/v3.8.6...v3.8.7) (2026-08-11)
+
+
+### Bug Fixes
+
+* **doctor:** flag agent docs that name the dead js-tooling bin ([#394](https://github.com/rtorcato/repo-tooling/issues/394)) ([7e6f957](https://github.com/rtorcato/repo-tooling/commit/7e6f957642a7ec40e25d588acb23bbd74a2c18f1)), closes [#393](https://github.com/rtorcato/repo-tooling/issues/393)
+
 ## [3.8.6](https://github.com/rtorcato/repo-tooling/compare/v3.8.5...v3.8.6) (2026-08-10)
 
 
