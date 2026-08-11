@@ -44,6 +44,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	'are-the-types-wrong': 'attw',
 	publint: 'publint',
 	'README badges': 'badges',
+	'Brand assets': 'brand',
 	TypeDoc: 'typedoc',
 	'AI setup': 'ai',
 }

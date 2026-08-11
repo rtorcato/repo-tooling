@@ -19,8 +19,8 @@ Nine files. Everything below is either one of these or a note about wiring them.
 
 | File | Size | Format | Lives in |
 |---|---|---|---|
-| `banner.png` | 1280×320 | PNG | repo root |
-| `banner-mobile.png` | 1280×786 | PNG | repo root |
+| `banner.png` | 1280×320 | PNG | `brand/` |
+| `banner-mobile.png` | 1280×786 | PNG | `brand/` |
 | `social-card.png` | 1280×640 | PNG | `apps/docs/static/img/` |
 | `favicon.svg` | 32×32 viewBox | SVG | `apps/docs/static/img/` |
 | `favicon.ico` | 16+32+48 | ICO (multi-size) | `apps/docs/static/img/` |
@@ -31,6 +31,42 @@ Nine files. Everything below is either one of these or a note about wiring them.
 
 If you ship only three, ship `banner.png`, `social-card.png` and `favicon.svg` —
 they cover the README, every link unfurl, and every modern browser tab.
+
+## Sources live in `brand/`
+
+A committed PNG with no source beside it is a dead end: it can't be recoloured
+when the project's accent changes, retitled, or resized when the spec moves. So
+`brand/` holds **both** the SVG sources and the rendered banners, which also
+keeps the repo root clean.
+
+```
+brand/
+  banner.svg           source
+  banner-mobile.svg    source
+  social-card.svg      source
+  render.sh            renders -> brand/*.png + apps/docs/static/img/*
+  banner.png           rendered  (README: src="./brand/banner.png")
+  banner-mobile.png    rendered
+```
+
+`social-card.png` and the favicons keep their home under
+`apps/docs/static/img/` — they're consumed by the docs site, not the README.
+
+```bash
+npx @rtorcato/repo-tooling fix brand   # scaffold the three SVGs + render.sh
+brew install librsvg                   # rsvg-convert, what render.sh drives
+./brand/render.sh                      # re-render every PNG from source
+```
+
+The scaffolded SVGs derive the project name and tagline from `package.json` and
+the accent from the repo's own docs theme or favicon, falling back to a neutral
+grey. They're a starting point — edit them, then re-render. `render.sh` never
+overwrites a source, and `fix brand` writes only files that are missing, so
+neither clobbers hand-drawn art.
+
+`doctor` flags the three ways this goes wrong: a rendered banner with no SVG
+source, a `brand/` folder with no `render.sh`, and a README still pointing at
+root-level `./banner.png`.
 
 ## Share images
 
@@ -81,8 +117,8 @@ Two banners, swapped by viewport:
 ```html
 <p align="center">
   <picture>
-    <source media="(max-width: 600px)" srcset="./banner-mobile.png">
-    <img src="./banner.png" alt="<project> — <tagline>" width="100%">
+    <source media="(max-width: 600px)" srcset="./brand/banner-mobile.png">
+    <img src="./brand/banner.png" alt="<project> — <tagline>" width="100%">
   </picture>
 </p>
 ```
@@ -100,7 +136,7 @@ If a banner needs to differ between themes, `<picture>` handles that too, and it
 composes with the viewport query:
 
 ```html
-<source media="(prefers-color-scheme: dark)" srcset="./banner-dark.png">
+<source media="(prefers-color-scheme: dark)" srcset="./brand/banner-dark.png">
 ```
 
 A banner designed on a dark background with transparent padding usually works in

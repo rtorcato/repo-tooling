@@ -19,6 +19,7 @@ import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import {
 	type BadgeAudience,
 	checkAiSetup,
+	checkBrand,
 	checkCodeowners,
 	checkCodeQL,
 	checkCommunityHealth,
@@ -245,6 +246,7 @@ async function runBaseChecks(
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
 	results.push(await checkCommunityHealth(dir))
+	results.push(await checkBrand(dir))
 	results.push(await checkAiSetup(dir))
 	results.push(await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget))
 	results.push(await checkCoverageUpload(dir))

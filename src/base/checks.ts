@@ -130,6 +130,65 @@ export async function checkCommunityHealth(dir: string): Promise<CheckResult> {
 	}
 }
 
+const BRAND_HINT =
+	'Run `npx @rtorcato/repo-tooling fix brand` to scaffold brand/ (SVG sources + render.sh), then run `brand/render.sh`'
+
+/** The two banners the README consumes — the pair `brand/` exists to keep regenerable. */
+const BANNERS = ['banner', 'banner-mobile'] as const
+
+/**
+ * Brand assets (#395). A committed PNG with no SVG beside it can't be
+ * recoloured, retitled or resized — which was the state of every repo in the
+ * family but one. Three signals, all language-agnostic:
+ *
+ * 1. a rendered banner with no `brand/<name>.svg` source
+ * 2. a `brand/` folder with no `render.sh` — sources nobody can render
+ * 3. a README still pointing at the pre-amendment root-level `./banner.png`
+ *
+ * A repo with no brand images at all is `optional-missing`, not a finding:
+ * there's nothing broken to fix, and banners are opt-in.
+ */
+export async function checkBrand(dir: string): Promise<CheckResult> {
+	const check = 'Brand assets'
+	const has = (rel: string) => fs.pathExists(path.join(dir, rel))
+	const problems: string[] = []
+
+	const orphans: string[] = []
+	for (const name of BANNERS) {
+		const rendered = (await has(`${name}.png`)) || (await has(`brand/${name}.png`))
+		if (rendered && !(await has(`brand/${name}.svg`))) orphans.push(`${name}.png`)
+	}
+	if (orphans.length > 0) {
+		problems.push(`${orphans.join(' + ')} committed with no brand/*.svg source`)
+	}
+
+	const brandDir = await has('brand')
+	if (brandDir && !(await has('brand/render.sh'))) {
+		problems.push('brand/ has no render.sh — the PNGs cannot be regenerated')
+	}
+
+	const readmePath = path.join(dir, 'README.md')
+	if (await fs.pathExists(readmePath)) {
+		const readme = await fs.readFile(readmePath, 'utf-8')
+		if (/(?<!brand\/)banner(?:-mobile)?\.png/.test(readme)) {
+			problems.push('README points at root-level banner PNGs (the spec moved them to brand/)')
+		}
+	}
+
+	if (problems.length > 0) {
+		return { check, status: 'drift', detail: problems.join('; '), hint: BRAND_HINT }
+	}
+	if (!brandDir) {
+		return {
+			check,
+			status: 'optional-missing',
+			detail: 'no brand/ folder — the repo ships no regenerable brand sources',
+			hint: BRAND_HINT,
+		}
+	}
+	return { check, status: 'ok', detail: 'brand/ holds the SVG sources and render.sh' }
+}
+
 /**
  * `org/action@vN`, the only form the generators emit. Same shape as the scan in
  * tests/cli/generators/action-pins.test.ts — major-only, because that's the
