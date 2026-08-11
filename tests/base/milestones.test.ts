@@ -24,11 +24,26 @@ const milestone = (over: Partial<Record<string, unknown>> = {}) => ({
 	...over,
 })
 
+/**
+ * Mirrors `gh api`'s flag-to-method inference: `-f`/`-F` without an explicit
+ * `-X` switches the request to POST. So only a real `GET` serves the list — a
+ * read that forgets `-X GET` reads as "create milestone" and fails here, the
+ * way it does against GitHub.
+ */
+function ghMethod(args: string[]): string {
+	const i = args.indexOf('-X')
+	if (i !== -1) return args[i + 1] ?? ''
+	return args.includes('-f') || args.includes('-F') ? 'POST' : 'GET'
+}
+
 /** Serves the milestone list; PATCHes succeed unless `patch` says otherwise. */
 function fakeGh(milestones: unknown[], patch?: GhResult): GhExec {
-	return vi.fn(async (args: string[]) =>
-		args.includes('-X') ? (patch ?? ok('{}')) : ok(JSON.stringify(milestones))
-	)
+	return vi.fn(async (args: string[]) => {
+		const method = ghMethod(args)
+		if (method === 'GET') return ok(JSON.stringify(milestones))
+		if (method === 'PATCH') return patch ?? ok('{}')
+		return { ok: false, stdout: '', stderr: `unexpected ${method}`, code: 422 }
+	})
 }
 
 describe('checkMilestones', () => {
@@ -46,6 +61,21 @@ describe('checkMilestones', () => {
 
 	it('is ok when every open milestone still has work in it', async () => {
 		expect((await checkMilestones(gitRepo(), fakeGh([milestone()]))).status).toBe('ok')
+	})
+
+	it('lists milestones with an explicit GET, not gh’s inferred POST', async () => {
+		const exec = fakeGh([milestone()])
+		await checkMilestones(gitRepo(), exec)
+		expect(exec).toHaveBeenCalledWith([
+			'api',
+			'-X',
+			'GET',
+			'repos/{owner}/{repo}/milestones',
+			'-f',
+			'state=all',
+			'-F',
+			'per_page=100',
+		])
 	})
 
 	it('flags a 100%-complete milestone left open', async () => {

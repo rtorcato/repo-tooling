@@ -39,10 +39,14 @@ const skip = (reason: string): CheckResult => ({
 const titles = (ms: Milestone[]) => ms.map((m) => `"${m.title}"`).join(', ')
 
 async function readMilestones(gh: GhExec): Promise<Milestone[] | null> {
-	// `-f`/`-F` on a GET land in the query string, so the path keeps gh's
+	// `-X GET` is load-bearing: `-f`/`-F` without an explicit method make `gh`
+	// switch to POST, which would hit the *create* milestone endpoint. With it,
+	// the fields land in the query string and the path keeps gh's
 	// {owner}/{repo} placeholders intact.
 	const r = await gh([
 		'api',
+		'-X',
+		'GET',
 		'repos/{owner}/{repo}/milestones',
 		'-f',
 		'state=all',
