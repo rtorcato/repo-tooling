@@ -195,7 +195,7 @@ export const BASE_FIXERS: Fixer[] = [
 		target: 'ai',
 		description:
 			'Install all AI agent files at once (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill, MCP example)',
-		appliesTo: ['AI setup'],
+		appliesTo: ['AI setup', 'Claude worktree settings'],
 		outputs: [
 			'AGENTS.md',
 			'CLAUDE.md',
@@ -203,6 +203,8 @@ export const BASE_FIXERS: Fixer[] = [
 			'.github/copilot-instructions.md',
 			'.claude/skills/repo-tooling.md',
 			'.mcp.json.example',
+			// Only written for a repo with a package.json — nothing to symlink otherwise.
+			'.claude/settings.json',
 			// Only written when the repo ships its own skills/<name>/SKILL.md.
 			'README.md',
 		],

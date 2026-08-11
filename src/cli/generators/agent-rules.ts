@@ -32,6 +32,64 @@ export function hasStaleAgentBlock(content: string): boolean {
 
 export type AgentTarget = 'cursor' | 'copilot' | 'agents-md'
 
+export const CLAUDE_SETTINGS_FILE = path.join('.claude', 'settings.json')
+/**
+ * Directories Claude Code symlinks from the main checkout into a fresh
+ * worktree instead of leaving the agent to reinstall them (#396). An agent
+ * working a per-issue worktree can typecheck immediately rather than paying a
+ * full `pnpm install` first, on every issue.
+ */
+export const WORKTREE_SYMLINK_DIRS = ['node_modules'] as const
+
+function asObject(value: unknown): Record<string, unknown> | null {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null
+}
+
+/** Parsed `.claude/settings.json`, or null when absent, malformed, or not an object. */
+export async function readClaudeSettings(
+	targetDir: string
+): Promise<Record<string, unknown> | null> {
+	try {
+		return asObject(await fs.readJson(path.join(targetDir, CLAUDE_SETTINGS_FILE)))
+	} catch {
+		return null
+	}
+}
+
+/** The `worktree.symlinkDirectories` entries already recorded, ignoring junk. */
+export function worktreeSymlinkDirs(settings: Record<string, unknown> | null): string[] {
+	const dirs = asObject(settings?.worktree)?.symlinkDirectories
+	return Array.isArray(dirs) ? dirs.filter((d): d is string => typeof d === 'string') : []
+}
+
+/**
+ * Upsert `worktree.symlinkDirectories` into `.claude/settings.json`. Repos
+ * already keep `hooks` and `permissions` in that file, so only the one key is
+ * merged and everything else survives — the same contract the AGENTS.md and
+ * copilot-instructions blocks give.
+ *
+ * Returns the written path, or null when there is nothing to write: a repo with
+ * no package.json has no node_modules to symlink (Swift, Python, Perl), and a
+ * file that doesn't parse is left for a human rather than clobbered.
+ */
+export async function installClaudeSettings(targetDir: string): Promise<string | null> {
+	if (!(await fs.pathExists(path.join(targetDir, 'package.json')))) return null
+	const file = path.join(targetDir, CLAUDE_SETTINGS_FILE)
+	const exists = await fs.pathExists(file)
+	const settings = exists ? await readClaudeSettings(targetDir) : {}
+	if (!settings) return null
+	const existing = worktreeSymlinkDirs(settings)
+	const symlinkDirectories = [
+		...existing,
+		...WORKTREE_SYMLINK_DIRS.filter((d) => !existing.includes(d)),
+	]
+	const worktree = { ...asObject(settings.worktree), symlinkDirectories }
+	await fs.outputJson(file, { ...settings, worktree }, { spaces: 2 })
+	return CLAUDE_SETTINGS_FILE
+}
+
 interface Skill {
 	description: string
 	body: string
@@ -102,6 +160,9 @@ export async function installAiSetup(targetDir: string): Promise<string[]> {
 	written.push(await installAgentRules(targetDir, 'copilot'))
 	written.push((await copyPreset('claude-skill', targetDir)).target)
 	written.push((await copyPreset('mcp-example', targetDir)).target)
+	// Only for repos that have node_modules to symlink — see installClaudeSettings.
+	const claudeSettings = await installClaudeSettings(targetDir)
+	if (claudeSettings) written.push(claudeSettings)
 	// If this repo ships its own skills (skills/<name>/SKILL.md), document their
 	// one-command `npx skills add` install in README.md. No-op for repos without.
 	const skillsDoc = await installSkillsInstallDocs(targetDir)

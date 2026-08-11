@@ -306,7 +306,8 @@ export function computeFileList(config: ProjectConfig): string[] {
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
 			'.claude/skills/repo-tooling.md',
-			'.mcp.json.example'
+			'.mcp.json.example',
+			'.claude/settings.json'
 		)
 	}
 	if (config.turborepo) files.push('turbo.json')

@@ -20,6 +20,7 @@ All of it derives from **one source of truth** — the shipped Claude skill
 | `.github/copilot-instructions.md` | GitHub Copilot | Merge-safe delimited block |
 | `.claude/skills/repo-tooling.md` | Claude Code skill | Copied verbatim |
 | `.mcp.json.example` | Model Context Protocol | Commented template (see below) |
+| `.claude/settings.json` | Claude Code worktrees | Merge-safe key upsert (see below), JS repos only |
 | `README.md` | Your repo's own skills | Merge-safe block, only if this repo ships `skills/<name>/SKILL.md` |
 
 Every file is either a merge-safe **delimited block** (`<!-- js-tooling:start -->`
@@ -69,6 +70,30 @@ auto-writes this same install section into your `README.md` — one
 `npx skills add` command per skill, with the GitHub URL derived from
 `package.json`'s `repository`. It's a merge-safe delimited block, so your own
 README content is never touched, and repos without a `skills/` dir get nothing.
+
+## Worktrees: symlink `node_modules` instead of reinstalling it
+
+A Claude Code worktree starts empty, so an agent working one pays a full
+`pnpm install` before it can typecheck, lint or test — every time. `fix ai`
+upserts this into `.claude/settings.json` so Claude symlinks the directory from
+the main checkout instead:
+
+```json
+{
+  "worktree": {
+    "symlinkDirectories": ["node_modules"]
+  }
+}
+```
+
+Only the `worktree.symlinkDirectories` key is touched — your `hooks`,
+`permissions` and anything else in that file survive, and entries you added
+yourself are kept. A file that doesn't parse is left alone rather than
+clobbered; `doctor` reports it as drift for you to repair by hand.
+
+Skipped for Swift, Python and Perl repos — no `node_modules` to symlink, so the
+key would be noise. `doctor` reports `Claude worktree settings`, and it honours
+the same `aiSetup` opt-out in `.repo-tooling.json` as the rest of this feature.
 
 ## CLAUDE.md is a pointer, not a copy
 

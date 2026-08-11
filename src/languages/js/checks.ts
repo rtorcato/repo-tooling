@@ -3,6 +3,11 @@ import fs from 'fs-extra'
 import type { BadgeAudience, FileCheck, GitHooksProfile } from '../../base/checks.js'
 import { hookHasUncommented } from '../../base/checks.js'
 import {
+	CLAUDE_SETTINGS_FILE,
+	readClaudeSettings,
+	worktreeSymlinkDirs,
+} from '../../cli/generators/agent-rules.js'
+import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
 	familyGlob,
@@ -1043,6 +1048,45 @@ export async function checkTreeshakeSetup(dir: string, pkg: Pkg | null): Promise
 		status: 'optional-missing',
 		detail: `package exports ${subpaths.length} subpaths with sideEffects: false but no apps/treeshake-check/`,
 		hint: 'Run `npx @rtorcato/repo-tooling fix treeshake-check` to scaffold an esbuild metafile assertion',
+	}
+}
+
+/**
+ * A Claude Code worktree starts with no node_modules, so every agent working
+ * one pays a full install before it can typecheck, lint or test — unless
+ * `.claude/settings.json` tells Claude to symlink the directory from the main
+ * checkout (#396). JS-only: the other language modules have nothing to symlink.
+ */
+export async function checkClaudeWorktreeSettings(dir: string): Promise<CheckResult> {
+	const check = 'Claude worktree settings'
+	const hint = `Run \`npx ${PACKAGE} fix ai\` to merge worktree.symlinkDirectories into ${CLAUDE_SETTINGS_FILE}`
+	if (!(await fs.pathExists(path.join(dir, CLAUDE_SETTINGS_FILE)))) {
+		return {
+			check,
+			status: 'optional-missing',
+			detail: `no ${CLAUDE_SETTINGS_FILE} — agent worktrees reinstall node_modules from scratch`,
+			hint,
+		}
+	}
+	const settings = await readClaudeSettings(dir)
+	if (!settings) {
+		return {
+			check,
+			status: 'drift',
+			detail: `${CLAUDE_SETTINGS_FILE} is not a readable JSON object`,
+			// `fix ai` deliberately skips an unparseable file rather than clobbering
+			// hand-written hooks/permissions, so this one is on the human.
+			hint: `Repair the JSON in ${CLAUDE_SETTINGS_FILE} by hand — \`fix ai\` refuses to overwrite it`,
+		}
+	}
+	if (worktreeSymlinkDirs(settings).includes('node_modules')) {
+		return { check, status: 'ok', detail: 'worktree.symlinkDirectories carries node_modules' }
+	}
+	return {
+		check,
+		status: 'optional-missing',
+		detail: `${CLAUDE_SETTINGS_FILE} has no worktree.symlinkDirectories entry for node_modules`,
+		hint,
 	}
 }
 

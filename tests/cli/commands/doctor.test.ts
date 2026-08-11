@@ -497,6 +497,39 @@ describe('doctor extended checks', () => {
 		expect(results.find((r) => r.check === 'AI setup')?.status).toBe('ok')
 	})
 
+	const worktreeCheck = async (dir: string) =>
+		(await runDoctor(dir)).find((r) => r.check === 'Claude worktree settings')
+
+	it('Claude worktree settings: optional-missing with no .claude/settings.json (#396)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		expect((await worktreeCheck(dir))?.status).toBe('optional-missing')
+	})
+
+	it('Claude worktree settings: optional-missing when the file lacks the entry', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputJson(join(dir, '.claude', 'settings.json'), { hooks: {} })
+		expect((await worktreeCheck(dir))?.status).toBe('optional-missing')
+	})
+
+	it('Claude worktree settings: ok once node_modules is symlinked', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputJson(join(dir, '.claude', 'settings.json'), {
+			worktree: { symlinkDirectories: ['node_modules'] },
+		})
+		expect((await worktreeCheck(dir))?.status).toBe('ok')
+	})
+
+	it('Claude worktree settings: drift when settings.json is unparseable', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.claude', 'settings.json'), '{ not json')
+		expect((await worktreeCheck(dir))?.status).toBe('drift')
+	})
+
+
 	it('detects lint-staged in package.json', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), {
@@ -1007,6 +1040,15 @@ describe('doctor + lockfile', () => {
 		})
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'lockfile')?.status).toBe('drift')
+	})
+
+	it('demotes Claude worktree settings to ok when the lock records aiSetup: false', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir, { aiSetup: false })
+		const result = (await runDoctor(dir)).find((r) => r.check === 'Claude worktree settings')
+		expect(result?.status).toBe('ok')
+		expect(result?.detail).toMatch(/intentionally declined/)
 	})
 
 	it('demotes Vitest to ok when the lock records testing.framework=jest', async () => {
