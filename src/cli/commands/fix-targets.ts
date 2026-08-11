@@ -31,6 +31,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	'Merge settings': 'github-settings',
 	'Workflow permissions': 'github-settings',
 	'Code-scanning gate': 'github-settings',
+	Milestones: 'milestones',
 	CODEOWNERS: 'codeowners',
 	'GitLab CI': 'gitlab-ci',
 	Turborepo: 'turborepo',

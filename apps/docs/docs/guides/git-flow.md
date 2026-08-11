@@ -83,6 +83,30 @@ under an admin's PAT / GitHub App token and leave "include administrators" off,
 so that identity bypasses.) This bypass is for the release bot only — humans
 always go through a PR.
 
+## Milestones
+
+A milestone is a **release gate, not a chore bucket**. Milestone an issue only if
+leaving it undone would block declaring that stage complete; refactors, CI,
+dependency bumps and docs typos get no milestone. Otherwise the percentage
+inverts — a `v1.0` milestone reads 80% because it is full of chores while the
+three items that actually define v1.0 stay open.
+
+Corollary: `ai-ready` and milestone-worthy are near-mutually-exclusive.
+`ai-ready` means mechanical and bounded; milestone-worthy means it shapes the
+public API, which is precisely what should not run unattended.
+
+`doctor` audits this as the `Milestones` check:
+
+| Finding | Why it matters |
+| --- | --- |
+| 100% complete but still open | "Open" stops meaning "in flight", so the milestone list carries no signal |
+| No issues at all | GitHub renders the bar as `closed / total`, so an empty milestone is a permanent 0% |
+| Titled `backlog` / `post-N` / `someday` | No completion criterion means it can never close — that is a label |
+
+`fix milestones` closes only the first case. It never deletes a milestone and
+never creates one, because both destroy or invent planning intent. A repo with
+no milestones at all is skipped — that is a legitimate choice.
+
 ## Single source of truth
 
 - This standard, `CONTRIBUTING.md` (branch prefixes, the ≤67-char PR-title

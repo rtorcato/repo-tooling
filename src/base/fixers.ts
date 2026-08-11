@@ -26,6 +26,7 @@ import { detectLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
 import { resolveLanguageModule } from '../languages/registry.js'
 import { applyGithubSettings } from './github-settings.js'
+import { closeCompletedMilestones } from './milestones.js'
 import type { CheckResult } from './types.js'
 
 /** A parsed package.json, or null when the repo has none (any non-JS repo). */
@@ -159,6 +160,20 @@ export const BASE_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			return { filesWritten: await applyGithubSettings(targetDir) }
+		},
+	},
+	{
+		target: 'milestones',
+		description:
+			'Close 100%-complete open milestones on GitHub via gh api (mutates the remote repo, not files). Never deletes or creates one',
+		appliesTo: ['Milestones'],
+		outputs: ['GitHub milestones (remote, via gh api)'],
+		// safe-add for the same reason github-settings is: it exempts this fixer
+		// from the `--diff` shadow-run, which executes run() for a mere preview.
+		riskLevel: 'safe-add',
+		canFixDrift: true,
+		async run({ targetDir }) {
+			return { filesWritten: await closeCompletedMilestones(targetDir) }
 		},
 	},
 	{
