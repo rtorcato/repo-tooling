@@ -86,10 +86,32 @@ the main checkout instead:
 }
 ```
 
+In a workspace repo the nested `node_modules` are added too, so
+`pnpm --filter <pkg> build` works in a worktree instead of failing on a missing
+binary. The list is derived from your own workspace globs — `pnpm-workspace.yaml`
+`packages:` or `package.json` `workspaces` — and only workspaces that actually
+have a `node_modules` in the main checkout are listed:
+
+```json
+{
+  "worktree": {
+    "symlinkDirectories": ["node_modules", "apps/docs/node_modules"]
+  }
+}
+```
+
 Only the `worktree.symlinkDirectories` key is touched — your `hooks`,
 `permissions` and anything else in that file survive, and entries you added
 yourself are kept. A file that doesn't parse is left alone rather than
 clobbered; `doctor` reports it as drift for you to repair by hand.
+
+:::warning Never run `pnpm install` inside a worktree
+The worktree's `node_modules` is a symlink, so pnpm writes *through* it and
+re-points the shared root `.bin` shims at that worktree's virtual store —
+breaking every other worktree and the main checkout with a misleading
+`tsc: MODULE_NOT_FOUND`. Recover with `pnpm install --frozen-lockfile` from the
+main checkout.
+:::
 
 Skipped for Swift, Python and Perl repos — no `node_modules` to symlink, so the
 key would be noise. `doctor` reports `Claude worktree settings`, and it honours

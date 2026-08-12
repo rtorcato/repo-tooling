@@ -282,7 +282,7 @@ export async function ensurePackageManager(
  * YAML dependency. Matches `- 'apps/*'` / `- "apps/*"` / `- apps/*` entries
  * under the `packages:` key, stopping at the next top-level key.
  */
-function parseWorkspacePackages(yaml: string): string[] {
+export function parseWorkspacePackages(yaml: string): string[] {
 	const globs: string[] = []
 	let inPackages = false
 	for (const line of yaml.split('\n')) {
