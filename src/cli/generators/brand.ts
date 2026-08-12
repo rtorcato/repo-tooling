@@ -35,8 +35,13 @@ export interface BrandMeta {
 	install: string | null
 }
 
+/** `"` matters because this output also lands in double-quoted attributes (the `aria-label` below). */
 function esc(s: string): string {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
 }
 
 /**

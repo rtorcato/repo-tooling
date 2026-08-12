@@ -66,6 +66,16 @@ describe('generateBrand', () => {
 		expect(svg).toContain('Fast &amp; &lt;safe&gt;')
 		expect(svg).not.toContain('<safe>')
 	})
+
+	it('escapes quotes, which would otherwise break out of the aria-label attribute', async () => {
+		const dir = newTmpDir()
+		await generateBrand({ name: 'x', description: 'The "only" one' }, dir)
+		const svg = await fs.readFile(join(dir, 'brand/social-card.svg'), 'utf-8')
+		expect(svg).toContain('The &quot;only&quot; one')
+		expect(svg).not.toContain('"only"')
+		// the attribute must still be a single balanced pair, not three
+		expect(svg.match(/aria-label="[^"]*"/)?.[0]).toContain('&quot;only&quot;')
+	})
 })
 
 describe('resolveBrandMeta', () => {
