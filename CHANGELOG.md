@@ -1,3 +1,10 @@
+## [3.9.1](https://github.com/rtorcato/repo-tooling/compare/v3.9.0...v3.9.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **commitlint:** stop enforcing body/footer line length ([#402](https://github.com/rtorcato/repo-tooling/issues/402)) ([a272bcd](https://github.com/rtorcato/repo-tooling/commit/a272bcdbdf7dc0a271e3ec80ab5183690d460e12))
+
 # [3.9.0](https://github.com/rtorcato/repo-tooling/compare/v3.8.7...v3.9.0) (2026-08-11)
 
 
