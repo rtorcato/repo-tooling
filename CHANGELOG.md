@@ -1,3 +1,15 @@
+# [3.10.0](https://github.com/rtorcato/repo-tooling/compare/v3.9.2...v3.10.0) (2026-08-12)
+
+
+### Bug Fixes
+
+* **claude:** correct AI-task gate to ai-ready and state auto-merge asymmetry ([#407](https://github.com/rtorcato/repo-tooling/issues/407)) ([47bbd80](https://github.com/rtorcato/repo-tooling/commit/47bbd80141207e66b578876bae2bfcb0b0bcfccd)), closes [#404](https://github.com/rtorcato/repo-tooling/issues/404) [#404](https://github.com/rtorcato/repo-tooling/issues/404) [#405](https://github.com/rtorcato/repo-tooling/issues/405)
+
+
+### Features
+
+* **skills:** ship the ai-issue-loop skill with a user-level install target ([#409](https://github.com/rtorcato/repo-tooling/issues/409)) ([e4e0bcd](https://github.com/rtorcato/repo-tooling/commit/e4e0bcd6efc01775d29d884b2995b5984c2ec6cd)), closes [#404](https://github.com/rtorcato/repo-tooling/issues/404)
+
 ## [3.9.2](https://github.com/rtorcato/repo-tooling/compare/v3.9.1...v3.9.2) (2026-08-12)
 
 
