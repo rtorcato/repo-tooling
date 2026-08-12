@@ -1,3 +1,10 @@
+## [3.10.1](https://github.com/rtorcato/repo-tooling/compare/v3.10.0...v3.10.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **ai:** symlink nested workspace node_modules into agent worktrees ([#408](https://github.com/rtorcato/repo-tooling/issues/408)) ([e3fe54c](https://github.com/rtorcato/repo-tooling/commit/e3fe54ce489f182e2aa25e960f39882254d3276f)), closes [#406](https://github.com/rtorcato/repo-tooling/issues/406)
+
 # [3.10.0](https://github.com/rtorcato/repo-tooling/compare/v3.9.2...v3.10.0) (2026-08-12)
 
 
