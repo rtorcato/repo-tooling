@@ -22,6 +22,7 @@ import {
 	checkAiSetup,
 	checkBrand,
 	checkCodeowners,
+	checkClaudeSkills,
 	checkCodeQL,
 	checkCommunityHealth,
 	checkCoverageUpload,
@@ -252,6 +253,8 @@ async function runBaseChecks(
 	results.push(await checkCommunityHealth(dir))
 	results.push(await checkBrand(dir))
 	results.push(await checkAiSetup(dir))
+	// User-global, not repo state — see checkClaudeSkills on why it never returns drift.
+	results.push(await checkClaudeSkills())
 	results.push(await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget))
 	results.push(await checkCoverageUpload(dir))
 	return results

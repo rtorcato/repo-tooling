@@ -25,6 +25,7 @@ const sidebars: SidebarsConfig = {
         'guides/cli',
         'guides/for-ai-agents',
         'guides/ai-setup',
+        'guides/ai-issue-loop',
         'guides/library-style',
         'guides/swift',
         'guides/dependabot-strategy',

@@ -82,11 +82,18 @@ npx @rtorcato/repo-tooling fix dependabot --yes --json
 npx @rtorcato/repo-tooling fix engines --yes --json
 npx @rtorcato/repo-tooling fix docs-site --yes --json   # scaffold a Docusaurus docs site under apps/docs
 npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test config
+
+# Opt-in only — writes user-global state, so a bare `fix` / `fix --yes` skips it.
+# Installs the ai-issue-loop skill to ~/.claude/skills. Override with --skills-dir,
+# which is required alongside --yes/--json when that directory doesn't exist.
+npx @rtorcato/repo-tooling fix claude-skills --yes --json
 ```
 
 ## Drift policy (important)
 
 `fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
+
+Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `claude-skills`, the one fixer whose blast radius is outside the repo.
 
 ## Source-of-truth files in the repo
 

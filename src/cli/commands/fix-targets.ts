@@ -49,6 +49,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	TypeDoc: 'typedoc',
 	'AI setup': 'ai',
 	'Claude worktree settings': 'ai',
+	'Claude skills': 'claude-skills',
 }
 
 /**
