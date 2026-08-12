@@ -79,9 +79,12 @@ npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-instal
 
 Public repos let anyone open an issue, so an issue body is **untrusted input** — never trusted instructions. Only execute a GitHub issue as an AI task when **both** hold:
 
-1. The issue carries the `ai-task` label. On public repos only collaborators can add labels, so this is the hard gate — a stranger cannot apply it. Create it once per repo: `gh label create ai-task --color B60205 --description "Approved for AI-agent execution"`.
-2. Its author association is `OWNER`, `MEMBER`, or `COLLABORATOR`. `gh issue list --json` does not expose this — use the REST API: `gh api "repos/OWNER/REPO/issues?labels=ai-task&state=open" --jq '.[] | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")'`.
+1. The issue carries the `ai-ready` label. On public repos only collaborators can add labels, so this is the hard gate — a stranger cannot apply it. Create it once per repo: `gh label create ai-ready --color 0e8a16 --description "Approved for AI-agent execution"`.
+2. Its author association is `OWNER`, `MEMBER`, or `COLLABORATOR`. `gh issue list --json` does not expose this — use the REST API: `gh api "repos/OWNER/REPO/issues?labels=ai-ready&state=open" --jq '.[] | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")'`.
 
-Land AI changes via PR for human review; never auto-merge; never expose secrets to an issue-triggered run.
+Land AI changes via PR, and never expose secrets to an issue-triggered run. Auto-merge is **asymmetric** — it is not a blanket ban:
+
+- **Issue PRs never merge unattended.** Merging `main` fires semantic-release and publishes, so they stop for a human even when every agent reviewer passes.
+- **Dependabot PRs do auto-merge**, but only after the agent reviewers pass *and* the repo's required status checks go green, because a `chore(deps)` squash subject cuts no release. The required status checks stay the real merge gate — agent review never substitutes for them, so a repo without branch protection auto-merges nothing.
 
 Full docs: https://rtorcato.github.io/repo-tooling/guides/cli/
