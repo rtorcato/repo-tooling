@@ -2,11 +2,10 @@ export default {
 	extends: ["@commitlint/config-conventional"],
 	ignores: [
 		(commit) => commit.includes("[skip ci]"),
-		// Bot commit bodies are machine-written blocks (dependabot's
-		// `- dependency-name: …` YAML) that never wrap at 72, so every bot PR
-		// failed body-max-line-length. commitlint can't relax a single rule per
-		// commit, so skip bot commits wholesale — squash-merge uses the PR
-		// title, which is still linted on the merge commit.
+		// Bot commits are machine-written end to end, including headers long
+		// enough to trip header-max-length. Skipping them wholesale keeps bot
+		// PRs green — squash-merge uses the PR title, which is still linted on
+		// the merge commit.
 		// ponytail: matches the trailer, not a bare "[bot]", so a human commit
 		// that merely mentions a bot is still linted.
 		(commit) => /^Signed-off-by: .*\[bot\]/m.test(commit),
@@ -32,10 +31,15 @@ export default {
 		],
 		// 100 is the conventional-commits/semantic-release default. 72 was too
 		// tight: GitHub appends " (#NN)" to squash commits, overflowing the
-		// header on main and skipping the release. Body/footer stay at 72.
+		// header on main and skipping the release.
 		"header-max-length": [2, "always", 100],
-		"body-max-line-length": [2, "always", 72],
-		"footer-max-line-length": [2, "always", 72],
+		// Body/footer length is unenforced. Machine-written commits (agents,
+		// bots) don't wrap, and a `BREAKING CHANGE:` footer — the input
+		// semantic-release reads to cut a major — is the worst thing to make
+		// someone hand-rewrap. The subject rules below decide the release
+		// type and stay enforced.
+		"body-max-line-length": [0],
+		"footer-max-line-length": [0],
 		// Enforce case rules (allow common patterns)
 		"subject-case": [0], // Disable case enforcement to allow flexibility
 		"type-case": [2, "always", "lower-case"],
