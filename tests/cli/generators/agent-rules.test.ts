@@ -126,6 +126,26 @@ describe('installClaudeSettings', () => {
 		})
 	})
 
+	it('never writes a path outside the repo, however the workspace glob is spelled', async () => {
+		const root = newTmpDir()
+		const dir = join(root, 'repo')
+		// A sibling of the repo, with the node_modules a traversal glob would match.
+		await fs.ensureDir(join(root, 'shared-lib', 'node_modules'))
+		await fs.ensureDir(join(dir, 'packages', 'core', 'node_modules'))
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			workspaces: ['../shared-lib', 'packages/*'],
+		})
+		await fs.writeFile(
+			join(dir, 'pnpm-workspace.yaml'),
+			`packages:\n  - '${join(root, 'shared-lib')}'\n`
+		)
+		await installClaudeSettings(dir)
+		expect(await fs.readJson(settingsPath(dir))).toEqual({
+			worktree: { symlinkDirectories: ['node_modules', 'packages/core/node_modules'] },
+		})
+	})
+
 	it('refuses to clobber a settings.json that does not parse', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), { name: 'demo' })

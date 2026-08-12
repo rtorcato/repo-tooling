@@ -50,9 +50,24 @@ function asObject(value: unknown): Record<string, unknown> | null {
 }
 
 /**
+ * True when `rel` resolves to something at or under `targetDir`. The entries
+ * this guards end up in `worktree.symlinkDirectories`, which Claude Code reads
+ * as symlink targets — an escaping path would point a worktree symlink outside
+ * the repo, so a workspace glob is never trusted to stay inside on its own.
+ */
+function isInside(targetDir: string, rel: string): boolean {
+	const outward = path.relative(path.resolve(targetDir), path.resolve(targetDir, rel))
+	return outward !== '' && !outward.startsWith('..') && !path.isAbsolute(outward)
+}
+
+/**
  * The repo's own workspace globs, from `pnpm-workspace.yaml` and/or
  * package.json `workspaces` (both array and `{ packages: [] }` forms). Both
  * are read because a pnpm repo can keep its globs in either file.
+ *
+ * Negations (`!apps/x`) are dropped, and so is anything absolute or containing
+ * a `..` segment: a `packages: - '../shared-lib'` entry reads as plausible in a
+ * monorepo but would write an out-of-repo symlink target into settings.json.
  */
 async function workspaceGlobs(targetDir: string): Promise<string[]> {
 	const yamlFile = path.join(targetDir, 'pnpm-workspace.yaml')
@@ -63,7 +78,11 @@ async function workspaceGlobs(targetDir: string): Promise<string[]> {
 		: asObject(pkg?.workspaces)?.packages
 	const declared = Array.isArray(field) ? field : []
 	return [...parseWorkspacePackages(yaml), ...declared].filter(
-		(g): g is string => typeof g === 'string' && !g.startsWith('!')
+		(g): g is string =>
+			typeof g === 'string' &&
+			!g.startsWith('!') &&
+			!path.isAbsolute(g) &&
+			!g.split(/[\\/]/).includes('..')
 	)
 }
 
@@ -86,7 +105,9 @@ export async function workspaceSymlinkDirs(targetDir: string): Promise<string[]>
 		globs.map((g) => `${g}/node_modules`),
 		{ cwd: targetDir }
 	)) {
-		found.push(match.split(path.sep).join('/'))
+		// Belt and braces: the glob result is what actually gets written, so it is
+		// re-checked for containment even though the input globs were filtered.
+		if (isInside(targetDir, match)) found.push(match.split(path.sep).join('/'))
 	}
 	return found.sort()
 }
