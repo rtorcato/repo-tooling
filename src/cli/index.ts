@@ -305,6 +305,13 @@ const TOOL_CATALOG: ToolCatalogEntry[] = [
 		exports: [],
 		fixTarget: 'ai',
 	},
+	{
+		name: 'Claude skills',
+		description:
+			'Install the ai-issue-loop skill into ~/.claude/skills (user-global, opt-in — see --skills-dir)',
+		exports: [],
+		fixTarget: 'claude-skills',
+	},
 ]
 
 program
@@ -343,6 +350,10 @@ program
 	.option('--list', 'List all registered fix targets and exit')
 	.option('--resync', 'Re-scaffold every file recorded in .repo-tooling.json')
 	.option('--diff', 'Show a unified diff of each change before confirming')
+	.option(
+		'--skills-dir <path>',
+		'Where `fix claude-skills` installs user-global agent skills (default: ~/.claude/skills). Required with --yes/--json when that directory does not exist'
+	)
 	.action((target: string | undefined, options) =>
 		fixCommand(target, {
 			directory: options.directory,
@@ -352,6 +363,7 @@ program
 			list: options.list,
 			resync: options.resync,
 			diff: options.diff,
+			skillsDir: options.skillsDir,
 		})
 	)
 

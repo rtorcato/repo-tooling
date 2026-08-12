@@ -174,13 +174,24 @@ ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md 
 ### Use with Claude Code (plugin)
 
 This repo is also a self-hosted Claude Code marketplace. Install the plugin to
-get two skills — `repo-tooling` (adopt/audit the presets via the CLI) and
-`npm-publish` (the family's release rules) — in any session:
+get three skills — `repo-tooling` (adopt/audit the presets via the CLI),
+`npm-publish` (the family's release rules) and `ai-issue-loop` (the label-driven
+issue → PR pipeline) — in any session:
 
 ```
 /plugin marketplace add rtorcato/repo-tooling
 /plugin install repo-tooling@repo-tooling
 ```
+
+`ai-issue-loop` also installs on its own, user-globally, so every repo on the
+machine shares one copy:
+
+```bash
+npx @rtorcato/repo-tooling fix claude-skills   # → ~/.claude/skills/ai-issue-loop/SKILL.md
+```
+
+It writes outside the repo, so it is opt-in: a bare `fix` skips it. See the
+[AI Issue Loop guide](https://rtorcato.github.io/repo-tooling/guides/ai-issue-loop/).
 
 ### Use with other AI tools (Cursor / Copilot / Codex)
 
@@ -217,7 +228,8 @@ MIT — see [LICENSE](LICENSE).
 Any agent that supports the [`skills`](https://www.npmjs.com/package/skills) CLI can install this repo's skills straight from GitHub — no clone, no package install:
 
 ```bash
-npx skills add https://github.com/rtorcato/repo-tooling --skill repo-tooling
+npx skills add https://github.com/rtorcato/repo-tooling --skill ai-issue-loop
 npx skills add https://github.com/rtorcato/repo-tooling --skill npm-publish
+npx skills add https://github.com/rtorcato/repo-tooling --skill repo-tooling
 ```
 <!-- js-tooling:skills:end -->

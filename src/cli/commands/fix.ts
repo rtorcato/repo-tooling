@@ -56,6 +56,8 @@ export interface FixOptions {
 	list?: boolean
 	resync?: boolean
 	diff?: boolean
+	/** Destination for the user-global agent skills `fix claude-skills` writes. */
+	skillsDir?: string
 }
 
 export type FixActionStatus = 'applied' | 'dry-run' | 'skipped' | 'already-ok' | 'unsupported'
@@ -191,7 +193,8 @@ async function previewFixer(
 				return first !== 'node_modules' && first !== 'dist' && first !== 'build' && first !== '.git'
 			},
 		})
-		await fixer.run({ targetDir: tmpDir, pkg, result, lock })
+		// assumeYes: a preview must never prompt.
+		await fixer.run({ targetDir: tmpDir, pkg, result, lock, assumeYes: true })
 
 		const previews: PreviewEntry[] = []
 		const seen = new Set<string>()
@@ -257,7 +260,8 @@ async function applyFixer(
 	pkg: Pkg,
 	lock: Lockfile | null,
 	dryRun: boolean,
-	silent: boolean
+	silent: boolean,
+	opts: { skillsDir?: string; assumeYes: boolean }
 ): Promise<{ filesWritten: string[]; dryRun: boolean }> {
 	if (dryRun) {
 		if (!silent) {
@@ -265,7 +269,7 @@ async function applyFixer(
 		}
 		return { filesWritten: [], dryRun: true }
 	}
-	const { filesWritten } = await fixer.run({ targetDir, pkg, result, lock })
+	const { filesWritten } = await fixer.run({ targetDir, pkg, result, lock, ...opts })
 	if (!silent && filesWritten.length > 0) {
 		console.log(chalk.green(`  ✅ wrote ${filesWritten.join(', ')}`))
 	}
@@ -520,7 +524,10 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			console.log(chalk.gray('   skipped\n'))
 			return
 		}
-		const outcome = await applyFixer(fixer, effectiveResult, targetDir, pkg, lock, dryRun, silent)
+		const outcome = await applyFixer(fixer, effectiveResult, targetDir, pkg, lock, dryRun, silent, {
+			skillsDir: options.skillsDir,
+			assumeYes,
+		})
 		actions.push(
 			recordFor(
 				fixer.target,
@@ -562,6 +569,15 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		if (!silent) {
 			console.log(`  ${chalk.bold(result.check)} (${result.status}) → ${fixer.target}`)
 		}
+		// Opt-in only — `--yes` must not sweep in a fixer that writes outside the repo.
+		if (fixer.explicitOnly) {
+			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', []))
+			if (!silent) {
+				console.log(chalk.gray(`    skipped — run \`fix ${fixer.target}\` explicitly`))
+			}
+			skippedCount++
+			continue
+		}
 		const conflict = noteLockConflict(result.check)
 		if (showDiff && (fixer.riskLevel ?? 'destructive') !== 'safe-add') {
 			const previews = await previewFixer(fixer, result, targetDir, pkg, lock)
@@ -574,7 +590,10 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			skippedCount++
 			continue
 		}
-		const outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent)
+		const outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent, {
+			skillsDir: options.skillsDir,
+			assumeYes,
+		})
 		actions.push(
 			recordFor(
 				fixer.target,

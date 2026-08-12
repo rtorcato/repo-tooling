@@ -108,6 +108,7 @@
 		"tooling/perl/perlcriticrc",
 		"tooling/perl/perltidyrc",
 		"tooling/github-actions/workflows/*.yml",
+		"skills/*/SKILL.md",
 		"README.md",
 		"AGENTS.md"
 	],

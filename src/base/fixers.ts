@@ -11,8 +11,16 @@
  * language-shaped (CI steps, recorded tool choices), so each module ships its
  * own — see src/base/ci.ts for the shell they share.
  */
+import os from 'node:os'
+import path from 'node:path'
 import chalk from 'chalk'
+import inquirer from 'inquirer'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
+import {
+	installClaudeSkill,
+	resolveSkillsDir,
+	SHIPPED_SKILL,
+} from '../cli/generators/claude-skills.js'
 import { generateBrand } from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
@@ -40,6 +48,10 @@ interface FixerContext {
 	pkg: Pkg
 	result: CheckResult
 	lock: Lockfile | null
+	/** `--skills-dir`, for the one fixer that writes user-global state (#404). */
+	skillsDir?: string
+	/** True under `--yes` / `--json`, so a fixer knows a prompt is not available. */
+	assumeYes: boolean
 }
 
 export type FixRiskLevel = 'destructive' | 'safe-merge' | 'safe-add'
@@ -58,6 +70,13 @@ export interface Fixer {
 	riskLevel?: FixRiskLevel
 	canFixDrift?: boolean
 	/**
+	 * Never run by a bare `fix` / `fix --yes`; only when named as the target.
+	 * For fixers whose blast radius is outside the repo — silently rewriting a
+	 * developer's user-global agent skills because they ran a repo audit is a bad
+	 * surprise, and the drift policy's whole promise is that it doesn't surprise.
+	 */
+	explicitOnly?: boolean
+	/**
 	 * Advisories printed from here go to `console.error`, never `console.log`:
 	 * stdout is the `--json` payload's channel and a stray line lands in the
 	 * middle of it, breaking every parser downstream (#357). They're diagnostics,
@@ -69,6 +88,31 @@ export interface Fixer {
 /** The repo's language module, resolved from its marker files. */
 async function moduleFor(targetDir: string) {
 	return resolveLanguageModule(await detectLanguage(targetDir))
+}
+
+/**
+ * Where to install user-global skills, asking only when nothing resolves. Under
+ * `--yes` / `--json` a prompt is not available — `--json` would have its payload
+ * corrupted by one — so an unresolvable destination becomes an advisory and a
+ * no-op rather than a guess at a directory the user never mentioned.
+ */
+async function resolveInstallDir(explicit: string | undefined, assumeYes: boolean) {
+	const { dir } = await resolveSkillsDir(explicit)
+	if (dir) return dir
+	if (assumeYes) {
+		console.error(chalk.yellow('   skipped — no ~/.claude/skills found; pass --skills-dir <path>'))
+		return null
+	}
+	const { answer } = await inquirer.prompt([
+		{
+			type: 'input',
+			name: 'answer',
+			message: 'Install agent skills where?',
+			default: path.join(os.homedir(), '.claude', 'skills'),
+		},
+	])
+	const trimmed = typeof answer === 'string' ? answer.trim() : ''
+	return trimmed ? path.resolve(trimmed) : null
 }
 
 export const BASE_FIXERS: Fixer[] = [
@@ -271,6 +315,39 @@ export const BASE_FIXERS: Fixer[] = [
 		async run({ targetDir }) {
 			const result = await copyPreset('claude-skill', targetDir)
 			return { filesWritten: [result.target] }
+		},
+	},
+	{
+		target: 'claude-skills',
+		description: `Install the ${SHIPPED_SKILL} Claude Code skill into the user-level skills dir (~/.claude/skills, or --skills-dir). Writes outside the repo`,
+		appliesTo: ['Claude skills'],
+		outputs: [`~/.claude/skills/${SHIPPED_SKILL}/SKILL.md`],
+		// safe-add is load-bearing for the same reason it is on github-settings:
+		// it exempts this fixer from the `--diff` shadow-run, which copies the repo
+		// to tmp and *executes* run() — here that would write to the real home dir
+		// during what the user asked to be a preview.
+		riskLevel: 'safe-add',
+		explicitOnly: true,
+		canFixDrift: true,
+		async run({ skillsDir, assumeYes }) {
+			const dir = await resolveInstallDir(skillsDir, assumeYes)
+			if (!dir) return { filesWritten: [] }
+			const result = await installClaudeSkill(dir)
+			if (result.status === 'declined-downgrade') {
+				console.error(
+					chalk.yellow(
+						`   skipped — ${result.file} is at ${result.installedVersion}, newer than the ${result.shippedVersion} this package ships`
+					)
+				)
+				return { filesWritten: [] }
+			}
+			if (result.status === 'up-to-date') return { filesWritten: [] }
+			// Report the resolved real path when the skill is a stow symlink: the bytes
+			// landed in a dotfiles checkout, and that is where the user has to commit them.
+			if (result.viaSymlink) {
+				console.error(chalk.dim(`   wrote through a symlink — commit ${result.realFile}`))
+			}
+			return { filesWritten: [result.realFile] }
 		},
 	},
 	{

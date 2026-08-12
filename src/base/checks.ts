@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { BLOCK_START, hasStaleAgentBlock } from '../cli/generators/agent-rules.js'
 import { BADGE_START, hasPublicOnlyBadges } from '../cli/generators/badges.js'
+import { claudeSkillStatus, SHIPPED_SKILL } from '../cli/generators/claude-skills.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { CheckResult } from './types.js'
 
@@ -474,6 +475,44 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
 		status: 'optional-missing',
 		detail: 'no AI agent files (AGENTS.md, CLAUDE.md, Cursor/Copilot rules, Claude skill)',
 		hint: 'Run `npx @rtorcato/repo-tooling fix ai` to scaffold agent rules for every AI tool',
+	}
+}
+
+/**
+ * The user-global agent skills this package ships (#404).
+ *
+ * The only check that reports on state *outside* the repo being audited, which
+ * is why it never returns `drift` or `missing`: an out-of-date `~/.claude/skills`
+ * is not a defect in this repo, and either of those statuses would fail its CI
+ * over a file CI has never seen. `optional-missing` is the honest verdict — an
+ * opt-in workflow tool that isn't configured — and it leaves the exit code alone.
+ */
+export async function checkClaudeSkills(): Promise<CheckResult> {
+	const check = 'Claude skills'
+	const hint = `Run \`npx @rtorcato/repo-tooling fix claude-skills\` to install the ${SHIPPED_SKILL} skill (writes outside the repo; opt-in, so \`fix\` alone skips it)`
+	const status = await claudeSkillStatus()
+	if (!status.installed) {
+		return {
+			check,
+			status: 'optional-missing',
+			detail: status.file
+				? `${SHIPPED_SKILL} skill is not installed`
+				: `no ~/.claude/skills — the ${SHIPPED_SKILL} skill is not installed`,
+			hint,
+		}
+	}
+	if (status.needsInstall) {
+		return {
+			check,
+			status: 'optional-missing',
+			detail: `${SHIPPED_SKILL} skill is at ${status.installedVersion ?? 'an unstamped version'}; this package ships ${status.shippedVersion}`,
+			hint,
+		}
+	}
+	return {
+		check,
+		status: 'ok',
+		detail: `${SHIPPED_SKILL} skill installed at ${status.installedVersion}`,
 	}
 }
 
