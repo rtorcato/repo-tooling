@@ -1,3 +1,10 @@
+## [3.9.2](https://github.com/rtorcato/repo-tooling/compare/v3.9.1...v3.9.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **brand:** escape double quotes in generated SVG text ([#403](https://github.com/rtorcato/repo-tooling/issues/403)) ([2806804](https://github.com/rtorcato/repo-tooling/commit/2806804bc1a8a424cf8c8569ceb94778795f76f8))
+
 ## [3.9.1](https://github.com/rtorcato/repo-tooling/compare/v3.9.0...v3.9.1) (2026-08-12)
 
 
