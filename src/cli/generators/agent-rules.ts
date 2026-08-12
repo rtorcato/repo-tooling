@@ -1,7 +1,9 @@
+import { glob } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'fs-extra'
 import { copyPreset, getPackageRoot } from '../utils/copy-preset.js'
 import { LEGACY_TOOL_NAME } from '../utils/lockfile.js'
+import { parseWorkspacePackages } from './misc.js'
 import { installSkillsInstallDocs } from './skills-install.js'
 
 /**
@@ -47,6 +49,69 @@ function asObject(value: unknown): Record<string, unknown> | null {
 		: null
 }
 
+/**
+ * True when `rel` resolves to something at or under `targetDir`. The entries
+ * this guards end up in `worktree.symlinkDirectories`, which Claude Code reads
+ * as symlink targets — an escaping path would point a worktree symlink outside
+ * the repo, so a workspace glob is never trusted to stay inside on its own.
+ */
+function isInside(targetDir: string, rel: string): boolean {
+	const outward = path.relative(path.resolve(targetDir), path.resolve(targetDir, rel))
+	return outward !== '' && !outward.startsWith('..') && !path.isAbsolute(outward)
+}
+
+/**
+ * The repo's own workspace globs, from `pnpm-workspace.yaml` and/or
+ * package.json `workspaces` (both array and `{ packages: [] }` forms). Both
+ * are read because a pnpm repo can keep its globs in either file.
+ *
+ * Negations (`!apps/x`) are dropped, and so is anything absolute or containing
+ * a `..` segment: a `packages: - '../shared-lib'` entry reads as plausible in a
+ * monorepo but would write an out-of-repo symlink target into settings.json.
+ */
+async function workspaceGlobs(targetDir: string): Promise<string[]> {
+	const yamlFile = path.join(targetDir, 'pnpm-workspace.yaml')
+	const yaml = (await fs.pathExists(yamlFile)) ? await fs.readFile(yamlFile, 'utf-8') : ''
+	const pkg = asObject(await fs.readJson(path.join(targetDir, 'package.json')).catch(() => null))
+	const field = Array.isArray(pkg?.workspaces)
+		? pkg.workspaces
+		: asObject(pkg?.workspaces)?.packages
+	const declared = Array.isArray(field) ? field : []
+	return [...parseWorkspacePackages(yaml), ...declared].filter(
+		(g): g is string =>
+			typeof g === 'string' &&
+			!g.startsWith('!') &&
+			!path.isAbsolute(g) &&
+			!g.split(/[\\/]/).includes('..')
+	)
+}
+
+/**
+ * The nested `<workspace>/node_modules` to symlink alongside the root one
+ * (#406). Without them a workspace-scoped command in a fresh worktree fails on
+ * a missing binary — `pnpm --filter <pkg> build` can't find its bin shims —
+ * which reads as a broken toolchain rather than a missing symlink.
+ *
+ * Derived from the repo's own workspace globs, never a hardcoded layout: this
+ * is a public CLI and every consumer nests its packages differently.
+ * Workspaces with no `node_modules` in the main checkout are skipped, because
+ * an entry pointing at nothing warns on every worktree creation.
+ */
+export async function workspaceSymlinkDirs(targetDir: string): Promise<string[]> {
+	const globs = await workspaceGlobs(targetDir)
+	if (globs.length === 0) return []
+	const found: string[] = []
+	for await (const match of glob(
+		globs.map((g) => `${g}/node_modules`),
+		{ cwd: targetDir }
+	)) {
+		// Belt and braces: the glob result is what actually gets written, so it is
+		// re-checked for containment even though the input globs were filtered.
+		if (isInside(targetDir, match)) found.push(match.split(path.sep).join('/'))
+	}
+	return found.sort()
+}
+
 /** Parsed `.claude/settings.json`, or null when absent, malformed, or not an object. */
 export async function readClaudeSettings(
 	targetDir: string
@@ -81,10 +146,8 @@ export async function installClaudeSettings(targetDir: string): Promise<string |
 	const settings = exists ? await readClaudeSettings(targetDir) : {}
 	if (!settings) return null
 	const existing = worktreeSymlinkDirs(settings)
-	const symlinkDirectories = [
-		...existing,
-		...WORKTREE_SYMLINK_DIRS.filter((d) => !existing.includes(d)),
-	]
+	const wanted = [...WORKTREE_SYMLINK_DIRS, ...(await workspaceSymlinkDirs(targetDir))]
+	const symlinkDirectories = [...existing, ...wanted.filter((d) => !existing.includes(d))]
 	const worktree = { ...asObject(settings.worktree), symlinkDirectories }
 	await fs.outputJson(file, { ...settings, worktree }, { spaces: 2 })
 	return CLAUDE_SETTINGS_FILE

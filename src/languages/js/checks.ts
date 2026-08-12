@@ -5,6 +5,7 @@ import { hookHasUncommented } from '../../base/checks.js'
 import {
 	CLAUDE_SETTINGS_FILE,
 	readClaudeSettings,
+	workspaceSymlinkDirs,
 	worktreeSymlinkDirs,
 } from '../../cli/generators/agent-rules.js'
 import {
@@ -1079,13 +1080,20 @@ export async function checkClaudeWorktreeSettings(dir: string): Promise<CheckRes
 			hint: `Repair the JSON in ${CLAUDE_SETTINGS_FILE} by hand — \`fix ai\` refuses to overwrite it`,
 		}
 	}
-	if (worktreeSymlinkDirs(settings).includes('node_modules')) {
-		return { check, status: 'ok', detail: 'worktree.symlinkDirectories carries node_modules' }
+	const recorded = worktreeSymlinkDirs(settings)
+	const wanted = ['node_modules', ...(await workspaceSymlinkDirs(dir))]
+	const missing = wanted.filter((d) => !recorded.includes(d))
+	if (missing.length === 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `worktree.symlinkDirectories carries ${wanted.join(', ')}`,
+		}
 	}
 	return {
 		check,
 		status: 'optional-missing',
-		detail: `${CLAUDE_SETTINGS_FILE} has no worktree.symlinkDirectories entry for node_modules`,
+		detail: `${CLAUDE_SETTINGS_FILE} has no worktree.symlinkDirectories entry for ${missing.join(', ')}`,
 		hint,
 	}
 }

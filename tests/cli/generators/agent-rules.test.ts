@@ -102,6 +102,50 @@ describe('installClaudeSettings', () => {
 		expect(await installAiSetup(dir)).not.toContain(join('.claude', 'settings.json'))
 	})
 
+	it('adds nested workspace node_modules derived from pnpm-workspace.yaml', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'demo' })
+		await fs.writeFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n")
+		await fs.ensureDir(join(dir, 'apps', 'docs', 'node_modules'))
+		// A workspace with no node_modules of its own is skipped, not listed.
+		await fs.ensureDir(join(dir, 'apps', 'web'))
+		await installClaudeSettings(dir)
+		expect(await fs.readJson(settingsPath(dir))).toEqual({
+			worktree: { symlinkDirectories: ['node_modules', 'apps/docs/node_modules'] },
+		})
+	})
+
+	it('derives them from package.json workspaces too, without duplicating', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', workspaces: ['packages/*'] })
+		await fs.ensureDir(join(dir, 'packages', 'core', 'node_modules'))
+		await installClaudeSettings(dir)
+		await installClaudeSettings(dir)
+		expect(await fs.readJson(settingsPath(dir))).toEqual({
+			worktree: { symlinkDirectories: ['node_modules', 'packages/core/node_modules'] },
+		})
+	})
+
+	it('never writes a path outside the repo, however the workspace glob is spelled', async () => {
+		const root = newTmpDir()
+		const dir = join(root, 'repo')
+		// A sibling of the repo, with the node_modules a traversal glob would match.
+		await fs.ensureDir(join(root, 'shared-lib', 'node_modules'))
+		await fs.ensureDir(join(dir, 'packages', 'core', 'node_modules'))
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			workspaces: ['../shared-lib', 'packages/*'],
+		})
+		await fs.writeFile(
+			join(dir, 'pnpm-workspace.yaml'),
+			`packages:\n  - '${join(root, 'shared-lib')}'\n`
+		)
+		await installClaudeSettings(dir)
+		expect(await fs.readJson(settingsPath(dir))).toEqual({
+			worktree: { symlinkDirectories: ['node_modules', 'packages/core/node_modules'] },
+		})
+	})
+
 	it('refuses to clobber a settings.json that does not parse', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), { name: 'demo' })

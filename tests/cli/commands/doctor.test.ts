@@ -522,6 +522,19 @@ describe('doctor extended checks', () => {
 		expect((await worktreeCheck(dir))?.status).toBe('ok')
 	})
 
+	it('Claude worktree settings: optional-missing when a workspace node_modules is absent (#406)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n")
+		await fs.ensureDir(join(dir, 'apps', 'docs', 'node_modules'))
+		await fs.outputJson(join(dir, '.claude', 'settings.json'), {
+			worktree: { symlinkDirectories: ['node_modules'] },
+		})
+		const result = await worktreeCheck(dir)
+		expect(result?.status).toBe('optional-missing')
+		expect(result?.detail).toContain('apps/docs/node_modules')
+	})
+
 	it('Claude worktree settings: drift when settings.json is unparseable', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
