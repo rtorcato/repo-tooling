@@ -23,7 +23,7 @@ If asked to "release" or "bump the version", the correct action is to land a
 
 ## How a release actually happens
 
-1. Work on a branch; commit with Conventional Commits (header ≤ 72 chars).
+1. Work on a branch; commit with Conventional Commits (header ≤ 100 chars).
 2. Open a PR; merge to `main` after review + green CI.
 3. semantic-release runs on `main` and decides the bump from the commits:
    - `fix:` → patch

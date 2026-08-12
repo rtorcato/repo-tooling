@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Commit and push the current working tree after running all CI gates locally. Triggers on "ship it", "commit and push", "let's push", "/ship", or any explicit request to commit-then-push. Encodes this repo's conventions (pnpm + biome + commitlint strict-50/72 + semantic-release on main). Does NOT trigger on commit-only or push-only requests — use those flows directly.
+description: Commit and push the current working tree after running all CI gates locally. Triggers on "ship it", "commit and push", "let's push", "/ship", or any explicit request to commit-then-push. Encodes this repo's conventions (pnpm + biome + commitlint + semantic-release on main). Does NOT trigger on commit-only or push-only requests — use those flows directly.
 ---
 
 # Ship workflow
@@ -39,9 +39,8 @@ If any fail, **STOP**. Report the failure and ask the user how to proceed. Do no
 ## 4. Write a conventional commit
 
 Commitlint config (`tooling/commitlint/commitlint.mjs`) enforces:
-- **header-max-length: 50** (subject line ≤50 chars including `type:` prefix)
-- **body-max-line-length: 72**
-- **footer-max-line-length: 72**
+- **header-max-length: 100** (subject line ≤100 chars including `type:` prefix — keep PR titles ≤93 so GitHub's ` (#N)` squash suffix still fits)
+- body and footer line length: **unenforced**
 - types allowed: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`
 - type must be lowercase, scope must be lowercase
 - no trailing period on subject
@@ -50,13 +49,14 @@ Format the message via HEREDOC to preserve newlines:
 
 ```bash
 git commit -m "$(cat <<'EOF'
-type: short subject (≤50 chars total)
+type: short subject (≤100 chars total)
 
-Body explaining WHY, wrapped at 72.
+Body explaining WHY. Wrap around 72 for readability in `git log`, but
+it isn't enforced.
 
 Optional footers:
 Refs: #123
-BREAKING CHANGE: 50-char-wrapped description.
+BREAKING CHANGE: description.
 EOF
 )"
 ```

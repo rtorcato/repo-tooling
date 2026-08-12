@@ -100,7 +100,7 @@ npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test confi
 
 ## Conventions in this repo
 
-- Conventional commits enforced via commitlint; header max 72 chars
+- Conventional commits enforced via commitlint; header max 100 chars, body/footer line length unenforced
 - Biome for lint + format (run via `pnpm exec biome check --config-path=tooling/biome/biome.json src scripts`)
 - Tests live alongside source in `tests/`; vitest with no separate config
 - semantic-release runs on push to `main`; `fix:` → patch, `feat:` → minor, `chore:` / `docs:` → no release

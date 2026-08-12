@@ -39,3 +39,17 @@ describe('commitlint ignores', () => {
 		expect(isIgnored('feat(swift): add DocC check\n\nCloses #311')).toBe(false)
 	})
 })
+
+describe('commitlint line-length rules', () => {
+	// Six sibling repos consume this preset with no override, so a stray
+	// re-tightening here silently breaks every agent-written BREAKING CHANGE
+	// footer downstream.
+	it('leaves body and footer line length unenforced', () => {
+		expect(config.rules['body-max-line-length']).toEqual([0])
+		expect(config.rules['footer-max-line-length']).toEqual([0])
+	})
+
+	it('caps the header at 100 so squash suffixes fit', () => {
+		expect(config.rules['header-max-length']).toEqual([2, 'always', 100])
+	})
+})

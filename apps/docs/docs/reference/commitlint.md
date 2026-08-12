@@ -11,7 +11,18 @@ import config from '@rtorcato/repo-tooling/commitlint/config'
 export default config
 ```
 
-The preset enforces [Conventional Commits](https://www.conventionalcommits.org/) with stricter subject-line length limits.
+The preset enforces [Conventional Commits](https://www.conventionalcommits.org/).
+
+## Line lengths
+
+- `header-max-length`: **100** — the conventional-commits/semantic-release
+  default. Keep PR titles ≤ 93 chars so GitHub's ` (#N)` squash suffix still
+  fits on the merged commit.
+- `body-max-line-length` / `footer-max-line-length`: **off**. Machine-written
+  commits don't wrap, and a `BREAKING CHANGE:` footer is the input
+  semantic-release reads to cut a major — a length cap there is friction on the
+  highest-stakes commit in the repo. The subject-line rules that decide the
+  release type stay enforced.
 
 ## Skipped commits
 
@@ -19,7 +30,7 @@ Two kinds of commit are ignored outright:
 
 - anything containing `[skip ci]` (semantic-release's own release commits)
 - bot commits, matched on a `Signed-off-by: …[bot]` trailer — Dependabot and
-  Renovate bodies are machine-written blocks that never wrap at 72 characters
+  Renovate write the whole message, headers included
 
 ## With Husky
 
