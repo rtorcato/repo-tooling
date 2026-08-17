@@ -1,3 +1,10 @@
+# [3.11.0](https://github.com/rtorcato/repo-tooling/compare/v3.10.2...v3.11.0) (2026-08-17)
+
+
+### Features
+
+* **github:** make squash the only merge method in the standard ([#415](https://github.com/rtorcato/repo-tooling/issues/415)) ([a2d53ff](https://github.com/rtorcato/repo-tooling/commit/a2d53ffae6b3b813f487cbe7b0d37e549aae037a)), closes [#204](https://github.com/rtorcato/repo-tooling/issues/204) [#N](https://github.com/rtorcato/repo-tooling/issues/N)
+
 ## [3.10.2](https://github.com/rtorcato/repo-tooling/compare/v3.10.1...v3.10.2) (2026-08-17)
 
 
