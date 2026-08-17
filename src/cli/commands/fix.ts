@@ -16,7 +16,13 @@ import type { CheckResult } from './doctor.js'
 import { runDoctor } from './doctor.js'
 import { declinedInLock, lockfilePatchForTarget } from './fix-targets.js'
 import { computeFileList } from './setup-presets.js'
-import { BASE_FIXERS, type Fixer, type FixRiskLevel, type Pkg } from '../../base/fixers.js'
+import {
+	BASE_FIXERS,
+	type Fixer,
+	FixerAbort,
+	type FixRiskLevel,
+	type Pkg,
+} from '../../base/fixers.js'
 import { FIXERS, readPackageJson } from '../../languages/js/fixers.js'
 import { PERL_FIXERS } from '../../languages/perl/fixers.js'
 import { PYTHON_FIXERS } from '../../languages/python/fixers.js'
@@ -524,9 +530,28 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			console.log(chalk.gray('   skipped\n'))
 			return
 		}
+		// ponytail: only the targeted path is guarded, because the only fixer that
+		// aborts is `claude-skills` and it is explicitOnly — the bulk loop below
+		// cannot reach it. A non-explicitOnly fixer that throws FixerAbort would
+		// surface as an unhandled rejection there; guard the loop when one exists.
 		const outcome = await applyFixer(fixer, effectiveResult, targetDir, pkg, lock, dryRun, silent, {
 			skillsDir: options.skillsDir,
 			assumeYes,
+		}).catch((err: unknown) => {
+			if (!(err instanceof FixerAbort)) throw err
+			if (json) {
+				console.log(
+					JSON.stringify(
+						{ directory: targetDir, target: fixer.target, error: err.code, hint: err.hint },
+						null,
+						2
+					)
+				)
+			} else {
+				console.error(chalk.red(`\n❌ ${fixer.target}: ${err.message}`))
+				if (err.hint) console.error(chalk.gray(`   ${err.hint}\n`))
+			}
+			process.exit(1)
 		})
 		actions.push(
 			recordFor(

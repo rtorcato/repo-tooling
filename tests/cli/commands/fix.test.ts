@@ -1,7 +1,9 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runDoctor } from '../../../src/cli/commands/doctor.js'
 import { fixCommand, getFixers, listFixers } from '../../../src/cli/commands/fix.js'
 import {
@@ -1534,5 +1536,53 @@ describe('fix github-actions packageManager', () => {
 		expect(workflow).toContain('run: pnpm typecheck')
 		expect(workflow).not.toContain('run: pnpm knip')
 		expect(workflow).not.toContain('run: pnpm coverage')
+	})
+})
+
+describe('fix claude-skills', () => {
+	// The fixer resolves ~/.claude/skills through os.homedir(), which reads $HOME
+	// on POSIX — so pointing HOME at an empty tmp dir is what "no skills dir
+	// anywhere" looks like from inside the command.
+	const realHome = process.env.HOME
+	beforeEach(() => {
+		process.env.HOME = mkdtempSync(join(tmpdir(), 'repo-tooling-home-'))
+	})
+	afterEach(async () => {
+		const home = process.env.HOME
+		if (realHome === undefined) delete process.env.HOME
+		else process.env.HOME = realHome
+		if (home) await fs.remove(home)
+	})
+
+	it('--json errors instead of reporting an empty success when nothing resolves (#411)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(
+				fixCommand('claude-skills', { directory: dir, json: true })
+			).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			const payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(payload.error).toBe('no-skills-dir')
+			expect(payload.hint).toMatch(/--skills-dir/)
+			// The bug this covers: the old code emitted a normal actions payload
+			// with an empty filesWritten, which reads as "already up to date".
+			expect(payload.actions).toBeUndefined()
+		} finally {
+			logSpy.mockRestore()
+			exitSpy.mockRestore()
+		}
+	})
+
+	it('--yes --skills-dir installs the skill', async () => {
+		const dir = newTmpDir()
+		const skillsDir = join(process.env.HOME as string, 'skills')
+		await seedPackageJson(dir)
+		await fixCommand('claude-skills', { directory: dir, yes: true, skillsDir })
+		expect(await fs.pathExists(join(skillsDir, 'ai-issue-loop', 'SKILL.md'))).toBe(true)
 	})
 })
