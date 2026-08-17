@@ -3,19 +3,22 @@
 // and can also run the package.json "typecheck" script manually.
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
+    // TypeScript 7 removed `baseUrl`. `paths` without it resolves relative to
+    // this file, which is what `@site/*` needs anyway — it never resolved
+    // before, because this config sets no `paths` at all.
+    "paths": { "@site/*": ["./*"] },
     "strict": true,
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowJs": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": [".docusaurus", "build"]
+  "include": ["src/", "docusaurus.config.ts", "sidebars.ts"],
+  "exclude": [".docusaurus", "build", "node_modules"]
 }
