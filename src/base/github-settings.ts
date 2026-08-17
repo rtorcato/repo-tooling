@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import type { CheckResult } from './types.js'
@@ -386,10 +387,56 @@ async function hasCodeScanningRuleset(
 	return 'no'
 }
 
+/** Release config filenames semantic-release picks up that we can import. */
+const RELEASE_CONFIG_FILES = ['release.config.mjs', 'release.config.js'] as const
+
+/** How to stop the GH013 collision, wherever it is reported. */
+const GIT_PLUGIN_REMEDY =
+	'Drop `@semantic-release/git` and `@semantic-release/changelog` from the release config (rtorcato/repo-tooling#417) — the shipped `semantic-release/github` preset already has, so a bare re-export of it is enough. Do NOT add a bypass actor to the ruleset: it exempts the one commit nobody reviews'
+
+/**
+ * Does the repo's release config still resolve `@semantic-release/git`?
+ *
+ * That plugin pushes the release commit straight to the default branch, which a
+ * `code_scanning` ruleset rejects with GH013 — a commit created seconds earlier
+ * can never carry CodeQL results (#417). The two are individually correct and
+ * jointly unwinnable, and the failure is silent, because a merge that produces
+ * no release goes green either way.
+ *
+ * The config is imported rather than grepped, because every cheaper signal is
+ * wrong on a config we ship or recommend: a bare re-export names no plugin at
+ * all; a pinned older repo-tooling re-exports a preset that *does* have it; the
+ * current preset mentions it in a comment explaining its absence; and the
+ * documented way to drop it lists the name in a filter. Only the resolved
+ * `plugins` array distinguishes those. Importing config is what semantic-release
+ * itself does with this file.
+ *
+ * `false` on anything unreadable — a false negative is a missed warning, a false
+ * positive is a wrong one.
+ */
+export async function releaseUsesGitPlugin(dir: string): Promise<boolean> {
+	for (const name of RELEASE_CONFIG_FILES) {
+		const file = path.join(dir, name)
+		if (!(await fs.pathExists(file))) continue
+		try {
+			const mod = await import(pathToFileURL(file).href)
+			const plugins: unknown = mod.default?.plugins
+			if (!Array.isArray(plugins)) return false
+			return plugins.some((p) => (Array.isArray(p) ? p[0] : p) === '@semantic-release/git')
+		} catch {
+			return false
+		}
+	}
+	return false
+}
+
 /**
  * The #269 gap: CodeQL results are advisory by default — a High alert still
  * merges unless a branch ruleset requires the code-scanning check. Only
  * meaningful where CodeQL is actually on, so it no-ops otherwise.
+ *
+ * It also reports the #419 collision: a gate that is correctly in place is still
+ * drift when the release config pushes to the branch it guards.
  */
 async function checkCodeScanningRuleset(
 	gh: GhExec,
@@ -403,14 +450,25 @@ async function checkCodeScanningRuleset(
 	}
 	const found = await hasCodeScanningRuleset(gh, nwo, branch)
 	if (found === 'skip') return skip(check, 'could not read rulesets')
+	const gitPlugin = await releaseUsesGitPlugin(dir)
 	if (found === 'yes') {
+		if (gitPlugin) {
+			return {
+				check,
+				status: 'drift',
+				detail: `active ruleset requires code-scanning on ${branch}, but the release config still uses \`@semantic-release/git\` — its push to ${branch} will be rejected with GH013, and the release fails silently`,
+				hint: GIT_PLUGIN_REMEDY,
+			}
+		}
 		return { check, status: 'ok', detail: `active ruleset requires code-scanning on ${branch}` }
 	}
 	return {
 		check,
 		status: 'drift',
 		detail: `CodeQL is on but no active ruleset requires code-scanning on ${branch} (High alerts stay advisory)`,
-		hint: 'Run `npx @rtorcato/repo-tooling fix github-settings` to add a code_scanning branch ruleset that blocks merge on High+ CodeQL alerts',
+		hint: gitPlugin
+			? `Run \`npx @rtorcato/repo-tooling fix github-settings\` to add a code_scanning branch ruleset that blocks merge on High+ CodeQL alerts. That ruleset will reject this repo's release commit with GH013 while the config uses \`@semantic-release/git\`. ${GIT_PLUGIN_REMEDY}`
+			: 'Run `npx @rtorcato/repo-tooling fix github-settings` to add a code_scanning branch ruleset that blocks merge on High+ CodeQL alerts',
 	}
 }
 
@@ -555,9 +613,13 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 	}
 
 	// Code-scanning ruleset (#269): POST only when CodeQL is on and no active gate
-	// covers the default branch — the check re-read keeps this idempotent.
-	const cs = await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir)
-	if (cs.status === 'drift') {
+	// covers the default branch. Asked directly rather than via the check's
+	// status, because that status is also `drift` when the gate is already
+	// installed and merely collides with the release config (#419) — keying the
+	// POST off it would file a duplicate ruleset.
+	const codeql = await codeqlEnabled(gh, info.nwo, dir)
+	const ruleset = codeql ? await hasCodeScanningRuleset(gh, info.nwo, info.branch) : 'skip'
+	if (ruleset === 'no') {
 		const label = `code-scanning ruleset on ${info.branch}`
 		const r = await gh(
 			['api', '-X', 'POST', `repos/${info.nwo}/rulesets`, '--input', '-'],
@@ -566,6 +628,19 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 		if (r.ok) applied.push(label)
 		else
 			console.error(chalk.yellow(`   could not apply ${label}: ${r.stderr.trim() || 'gh error'}`))
+	}
+
+	// #419: the gate is right and the release config is wrong, so say so instead
+	// of quietly installing the half that breaks the next release. Warned on
+	// `yes` too — that repo is already broken, it just hasn't released yet.
+	if (ruleset !== 'skip' && (await releaseUsesGitPlugin(dir))) {
+		console.error(
+			chalk.yellow(
+				`   warning: code-scanning is enforced on ${info.branch}, but the release config still uses \`@semantic-release/git\`.\n` +
+					`   Its push to ${info.branch} will be rejected with GH013 and the release will fail silently.\n` +
+					`   ${GIT_PLUGIN_REMEDY}.`
+			)
+		)
 	}
 
 	if (applied.length === 0) console.error(chalk.gray('   already configured — nothing to apply'))
