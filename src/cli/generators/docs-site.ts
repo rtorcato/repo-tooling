@@ -374,8 +374,12 @@ on:
     branches: [main]
     paths:
       - 'apps/docs/**'
-      - 'CHANGELOG.md'
       - '.github/workflows/docs.yml'
+  # The changelog page is built from GitHub Releases, and no release commit
+  # lands on main any more (see #417) — so a push trigger alone would never
+  # rebuild the site after a release.
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:

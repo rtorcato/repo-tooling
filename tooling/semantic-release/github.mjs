@@ -41,7 +41,10 @@ export default {
 		[
 			'@semantic-release/github',
 			{
-				assets: ['CHANGELOG.md', 'package.json', 'README.md'],
+				// README.md only. CHANGELOG.md and package.json are frozen on the
+				// default branch (see the note at the bottom of this file), so
+				// attaching them to each release would ship stale artifacts.
+				assets: ['README.md'],
 				message: 'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}',
 				// Don't label the "release is failing" issue. The default is
 				// ['semantic-release'], and GitHub rejects issue creation outright when
@@ -52,12 +55,6 @@ export default {
 				labels: false,
 			},
 		],
-		[
-			'@semantic-release/changelog',
-			{
-				changelogFile: 'CHANGELOG.md',
-			},
-		],
 		// npm publishing goes through OIDC trusted publishing — no NPM_TOKEN. The
 		// release job runs with `id-token: write` and npm (>=11.5.1) authenticates
 		// via the GitHub Actions trusted publisher configured on the package, and
@@ -65,18 +62,33 @@ export default {
 		// @semantic-release/npm; a public repo that only wants GitHub releases can
 		// opt out with NPM_PUBLISH=false (the version in package.json is still bumped).
 		['@semantic-release/npm', { npmPublish: process.env.NPM_PUBLISH !== 'false', pkgRoot: '.' }],
-		[
-			'@semantic-release/git',
-			{
-				assets: ['package.json', 'CHANGELOG.md'],
-				message: 'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}',
-				// Skip hooks by disabling Husky
-				skipCommitHooks: true,
-				prepareCmd: 'pnpm exec biome format package.json',
-			},
-		],
 	],
 }
+
+// Two plugins are deliberately absent, and the second follows from the first.
+//
+// @semantic-release/git — it committed package.json + CHANGELOG.md and pushed
+// them straight to the default branch. `fix github-settings` installs a
+// `code-scanning-main` ruleset requiring CodeQL results on that branch, and a
+// commit created seconds earlier can never have them: the push fails with
+// GH013. Unwinnable rather than flaky — the commit must exist to be scanned,
+// and be scanned to exist. See rtorcato/repo-tooling#417.
+//
+// @semantic-release/changelog — it writes CHANGELOG.md, which only
+// @semantic-release/git ever committed back. Without that push it regenerates
+// the file inside the CI workspace and throws it away every release, implying
+// CHANGELOG.md is still maintained when it is frozen. The two are one feature
+// in two plugins; shipping one without the other is the trap, not the fix.
+//
+// The consequence, stated plainly because it is easy to miss: **CHANGELOG.md
+// and the `version` field in package.json stop moving on the default branch.**
+// The git tag, the npm publish and the GitHub Release are unaffected and are
+// the source of truth for what shipped. Build any user-facing changelog from
+// GitHub Releases — `repo-tooling copy docusaurus-sync-changelog` does exactly
+// that — never from the frozen file.
+//
+// Adding a bypass actor to the ruleset would also make the push succeed. It is
+// not the answer: it exempts the one commit nobody reviews.
 
 // [
 // 	'@semantic-release/exec',
