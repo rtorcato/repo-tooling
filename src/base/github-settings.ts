@@ -124,6 +124,9 @@ interface RepoInfo {
 	autoMerge: boolean
 	squashMerge: boolean
 	deleteOnMerge: boolean
+	/** Squash must be the *only* method — see checkMergeSettings (#410). */
+	mergeCommit: boolean
+	rebaseMerge: boolean
 	// The merge-setting booleans are only returned when the token has admin:read.
 	// A read/write token (e.g. CI's default GITHUB_TOKEN) omits them entirely, so
 	// we track visibility to skip the check rather than read `undefined` as "off".
@@ -155,9 +158,15 @@ async function probeRepo(exec: GhExec): Promise<{ info: RepoInfo } | { skip: str
 			autoMerge: d.allow_auto_merge === true,
 			squashMerge: d.allow_squash_merge === true,
 			deleteOnMerge: d.delete_branch_on_merge === true,
-			mergeVisible: ['allow_auto_merge', 'allow_squash_merge', 'delete_branch_on_merge'].every(
-				(k) => typeof d[k] === 'boolean'
-			),
+			mergeCommit: d.allow_merge_commit === true,
+			rebaseMerge: d.allow_rebase_merge === true,
+			mergeVisible: [
+				'allow_auto_merge',
+				'allow_squash_merge',
+				'delete_branch_on_merge',
+				'allow_merge_commit',
+				'allow_rebase_merge',
+			].every((k) => typeof d[k] === 'boolean'),
 		},
 	}
 }
@@ -240,6 +249,16 @@ async function checkBranchProtection(
 	return { check, status: 'ok', detail: `${branch} protected per standard` }
 }
 
+/**
+ * Squash is required *and exclusive* (#410). Leaving merge-commit or rebase
+ * enabled only makes them available on the merge button, and one mis-click puts
+ * every intermediate branch commit on the default branch: semantic-release then
+ * reads subjects nobody reviewed (a stray `fix:` inside a docs PR cuts a
+ * release), and `ai-issue-loop`'s Pass 2 stops finding the `(#N)` squash subject
+ * it uses to confirm work landed, so worktrees leak. Observed on `js-common`
+ * #204, whose CONTRIBUTING already said squash-only — the rule existed, nothing
+ * enforced it.
+ */
 function checkMergeSettings(info: RepoInfo): CheckResult {
 	const check = 'Merge settings'
 	// The token can't see the merge-setting fields (no admin:read) — skip rather
@@ -249,14 +268,16 @@ function checkMergeSettings(info: RepoInfo): CheckResult {
 	if (!info.autoMerge) deltas.push('auto-merge disabled')
 	if (!info.squashMerge) deltas.push('squash-merge disabled')
 	if (!info.deleteOnMerge) deltas.push('delete-branch-on-merge disabled')
+	if (info.mergeCommit) deltas.push('merge commits allowed (squash only)')
+	if (info.rebaseMerge) deltas.push('rebase merging allowed (squash only)')
 	if (deltas.length)
 		return {
 			check,
 			status: 'drift',
 			detail: deltas.join('; '),
-			hint: 'Enable auto-merge, squash-merge, and delete-branch-on-merge in repo settings',
+			hint: 'Enable auto-merge and delete-branch-on-merge, and make squash the only merge method',
 		}
-	return { check, status: 'ok', detail: 'auto-merge, squash-merge, delete-on-merge all on' }
+	return { check, status: 'ok', detail: 'squash-only, auto-merge and delete-on-merge on' }
 }
 
 async function checkWorkflowPermissions(exec: GhExec, nwo: string): Promise<CheckResult> {
@@ -437,7 +458,7 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 	const commands: GhCommand[] = []
 	if (state.merge)
 		commands.push({
-			label: 'merge settings (auto-merge, squash, delete-on-merge)',
+			label: 'merge settings (squash-only, auto-merge, delete-on-merge)',
 			args: [
 				'api',
 				'-X',
@@ -449,6 +470,10 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 				'allow_squash_merge=true',
 				'-F',
 				'delete_branch_on_merge=true',
+				'-F',
+				'allow_merge_commit=false',
+				'-F',
+				'allow_rebase_merge=false',
 			],
 		})
 	if (state.protection)

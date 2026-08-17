@@ -107,8 +107,10 @@ implication, a deliberate omission, a follow-up that must be filed.
 npx @rtorcato/repo-tooling fix github-settings --yes
 ```
 
-`GITHUB_STANDARD` already encodes exactly what the loop needs: squash merge,
-auto-merge, delete-branch-on-merge, and `required_pull_request_reviews: null`
+`GITHUB_STANDARD` already encodes exactly what the loop needs: squash as the
+*only* merge method (Pass 2 finds the `(#N)` squash subject on `main` to confirm
+work landed — a merge commit makes it look like nothing merged, and the worktree
+leaks), auto-merge, delete-branch-on-merge, and `required_pull_request_reviews: null`
 with a comment explaining that required review deadlocks auto-merge. You also
 need **at least one required status check** — that is the gate doing the real
 work.
@@ -116,7 +118,7 @@ work.
 Verify:
 
 ```bash
-gh api repos/$OWNER_REPO --jq '{allow_squash_merge, allow_auto_merge, delete_branch_on_merge}'
+gh api repos/$OWNER_REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge}'
 gh api repos/$OWNER_REPO/branches/main/protection \
   --jq '{contexts: .required_status_checks.contexts, reviews: .required_pull_request_reviews}'
 ```

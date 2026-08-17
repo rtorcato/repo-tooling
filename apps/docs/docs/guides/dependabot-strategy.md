@@ -46,7 +46,7 @@ using `dependabot/fetch-metadata` + `gh pr merge --auto --squash`, gated to
 > and classic branch protection are unavailable on **private repos on the free
 > tier** — GitHub returns 403 for branch protection and silently ignores
 > `allow_auto_merge`. On such repos `repo-tooling fix github-settings` applies what
-> it can (squash-merge, delete-branch-on-merge, workflow permissions) but leaves
+> it can (squash-only merging, delete-branch-on-merge, workflow permissions) but leaves
 > auto-merge and protection off, so `doctor` keeps reporting them as drift. Make
 > the repo public or upgrade the plan to converge fully.
 
