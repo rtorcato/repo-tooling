@@ -1,3 +1,10 @@
+## [3.10.2](https://github.com/rtorcato/repo-tooling/compare/v3.10.1...v3.10.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **cli:** fail closed when `fix claude-skills` has nowhere to install ([#413](https://github.com/rtorcato/repo-tooling/issues/413)) ([816ecef](https://github.com/rtorcato/repo-tooling/commit/816ecefbd8229fad6b3ff27388c6d2d957eca942))
+
 ## [3.10.1](https://github.com/rtorcato/repo-tooling/compare/v3.10.0...v3.10.1) (2026-08-12)
 
 
