@@ -32,13 +32,14 @@ the protected branch — it would deadlock every PR.
 
 **If you ever switch to real approvals** — a second GitHub account reviewing as
 someone else, so `--approve` works and the `ai-ok-*` labels become unnecessary —
-know that `@rtorcato/repo-tooling` will fight you. Its `GITHUB_STANDARD`
-(`src/base/github-settings.ts`) treats any `required_pull_request_reviews` as
-drift because required review deadlocks solo Dependabot auto-merge, and
-`fix github-settings` silently PUTs it back to `null`. So the next unrelated
-`doctor`/`fix` run would strip your approval rule and hand merges back to the
-labels, with nothing in the output tying it to this pipeline. Change the standard
-there first, or don't go down that path.
+first check what else writes your branch protection. Any repo-settings tool that
+treats `required_pull_request_reviews` as drift will PUT it back to `null` on its
+next run, because required review deadlocks solo Dependabot auto-merge. Your
+approval rule vanishes, merges hand themselves back to the labels, and nothing in
+that tool's output ties the change to this pipeline. `@rtorcato/repo-tooling`,
+which ships this skill, is one such tool — its repo-settings standard asserts
+`required_pull_request_reviews: null`, so change that standard before you rely on
+real approvals.
 
 The same constraint makes everything an agent posts *look* hand-written by the
 owner. So **every comment any agent leaves — review, blocked, gave-up, declined —
