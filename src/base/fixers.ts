@@ -85,6 +85,24 @@ export interface Fixer {
 	run(ctx: FixerContext): Promise<{ filesWritten: string[] }>
 }
 
+/**
+ * A fixer giving up on something the user has to resolve — a wrong flag, not a
+ * crash. Thrown rather than printed-and-exited because a fixer runs underneath
+ * `--json`: only the command layer knows whether the failure should surface as
+ * an error payload on stdout or a red line on stderr. `code` joins the same
+ * vocabulary as the command's own `no-lockfile` / `unknown-target` errors.
+ */
+export class FixerAbort extends Error {
+	constructor(
+		readonly code: string,
+		message: string,
+		readonly hint?: string
+	) {
+		super(message)
+		this.name = 'FixerAbort'
+	}
+}
+
 /** The repo's language module, resolved from its marker files. */
 async function moduleFor(targetDir: string) {
 	return resolveLanguageModule(await detectLanguage(targetDir))
@@ -93,15 +111,20 @@ async function moduleFor(targetDir: string) {
 /**
  * Where to install user-global skills, asking only when nothing resolves. Under
  * `--yes` / `--json` a prompt is not available — `--json` would have its payload
- * corrupted by one — so an unresolvable destination becomes an advisory and a
- * no-op rather than a guess at a directory the user never mentioned.
+ * corrupted by one — and guessing at a directory the user never mentioned is not
+ * an option either, so the run fails: `--skills-dir` is required in that case
+ * (#411). It used to warn and no-op, which exited 0 with an empty `filesWritten`
+ * that no `--json` consumer could tell apart from "already up to date".
  */
 async function resolveInstallDir(explicit: string | undefined, assumeYes: boolean) {
 	const { dir } = await resolveSkillsDir(explicit)
 	if (dir) return dir
 	if (assumeYes) {
-		console.error(chalk.yellow('   skipped — no ~/.claude/skills found; pass --skills-dir <path>'))
-		return null
+		throw new FixerAbort(
+			'no-skills-dir',
+			'no ~/.claude/skills found, and --yes/--json cannot prompt for one',
+			'pass --skills-dir <path>'
+		)
 	}
 	const { answer } = await inquirer.prompt([
 		{
