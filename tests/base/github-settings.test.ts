@@ -7,6 +7,7 @@ import {
 	checkGitHubSettings,
 	type GhExec,
 	type GhResult,
+	releaseUsesGitPlugin,
 } from '../../src/base/github-settings.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
@@ -51,9 +52,42 @@ const COMPLIANT_WORKFLOW = JSON.stringify({
 	can_approve_pull_request_reviews: false,
 })
 
+/** A repo carrying a release.config.mjs, for the #419 collision checks. */
+function repoWithRelease(source: string): string {
+	const dir = gitRepo()
+	fs.writeFileSync(join(dir, 'release.config.mjs'), source)
+	return dir
+}
+
+const WITH_GIT_PLUGIN = `export default {
+	plugins: ['@semantic-release/npm', ['@semantic-release/git', { assets: ['package.json'] }]],
+}
+`
+
+/** The remedy's own shape: the plugin name appears, filtered out of the array. */
+const FILTERS_GIT_PLUGIN = `const DROPPED = new Set(['@semantic-release/git', '@semantic-release/changelog'])
+const preset = { plugins: ['@semantic-release/npm', '@semantic-release/git'] }
+export default {
+	...preset,
+	plugins: preset.plugins.filter((p) => !DROPPED.has(Array.isArray(p) ? p[0] : p)),
+}
+`
+
 /** default-setup reads `not-configured` unless overridden → CodeQL gate no-ops. */
 const CODEQL_OFF = JSON.stringify({ state: 'not-configured' })
 const CODEQL_ON = JSON.stringify({ state: 'configured' })
+
+/** CodeQL on, with an active code_scanning ruleset covering the default branch. */
+const ACTIVE_GATE = {
+	defaultSetup: ok(CODEQL_ON),
+	rulesets: ok(JSON.stringify([{ id: 7, target: 'branch', enforcement: 'active' }])),
+	rulesetDetail: ok(
+		JSON.stringify({
+			rules: [{ type: 'code_scanning' }],
+			conditions: { ref_name: { include: ['~DEFAULT_BRANCH'] } },
+		})
+	),
+}
 
 interface GhOverrides {
 	repo?: GhResult
@@ -131,16 +165,7 @@ describe('checkGitHubSettings — code-scanning gate (#269)', () => {
 	})
 
 	it('is ok when an active ruleset enforces code-scanning on the default branch', async () => {
-		const exec = fakeGh({
-			defaultSetup: ok(CODEQL_ON),
-			rulesets: ok(JSON.stringify([{ id: 7, target: 'branch', enforcement: 'active' }])),
-			rulesetDetail: ok(
-				JSON.stringify({
-					rules: [{ type: 'code_scanning' }],
-					conditions: { ref_name: { include: ['~DEFAULT_BRANCH'] } },
-				})
-			),
-		})
+		const exec = fakeGh(ACTIVE_GATE)
 		const g = gate(await checkGitHubSettings(gitRepo(), exec))
 		expect(g?.status).toBe('ok')
 		expect(g?.detail).toContain('requires code-scanning on main')
@@ -166,6 +191,43 @@ describe('checkGitHubSettings — code-scanning gate (#269)', () => {
 		const g = gate(await checkGitHubSettings(gitRepo(), exec))
 		expect(g?.status).toBe('ok')
 		expect(g?.detail).toContain('skipped')
+	})
+
+	it('drifts when the gate is in place but the release config still pushes to it (#419)', async () => {
+		const dir = repoWithRelease(WITH_GIT_PLUGIN)
+		const g = gate(await checkGitHubSettings(dir, fakeGh(ACTIVE_GATE)))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('GH013')
+		expect(g?.hint).toContain('@semantic-release/changelog')
+	})
+
+	it('names the collision in the hint when the gate is still missing (#419)', async () => {
+		const dir = repoWithRelease(WITH_GIT_PLUGIN)
+		const exec = fakeGh({ defaultSetup: ok(CODEQL_ON), rulesets: ok('[]') })
+		const g = gate(await checkGitHubSettings(dir, exec))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('High alerts stay advisory')
+		expect(g?.hint).toContain('GH013')
+	})
+})
+
+describe('releaseUsesGitPlugin (#419)', () => {
+	it('is true when the resolved plugins include the git plugin', async () => {
+		expect(await releaseUsesGitPlugin(repoWithRelease(WITH_GIT_PLUGIN))).toBe(true)
+	})
+
+	it('is false when a config lists the plugin only to filter it out', async () => {
+		// The documented way to drop it names the plugin in a Set, so any
+		// text-level grep reports this backwards. Only the resolved array is right.
+		expect(await releaseUsesGitPlugin(repoWithRelease(FILTERS_GIT_PLUGIN))).toBe(false)
+	})
+
+	it('is false when there is no release config at all', async () => {
+		expect(await releaseUsesGitPlugin(gitRepo())).toBe(false)
+	})
+
+	it('is false (never a wrong warning) when the config throws on import', async () => {
+		expect(await releaseUsesGitPlugin(repoWithRelease('throw new Error("boom")\n'))).toBe(false)
 	})
 })
 
@@ -426,5 +488,41 @@ describe('applyGithubSettings', () => {
 		const { exec, calls } = recordingGh()
 		await applyGithubSettings(gitRepo(), exec)
 		expect(calls.some((c) => c.args.includes('POST'))).toBe(false)
+	})
+
+	it('does not POST a duplicate when the gate exists and the config collides (#419)', async () => {
+		// That combination is drift on the check side now, so the POST must not
+		// key off the check's status.
+		const { exec, calls } = recordingGh(ACTIVE_GATE)
+		const labels = await applyGithubSettings(repoWithRelease(WITH_GIT_PLUGIN), exec)
+		expect(labels).not.toContain('code-scanning ruleset on main')
+		expect(
+			calls.some((c) => c.args.some((a) => a.endsWith('/rulesets')) && c.args.includes('POST'))
+		).toBe(false)
+	})
+
+	it('warns about the git plugin while still installing the ruleset (#419)', async () => {
+		const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			const { exec } = recordingGh({ defaultSetup: ok(CODEQL_ON), rulesets: ok('[]') })
+			const labels = await applyGithubSettings(repoWithRelease(WITH_GIT_PLUGIN), exec)
+			expect(labels).toContain('code-scanning ruleset on main')
+			const said = warn.mock.calls.flat().join('\n')
+			expect(said).toContain('GH013')
+			expect(said).toContain('@semantic-release/git')
+		} finally {
+			warn.mockRestore()
+		}
+	})
+
+	it('stays quiet when the release config has no git plugin (#419)', async () => {
+		const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			const { exec } = recordingGh(ACTIVE_GATE)
+			await applyGithubSettings(repoWithRelease(FILTERS_GIT_PLUGIN), exec)
+			expect(warn.mock.calls.flat().join('\n')).not.toContain('GH013')
+		} finally {
+			warn.mockRestore()
+		}
 	})
 })

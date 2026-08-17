@@ -55,6 +55,12 @@ That script reads the Releases API, so it cannot freeze the way a file does. Its
 docs workflow needs a `release: types: [published]` trigger — with no release
 commit landing on `main`, a `push` trigger never fires after a release.
 
+`doctor` and `fix github-settings` detect the broken combination for you: if
+code-scanning is enforced on the default branch while your `release.config.mjs`
+still resolves `@semantic-release/git`, the code-scanning gate reports drift and
+names `GH013`. It reads the resolved `plugins` array, so re-exporting the preset
+or filtering the plugin out both read correctly.
+
 :::warning Adding a bypass actor is not the fix
 Exempting the release bot from the ruleset would also make the push succeed. It
 exempts the one commit nobody reviews.
