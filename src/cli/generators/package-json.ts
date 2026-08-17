@@ -396,14 +396,12 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 		deps['cz-conventional-changelog'] = '^3.3.0'
 	}
 
-	// Semantic release. The shipped github preset activates the changelog and
-	// git plugins (and @semantic-release/github), so they must be installed too
-	// or `semantic-release` crashes with "Cannot find module".
+	// Semantic release. The shipped github preset uses only plugins that
+	// semantic-release core bundles, plus @semantic-release/github — no
+	// changelog/git plugins (see tooling/semantic-release/github.mjs, #417).
 	if (config.semanticRelease) {
 		deps['semantic-release'] = '^25.0.0'
 		deps['@semantic-release/github'] = '^12.0.0'
-		deps['@semantic-release/changelog'] = '^6.0.0'
-		deps['@semantic-release/git'] = '^10.0.0'
 	}
 
 	return deps

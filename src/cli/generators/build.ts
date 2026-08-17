@@ -145,46 +145,17 @@ export default mergeConfig(preset, defineConfig({ plugins: [react()] }))
 	await fs.writeFile(viteConfigPath, viteConfig)
 }
 
-// Plugins the github/gitlab preset activates that semantic-release core does
-// NOT bundle (core bundles only commit-analyzer, release-notes-generator, npm,
-// github). Without these in the consumer's deps, `semantic-release` crashes
-// with "Cannot find module '@semantic-release/changelog'" on first run.
-const RELEASE_PLUGIN_DEPS: Record<string, string> = {
-	'@semantic-release/changelog': '^6.0.0',
-	'@semantic-release/git': '^10.0.0',
-}
-
 export async function generateSemanticReleaseConfig(targetDir: string): Promise<string[]> {
 	const releaseConfigPath = path.join(targetDir, 'release.config.mjs')
 
 	const releaseConfig = `export { default } from '@rtorcato/repo-tooling/semantic-release/github'
 `
 
+	// No extra plugin deps to inject: the github preset now uses only what
+	// semantic-release core bundles (commit-analyzer, release-notes-generator,
+	// npm, github). The changelog and git plugins are gone — see #417.
 	await fs.writeFile(releaseConfigPath, releaseConfig)
-	const written = ['release.config.mjs']
-
-	// Ensure the preset's non-bundled plugins are installed; otherwise the
-	// scaffolded release.config.mjs references modules the consumer lacks.
-	const pkgPath = path.join(targetDir, 'package.json')
-	if (await fs.pathExists(pkgPath)) {
-		const pkg = (await fs.readJson(pkgPath)) as Record<string, any>
-		const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>
-		const deps = (pkg.dependencies ?? {}) as Record<string, string>
-		let changed = false
-		for (const [name, version] of Object.entries(RELEASE_PLUGIN_DEPS)) {
-			if (!devDeps[name] && !deps[name]) {
-				devDeps[name] = version
-				changed = true
-			}
-		}
-		if (changed) {
-			pkg.devDependencies = devDeps
-			await fs.writeJson(pkgPath, pkg, { spaces: 2 })
-			written.push('package.json')
-		}
-	}
-
-	return written
+	return ['release.config.mjs']
 }
 
 export async function generateChangesetsConfig(targetDir: string) {
