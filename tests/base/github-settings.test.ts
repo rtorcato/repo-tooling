@@ -35,6 +35,9 @@ const COMPLIANT_REPO = JSON.stringify({
 	allow_auto_merge: true,
 	allow_squash_merge: true,
 	delete_branch_on_merge: true,
+	// Squash-only: the other two methods are off, not merely unused (#410).
+	allow_merge_commit: false,
+	allow_rebase_merge: false,
 })
 const COMPLIANT_PROTECTION = JSON.stringify({
 	required_status_checks: { strict: false, contexts: ['lint', 'typecheck', 'build', 'test'] },
@@ -226,11 +229,34 @@ describe('checkGitHubSettings — drift', () => {
 				allow_auto_merge: false,
 				allow_squash_merge: true,
 				delete_branch_on_merge: true,
+				allow_merge_commit: false,
+				allow_rebase_merge: false,
 			})
 		)
 		const ms = byName(await checkGitHubSettings(gitRepo(), fakeGh({ repo })), 'Merge settings')
 		expect(ms?.status).toBe('drift')
 		expect(ms?.detail).toContain('auto-merge disabled')
+	})
+
+	it('drifts when merge commits or rebase merging are still allowed (#410)', async () => {
+		// Everything the old standard asked for is on — squash just isn't exclusive,
+		// so the merge button still offers all three and one mis-click puts every
+		// branch commit on main.
+		const repo = ok(
+			JSON.stringify({
+				full_name: 'owner/repo',
+				default_branch: 'main',
+				allow_auto_merge: true,
+				allow_squash_merge: true,
+				delete_branch_on_merge: true,
+				allow_merge_commit: true,
+				allow_rebase_merge: true,
+			})
+		)
+		const ms = byName(await checkGitHubSettings(gitRepo(), fakeGh({ repo })), 'Merge settings')
+		expect(ms?.status).toBe('drift')
+		expect(ms?.detail).toContain('merge commits allowed')
+		expect(ms?.detail).toContain('rebase merging allowed')
 	})
 
 	it('skips (not drifts) when the token cannot see merge fields (no admin:read)', async () => {
@@ -275,6 +301,10 @@ describe('buildGhApplyCommands', () => {
 				'allow_squash_merge=true',
 				'-F',
 				'delete_branch_on_merge=true',
+				'-F',
+				'allow_merge_commit=false',
+				'-F',
+				'allow_rebase_merge=false',
 			],
 			['api', '-X', 'PUT', 'repos/owner/repo/branches/main/protection', '--input', '-'],
 			[
@@ -344,6 +374,8 @@ describe('applyGithubSettings', () => {
 				allow_auto_merge: false,
 				allow_squash_merge: false,
 				delete_branch_on_merge: false,
+				allow_merge_commit: true,
+				allow_rebase_merge: true,
 			})
 		)
 		const { exec, calls } = recordingGh({
@@ -358,7 +390,7 @@ describe('applyGithubSettings', () => {
 		})
 		const labels = await applyGithubSettings(gitRepo(), exec)
 		expect(labels).toEqual([
-			'merge settings (auto-merge, squash, delete-on-merge)',
+			'merge settings (squash-only, auto-merge, delete-on-merge)',
 			'branch protection on main',
 			'workflow permissions (read-only)',
 		])

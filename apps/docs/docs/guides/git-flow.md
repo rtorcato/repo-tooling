@@ -52,6 +52,19 @@ and deletion are blocked.
 | Allow force pushes | ❌ |
 | Allow deletions | ❌ |
 
+### Merge method: squash, and only squash
+
+`fix github-settings` turns `allow_merge_commit` and `allow_rebase_merge` **off**
+as well as turning squash on, so the merge button offers one option. Leaving the
+other two enabled means the rule lives only in this document, and one mis-click
+puts every intermediate branch commit on `main`:
+
+- **semantic-release reads them all.** Squash yields one commit per PR whose
+  subject is the reviewed PR title. A merge commit lands subjects nobody
+  reviewed — a stray `fix:` inside a docs-only PR cuts a release.
+- **Agent worktrees leak.** `ai-issue-loop` confirms work landed by finding the
+  `(#N)` squash subject on `main`; without it, cleanup silently finds nothing.
+
 ### Required status checks
 
 The required contexts are exactly the jobs that run on **`pull_request → main`**:

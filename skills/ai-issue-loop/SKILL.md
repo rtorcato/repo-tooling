@@ -805,10 +805,14 @@ times against one trivial issue and watch the labels advance.
 ## Repo prerequisites
 
 ```bash
-gh api repos/$OWNER_REPO --jq '{allow_squash_merge, allow_auto_merge, delete_branch_on_merge}'
+gh api repos/$OWNER_REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge}'
 gh api repos/$OWNER_REPO/branches/main/protection --jq '{contexts: .required_status_checks.contexts, reviews: .required_pull_request_reviews}'
 ```
 
-Need: squash + auto-merge + delete-on-merge all true, at least one required
-status check, and `required_pull_request_reviews: null`. See the
-`github-pr-workflow` skill for the one-time bootstrap.
+Need: auto-merge + delete-on-merge + squash all true, **`allow_merge_commit` and
+`allow_rebase_merge` both false**, at least one required status check, and
+`required_pull_request_reviews: null`. Squash has to be the *only* method, not
+merely an available one: Pass 2 confirms a PR landed by finding its `(#N)` squash
+subject on `main`, and a merge commit leaves nothing to find — the worktree then
+survives every tick and its `ai-wip` slot leaks. See the `github-pr-workflow`
+skill for the one-time bootstrap.
