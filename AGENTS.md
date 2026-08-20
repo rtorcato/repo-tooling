@@ -95,6 +95,8 @@ npx @rtorcato/repo-tooling fix claude-skills --yes --json
 
 Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `claude-skills`, the one fixer whose blast radius is outside the repo.
 
+A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
+
 ## Source-of-truth files in the repo
 
 - `src/cli/commands/setup.ts` — `ProjectConfig` interface and the setup orchestrator

@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import { BLOCK_START, hasStaleAgentBlock } from '../cli/generators/agent-rules.js'
 import { BADGE_START, hasPublicOnlyBadges } from '../cli/generators/badges.js'
 import { claudeSkillStatus, SHIPPED_SKILL } from '../cli/generators/claude-skills.js'
+import { DEPENDABOT_CONFIG_PATHS, dependabotIgnoreRules } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { CheckResult } from './types.js'
 
@@ -280,7 +281,7 @@ export async function checkGitHubActions(
 }
 
 export async function checkDependabot(dir: string): Promise<CheckResult> {
-	for (const candidate of ['.github/dependabot.yml', '.github/dependabot.yaml']) {
+	for (const candidate of DEPENDABOT_CONFIG_PATHS) {
 		const candidatePath = path.join(dir, candidate)
 		if (await fs.pathExists(candidatePath)) {
 			// The canonical standard (apps/docs/docs/guides/dependabot-strategy.md) is
@@ -298,18 +299,29 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 			if (!(await fs.pathExists(automergePath))) {
 				deltas.push('missing dependabot-automerge workflow')
 			}
+			// Repo-local `ignore:` rules aren't drift — they're deliberate, and the
+			// canonical config has no way to express them. Report them anyway so the
+			// reason `fix dependabot` refuses is visible before anyone runs it (#422).
+			const ignored = dependabotIgnoreRules(content)
+			const ignoreNote =
+				ignored.length === 0
+					? ''
+					: ` — ${ignored.length} local \`ignore:\` rule(s) the canonical config cannot express (${ignored.join(', ')}); \`fix dependabot\` refuses rather than drop them`
 			if (deltas.length > 0) {
 				return {
 					check: 'Dependabot',
 					status: 'drift',
-					detail: `${candidate} drifts from canonical (${deltas.join('; ')})`,
-					hint: 'Run `npx @rtorcato/repo-tooling fix dependabot` to apply the canonical grouping + auto-merge workflow',
+					detail: `${candidate} drifts from canonical (${deltas.join('; ')})${ignoreNote}`,
+					hint:
+						ignored.length > 0
+							? 'Run `npx @rtorcato/repo-tooling fix dependabot --diff` — it will refuse until the `ignore:` block is dealt with by hand'
+							: 'Run `npx @rtorcato/repo-tooling fix dependabot` to apply the canonical grouping + auto-merge workflow',
 				}
 			}
 			return {
 				check: 'Dependabot',
 				status: 'ok',
-				detail: `${candidate} + auto-merge workflow`,
+				detail: `${candidate} + auto-merge workflow${ignoreNote}`,
 			}
 		}
 	}

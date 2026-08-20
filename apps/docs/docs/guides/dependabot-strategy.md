@@ -89,6 +89,21 @@ CI. Closing stale PRs is the normal, expected hygiene step — not a loss of wor
 - `repo-tooling doctor` flags drift from the canonical config; `repo-tooling fix`
   re-applies it. A strategy change propagates to every repo via `fix`.
 
+## 7. Repo-local `ignore:` rules
+
+`fix dependabot` writes the file wholesale, and the canonical config has no
+`ignore:` block — so a hand-added ignore rule (a dependency held back on purpose,
+usually with the reason in a comment above it) would be deleted by the next `fix`
+with nothing left to report the loss.
+
+It isn't. `fix dependabot` **refuses** when the existing config carries `ignore:`
+rules, naming each one, and `doctor` reports them in the Dependabot detail line so
+they're visible beforehand. Deliberate ignore rules are not drift: the check still
+reads `ok`.
+
+To proceed anyway, deal with the block by hand — copy it back into the regenerated
+file, or delete it to accept the loss — then re-run `fix dependabot`.
+
 ## Canonical `dependabot.yml`
 
 ```yaml

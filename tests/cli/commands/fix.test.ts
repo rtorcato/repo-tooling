@@ -35,6 +35,18 @@ async function seedCanonicalDependabot(dir: string) {
 	)
 }
 
+// A hand-maintained ignore rule of the kind the canonical template can't
+// express, so regenerating would delete it silently (#422).
+const DEPENDABOT_WITH_IGNORE = `version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    ignore:
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+`
+
 async function seedPackageJson(dir: string, extra: Record<string, unknown> = {}) {
 	await fs.writeJson(join(dir, 'package.json'), {
 		name: 'demo',
@@ -308,6 +320,94 @@ describe('fix targeted', () => {
 		expect(
 			await fs.pathExists(join(dir, '.github', 'workflows', 'dependabot-automerge.yml'))
 		).toBe(true)
+	})
+
+	it('fix dependabot refuses rather than drop repo-local ignore rules', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_WITH_IGNORE)
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('dependabot', { directory: dir, yes: true })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			// The file is untouched, and the message names the rule being protected.
+			expect(await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')).toBe(
+				DEPENDABOT_WITH_IGNORE
+			)
+			expect(errSpy.mock.calls.flat().join('\n')).toMatch(/typescript/)
+		} finally {
+			exitSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
+	it('fix dependabot --json reports the refusal as an error payload', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_WITH_IGNORE)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('dependabot', { directory: dir, json: true })).rejects.toThrow('exit')
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(parsed.error).toBe('dependabot-ignore-rules')
+			expect(parsed.hint).toBeTruthy()
+		} finally {
+			exitSpy.mockRestore()
+			logSpy.mockRestore()
+		}
+	})
+
+	it('fix dependabot --diff previews a refusal without crashing', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_WITH_IGNORE)
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			// The preview shadow-runs the fixer, which aborts there too — it must
+			// fall through to the real run's error path, not an unhandled rejection.
+			await expect(
+				fixCommand('dependabot', { directory: dir, yes: true, diff: true })
+			).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+		} finally {
+			exitSpy.mockRestore()
+			logSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
+	it('fix --json skips the refusing fixer and still applies the rest', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_WITH_IGNORE)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			// A bulk run must not abort on one refusal — nor overwrite the rules.
+			await fixCommand(undefined, { directory: dir, json: true })
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			const dependabot = parsed.actions.find(
+				(a: { target: string | null }) => a.target === 'dependabot'
+			)
+			expect(dependabot).toMatchObject({ status: 'skipped', filesWritten: [] })
+			expect(parsed.actions.some((a: { status: string }) => a.status === 'applied')).toBe(true)
+			expect(await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')).toBe(
+				DEPENDABOT_WITH_IGNORE
+			)
+		} finally {
+			logSpy.mockRestore()
+			errSpy.mockRestore()
+		}
 	})
 
 	it('fix unknown-target exits non-zero', async () => {

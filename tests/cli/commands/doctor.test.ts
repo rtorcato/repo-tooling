@@ -957,6 +957,40 @@ describe('doctor security checks', () => {
 		expect(results.find((r) => r.check === 'Dependabot')?.status).toBe('ok')
 	})
 
+	it('names repo-local ignore rules without calling them drift (#422)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const configPath = join(dir, '.github', 'dependabot.yml')
+		const canonical = await fs.readFile(configPath, 'utf-8')
+		await fs.writeFile(
+			configPath,
+			canonical.replace(
+				'    groups:',
+				'    ignore:\n      - dependency-name: typescript\n        update-types:\n          - version-update:semver-major\n    groups:'
+			)
+		)
+		const dep = (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		// A deliberate ignore rule is not drift — but it is why `fix` will refuse,
+		// so it has to be visible before anyone runs `fix`.
+		expect(dep?.status).toBe('ok')
+		expect(dep?.detail).toMatch(/typescript/)
+		expect(dep?.detail).toMatch(/refuses/)
+	})
+
+	it('warns about ignore rules alongside real drift', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(
+			join(dir, '.github', 'dependabot.yml'),
+			'version: 2\nupdates:\n  - package-ecosystem: npm\n    ignore:\n      - dependency-name: typescript\n'
+		)
+		const dep = (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('drift')
+		expect(dep?.detail).toMatch(/typescript/)
+		expect(dep?.hint).toMatch(/refuses|refuse/)
+	})
+
 	it('reports Dependabot ok when renovate.json exists (Renovate is an accepted alternative)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
