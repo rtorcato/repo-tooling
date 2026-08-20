@@ -26,6 +26,7 @@ import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
 import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc.js'
 import {
+	findDependabotIgnoreRules,
 	generateCodeQLWorkflow,
 	generateDependabotConfig,
 	generateRenovateConfig,
@@ -178,6 +179,20 @@ export const BASE_FIXERS: Fixer[] = [
 		outputs: ['.github/dependabot.yml', '.github/workflows/dependabot-automerge.yml'],
 		canFixDrift: true,
 		async run({ targetDir }) {
+			// The template owns the whole file but emits no `ignore:` block, so
+			// regenerating deletes any repo-local ignore rule — silently, and with
+			// nothing in `doctor` to report the loss afterwards, because from the
+			// fixer's point of view the file then matches the standard exactly (#422).
+			// Refuse rather than warn: an unattended `fix --yes` would walk past a
+			// warning, and the rules are unrecoverable once written over.
+			const ignored = await findDependabotIgnoreRules(targetDir)
+			if (ignored) {
+				throw new FixerAbort(
+					'dependabot-ignore-rules',
+					`refusing to overwrite ${ignored.file} — it has ${ignored.rules.length} \`ignore:\` rule(s) the canonical config does not reproduce: ${ignored.rules.join(', ')}`,
+					`re-add the \`ignore:\` block after regenerating, or delete it from ${ignored.file} to accept the loss — then re-run \`fix dependabot\``
+				)
+			}
 			const { dependabotEcosystem } = await moduleFor(targetDir)
 			return { filesWritten: await generateDependabotConfig(targetDir, dependabotEcosystem) }
 		},

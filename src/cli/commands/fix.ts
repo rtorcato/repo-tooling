@@ -200,7 +200,15 @@ async function previewFixer(
 			},
 		})
 		// assumeYes: a preview must never prompt.
-		await fixer.run({ targetDir: tmpDir, pkg, result, lock, assumeYes: true })
+		try {
+			await fixer.run({ targetDir: tmpDir, pkg, result, lock, assumeYes: true })
+		} catch (err) {
+			// A fixer that refuses has nothing to preview. Swallow it here rather than
+			// reporting it twice — the real run happens moments later and its abort is
+			// what the caller prints.
+			if (!(err instanceof FixerAbort)) throw err
+			return []
+		}
 
 		const previews: PreviewEntry[] = []
 		const seen = new Set<string>()
@@ -530,10 +538,9 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			console.log(chalk.gray('   skipped\n'))
 			return
 		}
-		// ponytail: only the targeted path is guarded, because the only fixer that
-		// aborts is `claude-skills` and it is explicitOnly — the bulk loop below
-		// cannot reach it. A non-explicitOnly fixer that throws FixerAbort would
-		// surface as an unhandled rejection there; guard the loop when one exists.
+		// A targeted abort is fatal: the user named this fixer, so failing to run it
+		// is the whole outcome of the command. The bulk loop below takes the other
+		// branch and records a skip, since one refusal must not abandon the rest.
 		const outcome = await applyFixer(fixer, effectiveResult, targetDir, pkg, lock, dryRun, silent, {
 			skillsDir: options.skillsDir,
 			assumeYes,
@@ -615,10 +622,24 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			skippedCount++
 			continue
 		}
-		const outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent, {
-			skillsDir: options.skillsDir,
-			assumeYes,
-		})
+		// A fixer that refuses (e.g. dependabot, when the existing config carries
+		// repo-local `ignore:` rules the template can't reproduce) is a skip, not a
+		// crash — the remaining findings still deserve their fixers. The reason goes
+		// to stderr so it survives `--json`.
+		let outcome: Awaited<ReturnType<typeof applyFixer>>
+		try {
+			outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent, {
+				skillsDir: options.skillsDir,
+				assumeYes,
+			})
+		} catch (err) {
+			if (!(err instanceof FixerAbort)) throw err
+			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict))
+			console.error(chalk.red(`    refused — ${err.message}`))
+			if (err.hint) console.error(chalk.gray(`    ${err.hint}`))
+			skippedCount++
+			continue
+		}
 		actions.push(
 			recordFor(
 				fixer.target,
