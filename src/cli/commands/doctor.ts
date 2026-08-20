@@ -13,6 +13,7 @@ import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
 import { type DetectedLanguage, detectLanguage } from '../utils/detect-language.js'
 import { checkGitHubSettings } from '../../base/github-settings.js'
+import { checkLoopLabels } from '../../base/labels.js'
 import { checkMilestones } from '../../base/milestones.js'
 import { checkGitIdentity } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
@@ -253,6 +254,8 @@ async function runBaseChecks(
 	results.push(...(await checkGitHubSettings(dir)))
 	// Milestone hygiene (#397) — same seam, same self-skip.
 	results.push(await checkMilestones(dir))
+	// ai-issue-loop label colours/descriptions (#446) — same seam, same self-skip.
+	results.push(await checkLoopLabels(dir))
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
 	results.push(await checkCommunityHealth(dir))

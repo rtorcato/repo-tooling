@@ -37,6 +37,7 @@ import { detectLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
 import { resolveLanguageModule } from '../languages/registry.js'
 import { applyGithubSettings } from './github-settings.js'
+import { applyLoopLabels } from './labels.js'
 import { closeCompletedMilestones } from './milestones.js'
 import type { CheckResult } from './types.js'
 
@@ -277,6 +278,20 @@ export const BASE_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			return { filesWritten: await closeCompletedMilestones(targetDir) }
+		},
+	},
+	{
+		target: 'labels',
+		description:
+			'Repair ai-issue-loop label colours and descriptions on GitHub via `gh label edit` (mutates the remote repo, not files). No-ops on a repo that does not use the loop',
+		appliesTo: ['AI loop labels'],
+		outputs: ['GitHub labels (remote, via gh label edit)'],
+		// safe-add for the same reason github-settings is: it exempts this fixer
+		// from the `--diff` shadow-run, which executes run() for a mere preview.
+		riskLevel: 'safe-add',
+		canFixDrift: true,
+		async run({ targetDir }) {
+			return { filesWritten: await applyLoopLabels(targetDir) }
 		},
 	},
 	{

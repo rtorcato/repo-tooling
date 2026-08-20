@@ -96,6 +96,19 @@ gh label create ai-changes -c '#d93f0b' -d 'Reviewer requested changes'
 gh label create ai-notes   -c '#fbca04' -d 'Passed, but a reviewer left something to read before merging'
 ```
 
+Bootstrap only. `gh label create` **cannot repair a label that already exists** —
+re-running this block against a hand-created `ai-ready` leaves whatever colour
+the web picker gave it, which is how six repos ended up with `ai-ready` rendering
+identically to `ai-blocked` (rtorcato/repo-tooling#446). To repair drift:
+
+```bash
+npx @rtorcato/repo-tooling doctor --json   # "AI loop labels" reports colour/description drift
+npx @rtorcato/repo-tooling fix labels      # repairs it with `gh label edit`
+```
+
+`src/base/labels.ts` in repo-tooling owns the canonical table and a test asserts
+this block matches it, so the two cannot diverge.
+
 Also once per repo, keep the status file out of git:
 
 ```bash

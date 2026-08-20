@@ -32,6 +32,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	'Workflow permissions': 'github-settings',
 	'Code-scanning gate': 'github-settings',
 	Milestones: 'milestones',
+	'AI loop labels': 'labels',
 	CODEOWNERS: 'codeowners',
 	'GitLab CI': 'gitlab-ci',
 	Turborepo: 'turborepo',

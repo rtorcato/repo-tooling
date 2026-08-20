@@ -83,6 +83,16 @@ that state, so a missed tick, a crash, or a restart costs nothing.
 | `ai-changes` | PR | A reviewer requested changes. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
 
+Colours carry meaning here — `ai-ready` is green and `ai-blocked` red precisely
+so the two states a maintainer must tell apart are legible at a glance. `doctor`
+audits colour and description as the **`AI loop labels`** check, and `fix labels`
+repairs drift with `gh label edit`. The distinction matters: the skill's
+bootstrap block uses `gh label create`, which errors as a no-op on a label that
+already exists — so it can add a missing label but can never repair a
+hand-created one. A repo with fewer than two of these labels is reported as *not
+applicable* rather than drift: not running the loop is a choice, and neither the
+check nor the fixer pushes labels into a repo that opted out.
+
 ```
 issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
 PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> assigned to you
