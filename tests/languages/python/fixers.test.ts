@@ -63,12 +63,16 @@ describe('python fixers', () => {
 		// badges` and `Coverage upload` need a package.json to build from, which a
 		// Python repo hasn't got. `lockfile` has no Python preset to record yet
 		// (see the note atop src/languages/python/fixers.ts). `pyproject.toml` and
-		// `Python tests` are content only the project can write.
+		// `Python tests` are content only the project can write. `Release gate` and
+		// `Release environment` (#429) report only — creating the environment needs
+		// a `required_reviewers` list only a human can supply.
 		expect(uncovered).toEqual([
 			'language',
 			'lockfile',
 			'Monorepo',
 			'Git identity',
+			'Release gate',
+			'Release environment',
 			'README badges',
 			'Coverage upload',
 			'pyproject.toml',

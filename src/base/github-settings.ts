@@ -76,11 +76,15 @@ export const GITHUB_STANDARD = {
 } as const
 
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
+const RELEASE_GATE_CHECK = 'Release gate'
+const RELEASE_ENV_CHECK = 'Release environment'
 const CHECK_NAMES = [
 	'Branch protection',
 	'Merge settings',
 	'Workflow permissions',
 	CODE_SCANNING_CHECK,
+	RELEASE_GATE_CHECK,
+	RELEASE_ENV_CHECK,
 ] as const
 
 // Recommended CodeQL alert thresholds — GitHub's UI defaults. This is the
@@ -186,6 +190,7 @@ export async function checkGitHubSettings(dir: string, exec?: GhExec): Promise<C
 		checkMergeSettings(info),
 		await checkWorkflowPermissions(gh, info.nwo),
 		await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir),
+		...(await checkReleaseGate(gh, info.nwo, dir)),
 	]
 }
 
@@ -470,6 +475,279 @@ async function checkCodeScanningRuleset(
 			? `Run \`npx @rtorcato/repo-tooling fix github-settings\` to add a code_scanning branch ruleset that blocks merge on High+ CodeQL alerts. That ruleset will reject this repo's release commit with GH013 while the config uses \`@semantic-release/git\`. ${GIT_PLUGIN_REMEDY}`
 			: 'Run `npx @rtorcato/repo-tooling fix github-settings` to add a code_scanning branch ruleset that blocks merge on High+ CodeQL alerts',
 	}
+}
+
+// --- Release environment gate (#429) --------------------------------------
+
+/** The environment name the standard reserves for the publish gate. */
+const RELEASE_ENVIRONMENT = 'release'
+
+/**
+ * What a job has to run for a merge to the default branch to reach a registry.
+ * `semantic-release` counts on its own — the shipped preset publishes with it.
+ */
+const PUBLISH_COMMAND = /semantic-release|changesets\/action|(?:npm|pnpm|yarn)\s+publish/
+
+const GATE_HINT =
+	'Create a `release` environment with required reviewers (Settings → Environments) and add `environment: release` to the publishing job — a merge to the default branch then leaves the run `waiting` instead of publishing'
+
+const ENV_HINT =
+	'Add `environment: release` to the publishing job, or delete the environment — whichever was meant. An environment nothing references still lists under Settings → Environments as though it gates something'
+
+const unquote = (s: string) => s.replace(/^['"]|['"]$/g, '')
+
+/**
+ * A workflow's `jobs:` blocks, keyed by job id.
+ *
+ * Hand-split rather than parsed: this package ships no YAML dependency, and the
+ * only question asked of the result is whether *one particular job* carries an
+ * `environment:` key. A whole-file grep would answer that wrong on any repo with
+ * a `github-pages` deploy job — which is the exact false negative this check
+ * exists to avoid. Jobs sit one indent level under `jobs:` and their keys one
+ * level below that, which holds for every workflow Actions accepts.
+ */
+export function workflowJobs(yaml: string): Map<string, string> {
+	const jobs = new Map<string, string>()
+	const lines = yaml.split('\n')
+	const start = lines.findIndex((l) => /^jobs:\s*$/.test(l))
+	if (start === -1) return jobs
+
+	const indentOf = (l: string) => l.length - l.trimStart().length
+	// The block runs until the next top-level key.
+	let end = lines.length
+	for (let i = start + 1; i < lines.length; i++) {
+		const l = lines[i] ?? ''
+		if (l.trim() !== '' && indentOf(l) === 0) {
+			end = i
+			break
+		}
+	}
+	const body = lines.slice(start + 1, end)
+	const first = body.find((l) => l.trim() !== '' && !l.trimStart().startsWith('#'))
+	if (first === undefined) return jobs
+	const jobIndent = indentOf(first)
+
+	let id: string | null = null
+	let buf: string[] = []
+	for (const line of body) {
+		const header =
+			line.trim() !== '' && indentOf(line) === jobIndent
+				? /^([\w.-]+):/.exec(line.trim())?.[1]
+				: undefined
+		if (header) {
+			if (id) jobs.set(id, buf.join('\n'))
+			id = header
+			buf = []
+		} else if (id) {
+			buf.push(line)
+		}
+	}
+	if (id) jobs.set(id, buf.join('\n'))
+	return jobs
+}
+
+/**
+ * The environment a job runs in, in either form Actions accepts: the scalar
+ * `environment: release`, or a block whose `name:` names it. Null when the job
+ * declares none.
+ */
+export function jobEnvironment(body: string): string | null {
+	const inline = /^[ \t]*environment:[ \t]*(\S+)[ \t]*$/m.exec(body)
+	if (inline?.[1]) return unquote(inline[1])
+	const at = body.search(/^[ \t]*environment:[ \t]*$/m)
+	if (at === -1) return null
+	// Step names are list items (`- name:`), so the first bare `name:` after the
+	// block opener is the environment's.
+	const name = /^[ \t]*name:[ \t]*(\S+)/m.exec(body.slice(at))?.[1]
+	return name ? unquote(name) : null
+}
+
+/**
+ * A job body with whole-line comments dropped. Same reasoning as
+ * `hookHasUncommented` in base/checks.ts: a `#` line runs nothing, so matching
+ * it is a false positive. Observed on this repo's own ci.yml, where a `varcheck`
+ * job carrying `# npm publish uses OIDC trusted publishing` was reported as the
+ * publishing job. Comments are stripped rather than pattern-tested because
+ * `jobEnvironment` needs the same treatment — a commented-out `environment:`
+ * would otherwise read as a live gate, the exact inversion of this check.
+ */
+function withoutComments(body: string): string {
+	return body
+		.split('\n')
+		.filter((line) => !line.trimStart().startsWith('#'))
+		.join('\n')
+}
+
+/** `private: true` — nothing reaches a registry, so no gate is owed. */
+async function isPrivatePackage(dir: string): Promise<boolean> {
+	try {
+		const pkg = await fs.readJson(path.join(dir, 'package.json'))
+		return pkg?.private === true
+	} catch {
+		return false
+	}
+}
+
+interface PublishJob {
+	file: string
+	job: string
+	/** The `environment:` the job declares, or null. */
+	environment: string | null
+}
+
+/** The first workflow job that runs a publish command, or null if none does. */
+async function findPublishJob(dir: string): Promise<PublishJob | null> {
+	const workflowsDir = path.join(dir, '.github', 'workflows')
+	if (!(await fs.pathExists(workflowsDir))) return null
+	try {
+		for (const f of (await fs.readdir(workflowsDir)).sort()) {
+			if (!/\.ya?ml$/.test(f)) continue
+			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
+			if (!PUBLISH_COMMAND.test(content)) continue
+			for (const [job, raw] of workflowJobs(content)) {
+				const body = withoutComments(raw)
+				if (PUBLISH_COMMAND.test(body)) {
+					return { file: f, job, environment: jobEnvironment(body) }
+				}
+			}
+		}
+	} catch {
+		return null
+	}
+	return null
+}
+
+/** Environment name → whether it carries a `required_reviewers` protection rule. */
+type Environments = Map<string, boolean>
+
+async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments | 'skip'> {
+	const r = await gh(['api', `repos/${nwo}/environments`])
+	// A repo with no environments can answer 404 — that's "none", not unreadable.
+	if (!r.ok) return /404|not found/i.test(r.stderr) ? new Map() : 'skip'
+	try {
+		const parsed = JSON.parse(r.stdout) as {
+			environments?: Array<{ name?: string; protection_rules?: Array<{ type?: string }> }>
+		}
+		const envs: Environments = new Map()
+		for (const e of parsed.environments ?? []) {
+			if (typeof e.name !== 'string') continue
+			envs.set(
+				e.name,
+				(e.protection_rules ?? []).some((p) => p.type === 'required_reviewers')
+			)
+		}
+		return envs
+	} catch {
+		return 'skip'
+	}
+}
+
+/**
+ * The gap between merging the default branch and publishing to npm (#429). On
+ * the shipped semantic-release preset those are one event: nothing stands
+ * between a squash-merge and a new version on the registry.
+ *
+ * Two checks, because they fail differently and want different answers:
+ *
+ * - **Release gate** — the publishing job runs behind no environment at all, or
+ *   behind one that isn't really a gate (absent, or with no required reviewers).
+ * - **Release environment** — the repo *has* a `release` environment and no job
+ *   references it. That's the failure mode worth catching: an unreferenced
+ *   environment gates nothing while reading as a gate in the GitHub UI.
+ *
+ * The two never both fire on one repo. "No `environment:` and no `release`
+ * environment" is the gate check's; "no `environment:` but a `release`
+ * environment exists" is the environment check's, and the gate check defers.
+ *
+ * A repo that publishes nothing is `ok` — not applicable, not drift. There is
+ * no fixer: creating the environment needs a `required_reviewers` list only a
+ * human can supply, so both hints describe the manual step.
+ */
+async function checkReleaseGate(
+	gh: GhExec,
+	nwo: string,
+	dir: string
+): Promise<[CheckResult, CheckResult]> {
+	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
+	if (!publish) {
+		const detail = 'not applicable — no workflow job publishes to a registry'
+		return [
+			{ check: RELEASE_GATE_CHECK, status: 'ok', detail },
+			{ check: RELEASE_ENV_CHECK, status: 'ok', detail },
+		]
+	}
+
+	const envs = await readEnvironments(gh, nwo)
+	if (envs === 'skip') {
+		const reason = 'could not read environments'
+		return [skip(RELEASE_GATE_CHECK, reason), skip(RELEASE_ENV_CHECK, reason)]
+	}
+
+	const named = publish.environment
+	const where = `${publish.file} \`${publish.job}\``
+	const hasRelease = envs.has(RELEASE_ENVIRONMENT)
+
+	let gate: CheckResult
+	if (named === null) {
+		gate = hasRelease
+			? {
+					check: RELEASE_GATE_CHECK,
+					status: 'ok',
+					detail: `${where} declares no environment — reported by the ${RELEASE_ENV_CHECK} check`,
+				}
+			: {
+					check: RELEASE_GATE_CHECK,
+					status: 'drift',
+					detail: `${where} publishes with no \`environment:\` and the repo has no \`${RELEASE_ENVIRONMENT}\` environment — anything that lands on the default branch publishes`,
+					hint: GATE_HINT,
+				}
+	} else if (!envs.has(named)) {
+		gate = {
+			check: RELEASE_GATE_CHECK,
+			status: 'drift',
+			detail: `${where} names the \`${named}\` environment, which the repo does not have — Actions creates it unprotected on first run, so the publish is never held`,
+			hint: GATE_HINT,
+		}
+	} else if (!envs.get(named)) {
+		gate = {
+			check: RELEASE_GATE_CHECK,
+			status: 'drift',
+			detail: `the \`${named}\` environment has no required_reviewers — ${where} passes straight through it`,
+			hint: GATE_HINT,
+		}
+	} else {
+		gate = {
+			check: RELEASE_GATE_CHECK,
+			status: 'ok',
+			detail: `${where} runs behind the \`${named}\` environment (required reviewers)`,
+		}
+	}
+
+	let environment: CheckResult
+	if (!hasRelease) {
+		environment = {
+			check: RELEASE_ENV_CHECK,
+			status: 'ok',
+			detail: `no \`${RELEASE_ENVIRONMENT}\` environment — nothing to reference`,
+		}
+	} else if (named === RELEASE_ENVIRONMENT) {
+		environment = {
+			check: RELEASE_ENV_CHECK,
+			status: 'ok',
+			detail: `${where} references the \`${RELEASE_ENVIRONMENT}\` environment`,
+		}
+	} else {
+		environment = {
+			check: RELEASE_ENV_CHECK,
+			status: 'drift',
+			detail: named
+				? `the repo has a \`${RELEASE_ENVIRONMENT}\` environment but ${where} runs in \`${named}\` — \`${RELEASE_ENVIRONMENT}\` gates nothing while still reading as a gate in the GitHub UI`
+				: `the repo has a \`${RELEASE_ENVIRONMENT}\` environment but ${where} references no environment — it gates nothing while still reading as a gate in the GitHub UI`,
+			hint: ENV_HINT,
+		}
+	}
+
+	return [gate, environment]
 }
 
 // --- Fixer side (#138): apply the standard via gh api ---------------------

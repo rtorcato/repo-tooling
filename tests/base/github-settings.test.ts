@@ -7,7 +7,9 @@ import {
 	checkGitHubSettings,
 	type GhExec,
 	type GhResult,
+	jobEnvironment,
 	releaseUsesGitPlugin,
+	workflowJobs,
 } from '../../src/base/github-settings.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
@@ -96,7 +98,11 @@ interface GhOverrides {
 	defaultSetup?: GhResult
 	rulesets?: GhResult
 	rulesetDetail?: GhResult
+	environments?: GhResult
 }
+
+/** No environments configured — the shape the REST endpoint returns. */
+const NO_ENVIRONMENTS = JSON.stringify({ total_count: 0, environments: [] })
 
 /** Route canned responses by which gh api path is invoked. */
 function fakeGh(overrides: GhOverrides = {}): GhExec {
@@ -109,6 +115,7 @@ function fakeGh(overrides: GhOverrides = {}): GhExec {
 		if (p?.includes('/code-scanning/default-setup')) return overrides.defaultSetup ?? ok(CODEQL_OFF)
 		if (p?.includes('/rulesets/')) return overrides.rulesetDetail ?? ok('{}')
 		if (p?.endsWith('/rulesets')) return overrides.rulesets ?? ok('[]')
+		if (p?.endsWith('/environments')) return overrides.environments ?? ok(NO_ENVIRONMENTS)
 		return fail('unexpected call')
 	})
 }
@@ -120,7 +127,7 @@ describe('checkGitHubSettings — skip paths', () => {
 		const exec = fakeGh()
 		const results = await checkGitHubSettings(newTmpDir(), exec)
 		expect(exec).not.toHaveBeenCalled()
-		expect(results).toHaveLength(4)
+		expect(results).toHaveLength(6)
 		expect(results.every((r) => r.status === 'ok' && r.detail.includes('skipped'))).toBe(true)
 	})
 
@@ -141,7 +148,7 @@ describe('checkGitHubSettings — skip paths', () => {
 describe('checkGitHubSettings — compliant repo', () => {
 	it('reports all three ok when settings match the standard', async () => {
 		const results = await checkGitHubSettings(gitRepo(), fakeGh())
-		expect(results).toHaveLength(4)
+		expect(results).toHaveLength(6)
 		expect(results.every((r) => r.status === 'ok')).toBe(true)
 		expect(byName(results, 'Branch protection')?.detail).toContain('protected per standard')
 	})
@@ -208,6 +215,209 @@ describe('checkGitHubSettings — code-scanning gate (#269)', () => {
 		expect(g?.status).toBe('drift')
 		expect(g?.detail).toContain('High alerts stay advisory')
 		expect(g?.hint).toContain('GH013')
+	})
+})
+
+describe('checkGitHubSettings — release environment gate (#429)', () => {
+	/** A workflow whose `release` job publishes; `env` adds an `environment:`. */
+	function workflow(env?: string): string {
+		return `name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # A pages deploy carries its own environment — a whole-file grep would read
+    # this as the release gate.
+    environment:
+      name: github-pages
+      url: https://example.invalid
+    steps:
+      - name: Build
+        run: pnpm build
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+${env ? `    environment: ${env}\n` : ''}    steps:
+      - name: Publish
+        run: npx semantic-release
+`
+	}
+
+	/** A git repo with the given workflow (and, by default, a public package). */
+	function repoWithWorkflow(yaml: string, pkg: Record<string, unknown> = {}): string {
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows/ci.yml'), yaml)
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing', ...pkg })
+		return dir
+	}
+
+	const environments = (...names: Array<[string, boolean]>) =>
+		ok(
+			JSON.stringify({
+				total_count: names.length,
+				environments: names.map(([name, reviewers]) => ({
+					name,
+					protection_rules: reviewers ? [{ type: 'required_reviewers' }] : [],
+				})),
+			})
+		)
+
+	const gate = (r: { check: string }[]) => byName(r, 'Release gate')
+	const env = (r: { check: string }[]) => byName(r, 'Release environment')
+
+	it('is not applicable when nothing publishes', async () => {
+		const results = await checkGitHubSettings(gitRepo(), fakeGh())
+		expect(gate(results)?.status).toBe('ok')
+		expect(gate(results)?.detail).toContain('no workflow job publishes')
+		expect(env(results)?.status).toBe('ok')
+	})
+
+	it('is not applicable for a private package that runs semantic-release', async () => {
+		const dir = repoWithWorkflow(workflow(), { private: true })
+		expect(gate(await checkGitHubSettings(dir, fakeGh()))?.detail).toContain('not applicable')
+	})
+
+	it('drifts when the publish job has no environment and none exists', async () => {
+		const dir = repoWithWorkflow(workflow())
+		const g = gate(await checkGitHubSettings(dir, fakeGh()))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('no `environment:`')
+		expect(g?.hint).toContain('required reviewers')
+	})
+
+	it('flags a `release` environment that no job references (#429, the decorative gate)', async () => {
+		const dir = repoWithWorkflow(workflow())
+		const exec = fakeGh({ environments: environments(['release', true]) })
+		const results = await checkGitHubSettings(dir, exec)
+		expect(env(results)?.status).toBe('drift')
+		expect(env(results)?.detail).toContain('gates nothing')
+		// Exactly one finding for one root cause: the gate check defers.
+		expect(gate(results)?.status).toBe('ok')
+	})
+
+	it('ignores a job that only mentions publishing in a comment', async () => {
+		// Caught dogfooding this check on repo-tooling's own ci.yml: a `varcheck`
+		// job whose shell block ends `# npm publish uses OIDC trusted publishing`
+		// was reported as the publishing job.
+		const dir = repoWithWorkflow(`name: CI
+
+on: [push]
+
+jobs:
+  varcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check env
+        run: |
+          echo "checking"
+          # npm publish uses OIDC trusted publishing (no NPM_TOKEN needed).
+
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - run: npx semantic-release
+`)
+		const exec = fakeGh({ environments: environments(['release', true]) })
+		const g = gate(await checkGitHubSettings(dir, exec))
+		expect(g?.status).toBe('ok')
+		expect(g?.detail).toContain('`release`')
+	})
+
+	it('does not read another job’s environment as the release gate', async () => {
+		// `build` declares `github-pages`; `release` declares nothing.
+		const dir = repoWithWorkflow(workflow())
+		const exec = fakeGh({ environments: environments(['github-pages', true]) })
+		expect(gate(await checkGitHubSettings(dir, exec))?.status).toBe('drift')
+	})
+
+	it('is ok when the publish job runs behind an environment with required reviewers', async () => {
+		const dir = repoWithWorkflow(workflow('release'))
+		const exec = fakeGh({ environments: environments(['release', true]) })
+		const results = await checkGitHubSettings(dir, exec)
+		expect(gate(results)?.status).toBe('ok')
+		expect(gate(results)?.detail).toContain('required reviewers')
+		expect(env(results)?.status).toBe('ok')
+	})
+
+	it('drifts when the referenced environment has no required_reviewers', async () => {
+		const dir = repoWithWorkflow(workflow('release'))
+		const exec = fakeGh({ environments: environments(['release', false]) })
+		const g = gate(await checkGitHubSettings(dir, exec))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('no required_reviewers')
+	})
+
+	it('drifts when the job names an environment the repo does not have', async () => {
+		// Actions creates it unprotected on first run, so it holds nothing.
+		const dir = repoWithWorkflow(workflow('release'))
+		const g = gate(await checkGitHubSettings(dir, fakeGh()))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('does not have')
+	})
+
+	it('skips (ok) when the environments endpoint cannot be read', async () => {
+		const dir = repoWithWorkflow(workflow())
+		const exec = fakeGh({ environments: fail('gh: (HTTP 403)') })
+		const results = await checkGitHubSettings(dir, exec)
+		expect(gate(results)?.status).toBe('ok')
+		expect(gate(results)?.detail).toContain('skipped')
+		expect(env(results)?.status).toBe('ok')
+	})
+
+	it('reads a 404 from the environments endpoint as "none", not unreadable', async () => {
+		const dir = repoWithWorkflow(workflow())
+		const exec = fakeGh({ environments: fail('gh: Not Found (HTTP 404)') })
+		expect(gate(await checkGitHubSettings(dir, exec))?.status).toBe('drift')
+	})
+})
+
+describe('workflowJobs / jobEnvironment', () => {
+	const YAML = `name: CI
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Build
+        run: pnpm build
+
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: 'release'
+      url: https://npmjs.com
+    steps:
+      - name: Publish
+        run: npm publish
+
+permissions:
+  contents: read
+`
+
+	it('splits jobs and stops at the next top-level key', () => {
+		expect([...workflowJobs(YAML).keys()]).toEqual(['build', 'release'])
+		expect(workflowJobs(YAML).get('release')).not.toContain('contents: read')
+	})
+
+	it('reads both the scalar and the block form of environment', () => {
+		const jobs = workflowJobs(YAML)
+		expect(jobEnvironment(jobs.get('build') ?? '')).toBe('staging')
+		// Quoted, in block form, with step `- name:` entries below it.
+		expect(jobEnvironment(jobs.get('release') ?? '')).toBe('release')
+	})
+
+	it('is null for a job with no environment, and empty for a workflow with no jobs', () => {
+		expect(jobEnvironment('    runs-on: ubuntu-latest\n    steps:\n      - run: true')).toBeNull()
+		expect(workflowJobs('name: nothing\n').size).toBe(0)
 	})
 })
 
