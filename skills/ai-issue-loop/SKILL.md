@@ -64,13 +64,15 @@ header names the agent *and* says why it is wearing a human's face:
 | `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
 | `ai-ok-code` | PR | `code-reviewer` passed. |
 | `ai-ok-sec` | PR | `security-expert` passed. |
-| `ai-changes` | PR | A reviewer requested changes. |
+| `ai-changes` | PR | A reviewer requested changes. Reviewers never apply it to a Dependabot PR. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
 | `holding` | issue | A gate — closes on human judgement, never picked up. |
 
 **`ai-notes` is advisory and never blocks.** It rides *alongside* a pass label,
 never instead of one, and it never sends a PR back — a finding that should block
-is `ai-changes`. It exists because a pass label currently means both "clean" and
+an issue PR is `ai-changes`. On a Dependabot PR there is nothing to send back to,
+so `ai-notes` is the hold itself: it suppresses auto-merge and routes the PR to
+the human. It exists because a pass label currently means both "clean" and
 "I found something real but would not hold the PR over it", and those two are
 indistinguishable in the *Assigned to you* view where merges actually happen.
 The bar is a finding that **changes what a human would do**: a semver
@@ -121,8 +123,8 @@ PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ is
                                  │        (± ai-notes)       │              ─> YOU merge ─> worktree removed
                                  │                           └─ dependabot ─┬─ no ai-notes ─> auto-merge ─> worktree removed
                                  │                                          └─ ai-notes ───> assigned to you
-                                 └─> ai-changes ─> fix round (max 2) ─> ai-review
-                                                             └─ round 3 ─> ai-blocked
+                                 └─> ai-changes (issue PRs only) ─> fix round (max 2) ─> ai-review
+                                                                               └─ round 3 ─> ai-blocked
 ```
 
 `ai-reviewing-code` / `ai-reviewing-sec` are the *claim* step: Pass 3 applies one
@@ -289,6 +291,17 @@ gh pr edit <N> --add-label ai-changes \
 ```
 
 Count it as `rev`, not `ready`. A merge conflict (`DIRTY`) takes the same route.
+
+**Assign any Dependabot PR carrying `ai-changes`.** Pass 3 never spawns a fix
+round for one, so it is waiting on a human from the moment the label lands — and
+no other branch of this pass assigns it, which leaves it in no *Assigned to you*
+view at all:
+
+```bash
+gh pr edit <N> --add-assignee @me
+```
+
+Count it as `rev`. Idempotent, so it also picks up ones an earlier tick stranded.
 
 So: every open PR **authored by `dependabot[bot]`**, labelled both `ai-ok-code`
 and `ai-ok-sec`, **not** `ai-changes`, **not** `ai-notes`, that has no
@@ -577,15 +590,24 @@ package/from/to table survives because it sits at the top; classify from that.
 > the label. If you cannot tell whether a workspace publishes, treat it as
 > production.
 >
-> Apply `ai-changes` if **either** holds:
+> Apply your **pass** label *plus* `ai-notes` if **either** holds:
 > - a package's major version differs between the `from` and `to` columns
 > - a package ships to consumers — it appears in `dependencies`,
 >   `optionalDependencies`, or `peerDependencies` of a **non-private** package
 >
 > Those wait for a human — a runtime dependency of the published package, or a
-> major, is not something an automated verdict should wave through. Dev-only
-> minor/patch bumps with green CI get the pass label. **If you cannot determine a
-> package's type, treat it as production and block**; failing closed is correct here.
+> major, is not something an automated verdict should wave through. `ai-notes` is
+> the gate that holds them: it suppresses auto-merge outright and gets the PR
+> assigned to the human, so nothing production-facing lands unattended. Dev-only
+> minor/patch bumps with green CI get the pass label alone. **If you cannot
+> determine a package's type, treat it as production and note it**; failing
+> closed is correct here.
+>
+> **Never apply `ai-changes` to a Dependabot PR.** It dispatches an implementer
+> agent, and there is no change an agent could make — rewriting a bot's lockfile
+> is not its business, and the decision here is a human's either way. That is the
+> same rule as the generic prompt above: `ai-changes` only when you can name a
+> concrete change an agent could make.
 >
 > State in your comment which rule fired, name the packages that tripped it, and say
 > whether the body was truncated so the reader knows what you could and couldn't see.
@@ -595,9 +617,10 @@ package/from/to table survives because it sits at the top; classify from that.
 > Pass 3 claimed you with it before spawning you, and a claim left behind wedges
 > your half of the review until Pass 2 reaps it.
 >
-> Be sparing with `ai-notes` here specifically: it suppresses auto-merge, so a
-> reflexive note on every dependency bump wedges the one path that runs
-> unattended. A truncated body you could not fully read **is** worth a note; a
+> Keep `ai-notes` load-bearing here: it suppresses auto-merge, so a *decorative*
+> note on a bump you would otherwise wave through wedges the one path that runs
+> unattended. A major, a package that ships to consumers, or a truncated body you
+> could not fully read **is** worth a note; restating the version table on a
 > routine dev-only patch bump is not.
 
 Be honest about what this buys: an agent reading a version table catches majors,
@@ -609,10 +632,11 @@ gate. This pass is a *policy* gate: nothing major or production-facing merges
 unattended.
 
 **A Dependabot PR labelled `ai-changes` is terminal — never spawn a fix round for
-it.** There is no linked issue to mark `ai-blocked` and no worktree to enter, and
-an agent has no business rewriting a bot's lockfile. It simply waits for a human,
-and Pass 5 counts it as `⚠<n>held`. Everything below applies only to PRs this loop
-opened from an `ai-ready` issue.
+it.** Reviewers no longer produce that state, but Pass 1's non-`CLEAN` check
+still does, so the guard stays. There is no linked issue to mark `ai-blocked` and
+no worktree to enter, and an agent has no business rewriting a bot's lockfile.
+Pass 1 assigns it and counts it as `rev`; here it simply waits for a human.
+Everything below applies only to PRs this loop opened from an `ai-ready` issue.
 
 **PRs labelled `ai-changes`.** Count prior `ai-changes` applications from the
 timeline:
