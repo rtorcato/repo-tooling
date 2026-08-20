@@ -513,11 +513,13 @@ export function workflowJobs(yaml: string): Map<string, string> {
 	if (start === -1) return jobs
 
 	const indentOf = (l: string) => l.length - l.trimStart().length
-	// The block runs until the next top-level key.
+	// The block runs until the next top-level key. A column-0 comment is not one —
+	// it ends nothing, so skipping it keeps a stray comment between `jobs:` and its
+	// first job from truncating the block and hiding every job below it.
 	let end = lines.length
 	for (let i = start + 1; i < lines.length; i++) {
 		const l = lines[i] ?? ''
-		if (l.trim() !== '' && indentOf(l) === 0) {
+		if (l.trim() !== '' && !l.trimStart().startsWith('#') && indentOf(l) === 0) {
 			end = i
 			break
 		}
@@ -595,8 +597,15 @@ interface PublishJob {
 	environment: string | null
 }
 
-/** The first workflow job that runs a publish command, or null if none does. */
-async function findPublishJob(dir: string): Promise<PublishJob | null> {
+/**
+ * The first workflow job that runs a publish command, or null if none does.
+ *
+ * `'skip'` when the directory exists but can't be read — a permission error or a
+ * broken symlink must not read as "nothing publishes", which would report the
+ * gate as `ok` on a repo whose workflows were never inspected. Same shape as
+ * `readEnvironments`: absent is an answer, unreadable is not.
+ */
+async function findPublishJob(dir: string): Promise<PublishJob | null | 'skip'> {
 	const workflowsDir = path.join(dir, '.github', 'workflows')
 	if (!(await fs.pathExists(workflowsDir))) return null
 	try {
@@ -612,7 +621,7 @@ async function findPublishJob(dir: string): Promise<PublishJob | null> {
 			}
 		}
 	} catch {
-		return null
+		return 'skip'
 	}
 	return null
 }
@@ -669,6 +678,10 @@ async function checkReleaseGate(
 	dir: string
 ): Promise<[CheckResult, CheckResult]> {
 	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
+	if (publish === 'skip') {
+		const reason = 'could not read .github/workflows'
+		return [skip(RELEASE_GATE_CHECK, reason), skip(RELEASE_ENV_CHECK, reason)]
+	}
 	if (!publish) {
 		const detail = 'not applicable — no workflow job publishes to a registry'
 		return [

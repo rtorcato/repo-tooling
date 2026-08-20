@@ -375,6 +375,22 @@ jobs:
 		const exec = fakeGh({ environments: fail('gh: Not Found (HTTP 404)') })
 		expect(gate(await checkGitHubSettings(dir, exec))?.status).toBe('drift')
 	})
+
+	it('skips, not "nothing publishes", when the workflows directory is unreadable', async () => {
+		// The fail-open this check exists to avoid: an unreadable input must never
+		// report as `ok`/not-applicable, which reads as "you have a gate" on a repo
+		// whose workflows were never inspected. A file where the directory belongs
+		// makes readdir fail with ENOTDIR without needing chmod (root would ignore).
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows'), 'not a directory\n')
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		const results = await checkGitHubSettings(dir, fakeGh())
+		for (const r of [gate(results), env(results)]) {
+			expect(r?.detail).toContain('skipped')
+			expect(r?.detail).toContain('could not read .github/workflows')
+			expect(r?.detail).not.toContain('not applicable')
+		}
+	})
 })
 
 describe('workflowJobs / jobEnvironment', () => {
@@ -412,6 +428,19 @@ permissions:
 		const jobs = workflowJobs(YAML)
 		expect(jobEnvironment(jobs.get('build') ?? '')).toBe('staging')
 		// Quoted, in block form, with step `- name:` entries below it.
+		expect(jobEnvironment(jobs.get('release') ?? '')).toBe('release')
+	})
+
+	it('is not truncated by a column-0 comment inside the jobs block', () => {
+		// A comment ends no block, so it must not stand in for the next top-level key.
+		const jobs = workflowJobs(`jobs:
+# unusual, but valid YAML
+  release:
+    environment: release
+    steps:
+      - run: npm publish
+`)
+		expect([...jobs.keys()]).toEqual(['release'])
 		expect(jobEnvironment(jobs.get('release') ?? '')).toBe('release')
 	})
 
