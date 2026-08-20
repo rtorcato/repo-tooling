@@ -7,6 +7,7 @@ import {
 	LOCKFILE_NAME,
 	LOCKFILE_VERSION,
 	readLockfile,
+	recordAssetHash,
 	updateLockfileConfig,
 	writeLockfile,
 } from '../../../src/cli/utils/lockfile.js'
@@ -61,7 +62,7 @@ describe('readLockfile', () => {
 		expect(lock?.config.projectName).toBe('demo')
 	})
 
-	it('migrates a v1 file to v2, defaulting language to js', async () => {
+	it('migrates a v1 file, defaulting language to js', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, LOCKFILE_NAME), {
 			version: 1,
@@ -71,9 +72,24 @@ describe('readLockfile', () => {
 		})
 
 		const lock = await readLockfile(dir)
-		expect(lock?.version).toBe(2)
+		expect(lock?.version).toBe(LOCKFILE_VERSION)
 		expect(lock?.config.language).toBe('js')
 		// Existing fields survive the migration untouched.
+		expect(lock?.config.projectName).toBe('demo')
+	})
+
+	it('migrates a v2 file to v3 with no recorded asset hashes (#428)', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, LOCKFILE_NAME), {
+			version: 2,
+			config: baseConfig({ language: 'js' }),
+			writtenBy: 'old',
+			writtenAt: '2024-01-01T00:00:00.000Z',
+		})
+
+		const lock = await readLockfile(dir)
+		expect(lock?.version).toBe(3)
+		expect(lock?.assets).toEqual({})
 		expect(lock?.config.projectName).toBe('demo')
 	})
 })
@@ -132,5 +148,25 @@ describe('updateLockfileConfig', () => {
 		const dir = newTmpDir()
 		const updated = await updateLockfileConfig(dir, { gitHooks: false })
 		expect(updated).toBe(false)
+	})
+
+	it('leaves recorded asset hashes alone (#428)', async () => {
+		const dir = newTmpDir()
+		await writeLockfile(dir, baseConfig())
+		await recordAssetHash(dir, 'oxlint', 'abc123')
+
+		await updateLockfileConfig(dir, { gitHooks: false })
+
+		const lock = await readLockfile(dir)
+		expect(lock?.assets).toEqual({ oxlint: 'abc123' })
+		expect(lock?.config.gitHooks).toBe(false)
+	})
+})
+
+describe('recordAssetHash', () => {
+	it('returns false without creating a lockfile when the repo has none', async () => {
+		const dir = newTmpDir()
+		expect(await recordAssetHash(dir, 'oxlint', 'abc123')).toBe(false)
+		expect(await fs.pathExists(join(dir, LOCKFILE_NAME))).toBe(false)
 	})
 })

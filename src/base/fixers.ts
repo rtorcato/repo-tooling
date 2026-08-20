@@ -31,6 +31,7 @@ import {
 	generateDependabotConfig,
 	generateRenovateConfig,
 } from '../cli/generators/security.js'
+import { classifyCopiedAssets } from '../cli/utils/copied-assets.js'
 import { copyPreset } from '../cli/utils/copy-preset.js'
 import { detectLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
@@ -140,6 +141,25 @@ async function resolveInstallDir(explicit: string | undefined, assumeYes: boolea
 }
 
 export const BASE_FIXERS: Fixer[] = [
+	{
+		target: 'copied-assets',
+		description:
+			'Re-copy presets that are unchanged since they were copied but older than the version this package ships',
+		appliesTo: ['Copied assets'],
+		outputs: ['(the stale copied presets, re-copied in place)'],
+		canFixDrift: true,
+		async run({ targetDir }) {
+			// Only the `stale` ones: their content provably still matches what was
+			// copied, so overwriting loses nothing. `modified` assets are somebody's
+			// deliberate fork and stay a human decision (#428).
+			const stale = (await classifyCopiedAssets(targetDir)).filter((a) => a.state === 'stale')
+			const filesWritten: string[] = []
+			for (const asset of stale) {
+				filesWritten.push((await copyPreset(asset.preset, targetDir)).target)
+			}
+			return { filesWritten }
+		},
+	},
 	{
 		target: 'editorconfig',
 		description: 'Scaffold .editorconfig (UTF-8, LF, tab indent)',

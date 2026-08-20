@@ -15,6 +15,7 @@ import { type DetectedLanguage, detectLanguage } from '../utils/detect-language.
 import { checkGitHubSettings } from '../../base/github-settings.js'
 import { checkMilestones } from '../../base/milestones.js'
 import { checkGitIdentity } from '../../base/git-identity.js'
+import { checkCopiedAssets } from '../utils/copied-assets.js'
 import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import {
@@ -233,6 +234,9 @@ async function runBaseChecks(
 ): Promise<CheckResult[]> {
 	const results: CheckResult[] = []
 	results.push(checkLockfile(lock))
+	// Any language can have copied presets (swiftlint, ruff, perlcriticrc), so
+	// this rides with the base suite rather than a module's (#428).
+	results.push(await checkCopiedAssets(dir))
 	results.push(await checkNestedLanguages(dir, opts.language))
 	results.push(await checkGitIdentity(dir))
 	results.push(await checkEditorConfig(dir))
