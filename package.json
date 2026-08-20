@@ -100,6 +100,7 @@
 		"tooling/semantic-release/*.mjs",
 		"tooling/semantic-release/*.d.mts",
 		"tooling/claude/*.md",
+		"tooling/claude/*.mjs",
 		"tooling/mcp/mcp.json.example",
 		"tooling/swift/*.yml",
 		"tooling/swift/*.json",
