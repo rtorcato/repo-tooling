@@ -59,6 +59,22 @@ async function readJsonOrNull(filepath: string): Promise<Record<string, unknown>
 }
 
 /**
+ * The `@biomejs/biome` actually installed under `targetDir`, or null when
+ * node_modules isn't populated. This is the binary that will parse the config
+ * and emit the schema-mismatch warning, so it is the only version worth
+ * comparing a written `$schema` against — a declared range like `^2.5.0` says
+ * nothing about which 2.x resolved (#424).
+ */
+export async function installedBiomeVersion(targetDir: string): Promise<string | null> {
+	const installed = await readJsonOrNull(
+		path.join(targetDir, 'node_modules', '@biomejs', 'biome', 'package.json')
+	)
+	const match =
+		typeof installed?.version === 'string' ? /(\d+\.\d+\.\d+)/.exec(installed.version) : null
+	return match?.[1] ?? null
+}
+
+/**
  * The Biome version the scaffolded `$schema` URL should name (#363).
  *
  * A hardcoded version drifts the moment the consumer's Biome moves, and Biome
@@ -69,22 +85,19 @@ async function readJsonOrNull(filepath: string): Promise<Record<string, unknown>
  * best statement of intent when node_modules isn't populated yet.
  */
 export async function resolveBiomeSchemaVersion(targetDir: string): Promise<string> {
-	const installed = await readJsonOrNull(
-		path.join(targetDir, 'node_modules', '@biomejs', 'biome', 'package.json')
-	)
+	const installed = await installedBiomeVersion(targetDir)
+	if (installed) return installed
+
 	const pkg = await readJsonOrNull(path.join(targetDir, 'package.json'))
 	const deps = {
 		...((pkg?.dependencies as Record<string, string> | undefined) ?? {}),
 		...((pkg?.devDependencies as Record<string, string> | undefined) ?? {}),
 	}
 
-	// Both an exact version ("2.5.7") and a range ("^2.5.0") carry the x.y.z we
-	// need, so one pattern covers every source.
-	for (const candidate of [installed?.version, deps['@biomejs/biome']]) {
-		const match = typeof candidate === 'string' ? /(\d+\.\d+\.\d+)/.exec(candidate) : null
-		if (match?.[1]) return match[1]
-	}
-	return BIOME_SCHEMA_FALLBACK
+	// A range ("^2.5.0") carries the x.y.z we need just as an exact version does.
+	const declared = deps['@biomejs/biome']
+	const match = typeof declared === 'string' ? /(\d+\.\d+\.\d+)/.exec(declared) : null
+	return match?.[1] ?? BIOME_SCHEMA_FALLBACK
 }
 
 /**

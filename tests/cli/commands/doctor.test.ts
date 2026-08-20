@@ -22,6 +22,14 @@ async function seedPackageJson(dir: string, withDep = true) {
 	})
 }
 
+/** Just enough of node_modules for the Biome check to resolve a CLI version. */
+async function seedInstalledBiome(dir: string, version: string) {
+	await fs.outputJson(join(dir, 'node_modules', '@biomejs', 'biome', 'package.json'), {
+		name: '@biomejs/biome',
+		version,
+	})
+}
+
 // The language-agnostic suite, declared once in doctor's runBaseChecks. Before
 // #309 the JS path re-listed it inline, so anything added to base silently
 // skipped JS repos — and the hook/commit/badge checks lived in the JS module, so
@@ -258,6 +266,37 @@ describe('doctor', () => {
 
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'Biome')?.status).toBe('drift')
+	})
+
+	// #424: the config matched the preset, so doctor called it ok while every
+	// Biome run printed "The configuration schema version does not match the CLI
+	// version". The written `$schema` has to be re-checked against the installed
+	// binary, not just written once and trusted forever.
+	it('reports drift when the biome $schema names a different version than the installed CLI', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await seedInstalledBiome(dir, '2.5.5')
+		await fs.writeJson(join(dir, 'biome.json'), {
+			$schema: 'https://biomejs.dev/schemas/2.4.16/schema.json',
+			extends: ['@rtorcato/repo-tooling/biome'],
+		})
+
+		const biome = (await runDoctor(dir)).find((r) => r.check === 'Biome')
+		expect(biome?.status).toBe('drift')
+		expect(biome?.detail).toContain('2.4.16')
+		expect(biome?.detail).toContain('2.5.5')
+	})
+
+	it('reports ok when the biome $schema matches the installed CLI', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await seedInstalledBiome(dir, '2.5.5')
+		await fs.writeJson(join(dir, 'biome.json'), {
+			$schema: 'https://biomejs.dev/schemas/2.5.5/schema.json',
+			extends: ['@rtorcato/repo-tooling/biome'],
+		})
+
+		expect((await runDoctor(dir)).find((r) => r.check === 'Biome')?.status).toBe('ok')
 	})
 
 	it('reports drift for a biome.json that is too corrupt to parse', async () => {
