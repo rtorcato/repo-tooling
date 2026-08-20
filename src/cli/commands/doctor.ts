@@ -42,6 +42,7 @@ import type { CheckResult, CheckStatus } from '../../base/types.js'
 import {
 	allDeps,
 	checkAreTheTypesWrong,
+	checkBiome,
 	checkClaudeWorktreeSettings,
 	checkConfigSchemaVersions,
 	checkDocsSite,
@@ -385,7 +386,12 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	results.push(await checkNodeVersionPin(targetDir))
 	results.push(await checkNodeVersionConsistency(targetDir, pkg))
 	for (const spec of FILE_CHECKS) {
-		results.push(await checkFile(targetDir, spec))
+		// Biome is the one spec that needs the directory as well as the file
+		// contents — it compares the `$schema` version against the installed
+		// CLI (#424). Dispatched here so it keeps its place in the output.
+		results.push(
+			spec.check === 'Biome' ? await checkBiome(targetDir) : await checkFile(targetDir, spec)
+		)
 	}
 	results.push(await checkLintStaged(targetDir, pkg))
 	results.push(await checkVerifyScript(targetDir, pkg))

@@ -1,7 +1,8 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import type { BadgeAudience, FileCheck, GitHooksProfile } from '../../base/checks.js'
-import { hookHasUncommented } from '../../base/checks.js'
+import { checkFile, hookHasUncommented } from '../../base/checks.js'
+import { installedBiomeVersion } from '../../cli/generators/linting.js'
 import {
 	CLAUDE_SETTINGS_FILE,
 	readClaudeSettings,
@@ -185,6 +186,56 @@ function matchesTsConfig(contents: string): boolean {
 	)
 }
 
+export const BIOME_FILE_CHECK: FileCheck = {
+	check: 'Biome',
+	candidates: ['biome.json', 'biome.jsonc'],
+	expected: `extends "${PACKAGE}/biome" or inlines the preset, with the linter on`,
+	matcher: matchesBiomeConfig,
+	optional: true,
+	hint: 'Run `npx @rtorcato/repo-tooling fix biome` to scaffold',
+}
+
+/**
+ * The Biome check plus the one thing a contents-only matcher can't see: whether
+ * the `$schema` URL still names the Biome that will read it (#424).
+ *
+ * `fix biome` writes the URL from the version resolved at scaffold time, and
+ * nothing re-checked it afterwards — so once the repo's Biome moved on, every
+ * single invocation (the pre-commit hook included) printed "The configuration
+ * schema version does not match the CLI version", while doctor stayed clean.
+ *
+ * Compared against the *installed* package only, never the declared range: an
+ * exact match is what Biome itself demands, and `^2.5.0` doesn't say which 2.x
+ * resolved. With no node_modules there is nothing to be wrong about, so the
+ * check says nothing rather than guessing.
+ */
+export async function checkBiome(dir: string): Promise<CheckResult> {
+	const result = await checkFile(dir, BIOME_FILE_CHECK)
+	if (result.status !== 'ok') return result
+
+	const installed = await installedBiomeVersion(dir)
+	if (!installed) return result
+
+	// The same candidate checkFile settled on — first one that exists wins.
+	for (const candidate of BIOME_FILE_CHECK.candidates) {
+		const filepath = path.join(dir, candidate)
+		if (!(await fs.pathExists(filepath))) continue
+
+		const url = readSchemaUrl(await fs.readFile(filepath, 'utf8'))
+		const targeted = url?.includes('biomejs.dev') ? schemaUrlVersion(url)?.join('.') : null
+		if (targeted && targeted !== installed) {
+			return {
+				check: BIOME_FILE_CHECK.check,
+				status: 'drift',
+				detail: `${candidate} targets Biome ${targeted} but @biomejs/biome ${installed} is installed`,
+				hint: 'Run `npx @rtorcato/repo-tooling fix biome` to rewrite the $schema URL',
+			}
+		}
+		return result
+	}
+	return result
+}
+
 export const FILE_CHECKS: FileCheck[] = [
 	{
 		check: 'TypeScript',
@@ -193,14 +244,7 @@ export const FILE_CHECKS: FileCheck[] = [
 		matcher: matchesTsConfig,
 		hint: 'Run `npx @rtorcato/repo-tooling fix tsconfig` to scaffold',
 	},
-	{
-		check: 'Biome',
-		candidates: ['biome.json', 'biome.jsonc'],
-		expected: `extends "${PACKAGE}/biome" or inlines the preset, with the linter on`,
-		matcher: matchesBiomeConfig,
-		optional: true,
-		hint: 'Run `npx @rtorcato/repo-tooling fix biome` to scaffold',
-	},
+	BIOME_FILE_CHECK,
 	{
 		check: 'ESLint',
 		candidates: ['eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs'],
