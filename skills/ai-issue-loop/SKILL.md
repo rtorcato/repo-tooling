@@ -694,6 +694,16 @@ Then spawn a background implementer agent:
 > 3. Read the repo's `CLAUDE.md` and obey it — especially any pre-commit build
 >    step or committed build output.
 > 4. Do the work. Conventional Commits within the branch.
+>
+>    **Do not run `pnpm install`.** This worktree's `node_modules` is a symlink to
+>    the main checkout, so pnpm sees a foreign directory it must purge first and
+>    aborts with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`. Dependencies are
+>    already present — run tests, lint and build directly. If the work *is* a
+>    dependency change, `pnpm install --lockfile-only` updates `pnpm-lock.yaml`
+>    without touching `node_modules`. When that leaves a verification step you
+>    cannot run, say so in the PR body — name the command you could not run and
+>    why — so the reviewer knows CI is the only check on it rather than assuming
+>    you ran it.
 > 5. Push and open the PR. The title must be a Conventional Commit — it becomes
 >    the squash subject on `main` and, in repos using semantic-release, decides
 >    whether a release goes out at all. Body must contain `Closes #<N>`.
