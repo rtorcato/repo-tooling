@@ -27,7 +27,9 @@ npx @rtorcato/repo-tooling copy biome     # → biome.json
 npx @rtorcato/repo-tooling copy tsconfig  # → tsconfig.json
 ```
 
-Available presets: `biome`, `tsconfig`, `bun`, `nx`, `changesets`, `release-please`, `oxlint`, `claude-skill`, `mcp-example`, `docusaurus-sync-changelog`, `docusaurus-theme-tokens`, `docusaurus-theme`.
+Available presets: `biome`, `tsconfig`, `bun`, `nx`, `changesets`, `release-please`, `oxlint`, `claude-skill`, `claude-sync-agents`, `mcp-example`, `docusaurus-sync-changelog`, `docusaurus-theme-tokens`, `docusaurus-theme`.
+
+`claude-sync-agents` copies `scripts/sync-agents.mjs`, which regenerates `AGENTS.md` from `skills/<package>/SKILL.md` so the two can't drift. It is zero-config — the skill directory comes from the root `package.json` `name` with the npm scope stripped (`@rtorcato/js-common` → `skills/js-common/`). Wire `node scripts/sync-agents.mjs --check` into CI to fail on a stale `AGENTS.md`.
 
 `copy` is for configs you must *own* rather than extend — Biome doesn't support configuration extension, and TypeScript configs resolve more reliably when local. Most other configs (ESLint, Prettier, Vitest, etc.) can be imported or extended directly — see the [Configuration Reference](../reference/biome.md) for usage.
 

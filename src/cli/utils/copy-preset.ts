@@ -18,6 +18,7 @@ export type PresetName =
 	| 'perlcritic'
 	| 'perltidy'
 	| 'claude-skill'
+	| 'claude-sync-agents'
 	| 'mcp-example'
 	| 'docusaurus-sync-changelog'
 	| 'docusaurus-theme-tokens'
@@ -112,6 +113,11 @@ export const PRESETS: Record<PresetName, PresetDefinition> = {
 		target: '.claude/skills/repo-tooling.md',
 		desc: 'Claude Code skill for driving the repo-tooling CLI',
 		legacyTarget: '.claude/skills/js-tooling.md',
+	},
+	'claude-sync-agents': {
+		source: 'tooling/claude/sync-agents.mjs',
+		target: 'scripts/sync-agents.mjs',
+		desc: 'Canonical SKILL.md → AGENTS.md sync script (zero-config; --check mode for CI)',
 	},
 	'mcp-example': {
 		source: 'tooling/mcp/mcp.json.example',
