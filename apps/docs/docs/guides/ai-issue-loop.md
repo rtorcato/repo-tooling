@@ -162,7 +162,7 @@ Two details worth knowing because they fail *silently* when got wrong:
 
 These exist because the loop runs unattended against a monthly usage cap.
 
-- **4 issues in flight**, counted from open `ai-wip` issues.
+- **6 issues in flight**, counted from open `ai-wip` issues.
 - **Reviewers see the diff only** — `gh pr view`, `gh pr diff`, the issue body.
   No repo-wide exploration.
 - **2 fix rounds per PR.** On the third `ai-changes`, stop and mark
