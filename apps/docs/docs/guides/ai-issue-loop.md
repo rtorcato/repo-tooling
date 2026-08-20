@@ -147,13 +147,19 @@ Passes run cheapest first, so a quiet repo exits fast.
 | **4 — pick up** | Claim eligible `ai-ready` issues, create the worktree, spawn an implementer. |
 | **5 — report** | One-line summary, notify only when it changed. Never skipped, including on an idle tick. |
 
-Two details worth knowing because they fail *silently* when got wrong:
+Three details worth knowing because they fail *silently* when got wrong:
 
 - **Worktrees live in a sibling directory** (`<repo>-worktrees/`), never inside
   the repo. A worktree under `.claude/worktrees/` sits on a path most repos
   exclude from their own tooling — observed on a repo whose Biome config carried
   `"!**/.claude"`, where the pre-commit hook linted *nothing* in every agent
   worktree and failed with a message that read like a tooling glitch.
+- **Implementers are spawned one at a time**, and reach their worktree through
+  `git -C <absolute path>` rather than by entering it. The worktree pin belongs to
+  the session, not the agent, so two implementers spawned together cross-pin: the
+  second lands in the first's tree, edits its own files fine, and only discovers
+  it cannot commit at the end. Reviewers never enter a worktree and still run
+  concurrently.
 - **Pass 2 confirms the squash landed on `main`** before removing anything. A
   squash-merged branch always looks like it has unmerged commits, which is
   indistinguishable from work that was never merged at all.
