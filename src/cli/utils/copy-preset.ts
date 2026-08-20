@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import fs from 'fs-extra'
+import { recordAssetHash } from './lockfile.js'
 
 export type PresetName =
 	| 'biome'
@@ -153,6 +155,17 @@ export interface CopyPresetResult {
 	desc: string
 }
 
+/** sha256 of a file's bytes, or null when it doesn't exist / can't be read. */
+export async function hashFile(filepath: string): Promise<string | null> {
+	try {
+		return createHash('sha256')
+			.update(await fs.readFile(filepath))
+			.digest('hex')
+	} catch {
+		return null
+	}
+}
+
 export async function copyPreset(
 	name: PresetName,
 	targetDir: string = process.cwd()
@@ -169,6 +182,11 @@ export async function copyPreset(
 		const legacyPath = path.join(targetDir, preset.legacyTarget)
 		if (legacyPath !== targetPath) await fs.remove(legacyPath)
 	}
+
+	// Stamp what was copied, so doctor can later tell a local edit from a copy
+	// the package has moved past (#428). No-ops when the repo has no lockfile.
+	const hash = await hashFile(sourcePath)
+	if (hash) await recordAssetHash(targetDir, name, hash)
 
 	return {
 		source: preset.source,

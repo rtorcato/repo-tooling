@@ -50,6 +50,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	'AI setup': 'ai',
 	'Claude worktree settings': 'ai',
 	'Claude skills': 'claude-skills',
+	'Copied assets': 'copied-assets',
 }
 
 /**

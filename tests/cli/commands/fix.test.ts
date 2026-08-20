@@ -14,6 +14,7 @@ import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
 	DEPENDABOT_CONFIG,
 } from '../../../src/cli/generators/security.js'
+import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 vi.mock('inquirer', () => ({
@@ -1060,7 +1061,7 @@ describe('fix + lockfile', () => {
 		await seedPackageJson(dir)
 		await fixCommand('lockfile', { directory: dir, yes: true })
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.version).toBe(2)
+		expect(lock.version).toBe(LOCKFILE_VERSION)
 		expect(lock.config.projectName).toBe('demo')
 		expect(lock.config.linting.tool).toBe('biome')
 	})

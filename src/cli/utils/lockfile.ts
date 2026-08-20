@@ -15,13 +15,23 @@ export const LEGACY_TOOL_NAME = 'js-tooling'
 export const LEGACY_LOCKFILE_NAME = `.${LEGACY_TOOL_NAME}.json`
 // v2 added ProjectConfig.language (multi-language seam, #140). v1 files are
 // migrated to v2 on read, defaulting language to 'js'.
-export const LOCKFILE_VERSION = 2
+// v3 added `assets` — the pristine hash of each copied preset (#428). Older
+// files carry no hashes, which reads as "not tracked", never as drift.
+export const LOCKFILE_VERSION = 3
 const LOCKFILE_SCHEMA_URL = 'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json'
 
 export interface Lockfile {
 	$schema?: string
 	version: number
 	config: ProjectConfig
+	/**
+	 * Preset name → sha256 of the asset's *pristine* content at copy time (#428).
+	 * Lets doctor tell a deliberate local fork (`modified` — file differs from
+	 * this hash) from a copy the package has since moved past (`stale` — file
+	 * still matches this hash, but the shipped asset doesn't). A preset with no
+	 * entry here is simply untracked; absence is not evidence of drift.
+	 */
+	assets?: Record<string, string>
 	writtenBy: string
 	writtenAt: string
 }
@@ -29,7 +39,7 @@ export interface Lockfile {
 /**
  * Upgrade an older lockfile in-memory. Only touches files older than the
  * current version, so a newer-than-supported file is left as-is for
- * checkLockfile to flag. The file is rewritten to v2 next time it's saved.
+ * checkLockfile to flag. The file is rewritten to v3 next time it's saved.
  */
 function migrate(lock: Lockfile): Lockfile {
 	if (lock.version >= LOCKFILE_VERSION) return lock
@@ -37,6 +47,7 @@ function migrate(lock: Lockfile): Lockfile {
 		...lock,
 		version: LOCKFILE_VERSION,
 		config: { language: 'js', ...lock.config },
+		assets: lock.assets ?? {},
 	}
 }
 
@@ -60,16 +71,27 @@ export async function readLockfile(dir: string): Promise<Lockfile | null> {
 	}
 }
 
-export async function writeLockfile(dir: string, config: ProjectConfig): Promise<string> {
+/**
+ * @param assets Recorded asset hashes to write. Omit to carry the existing
+ *   file's hashes forward — every caller that only means to update `config`
+ *   would otherwise silently drop them.
+ */
+export async function writeLockfile(
+	dir: string,
+	config: ProjectConfig,
+	assets?: Record<string, string>
+): Promise<string> {
 	const { valid, errors } = validateProjectConfig(config)
 	if (!valid) {
 		throw new Error(`Refusing to write invalid lockfile:\n  - ${errors.join('\n  - ')}`)
 	}
+	const carried = assets ?? (await readLockfile(dir))?.assets
 	const filepath = path.join(dir, LOCKFILE_NAME)
 	const lockfile: Lockfile = {
 		$schema: LOCKFILE_SCHEMA_URL,
 		version: LOCKFILE_VERSION,
 		config,
+		...(carried && Object.keys(carried).length > 0 ? { assets: carried } : {}),
 		writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
 		writtenAt: new Date().toISOString(),
 	}
@@ -93,5 +115,18 @@ export async function updateLockfileConfig(
 	if (!existing) return false
 	const merged: ProjectConfig = { ...existing.config, ...patch }
 	await writeLockfile(dir, merged)
+	return true
+}
+
+/**
+ * Record the pristine hash of a just-copied preset (#428). Returns false when
+ * the repo has no lockfile — four family repos don't, and creating one as a
+ * side effect of `copy` would be a surprise. Those repos keep reporting the
+ * asset as untracked, which is the honest answer.
+ */
+export async function recordAssetHash(dir: string, preset: string, hash: string): Promise<boolean> {
+	const existing = await readLockfile(dir)
+	if (!existing) return false
+	await writeLockfile(dir, existing.config, { ...existing.assets, [preset]: hash })
 	return true
 }

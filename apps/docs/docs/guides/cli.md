@@ -33,6 +33,18 @@ Available presets: `biome`, `tsconfig`, `bun`, `nx`, `changesets`, `release-plea
 
 `copy` is for configs you must *own* rather than extend — Biome doesn't support configuration extension, and TypeScript configs resolve more reliably when local. Most other configs (ESLint, Prettier, Vitest, etc.) can be imported or extended directly — see the [Configuration Reference](../reference/biome.md) for usage.
 
+### Copied assets don't drift silently
+
+A copy used to be a one-shot: nothing looked at the file again, so a repo could sit on an ancient copy of `scripts/sync-changelog.mjs` for a year without a signal. `copy` now records the asset's hash at copy time in `.repo-tooling.json`, and doctor's **Copied assets** check reads it back:
+
+| State | Means | doctor |
+|---|---|---|
+| `stale` | Untouched since the copy, but the package ships a newer version | `drift` — `fix copied-assets` re-copies it, and can't lose anything, because nothing local is in it |
+| `modified` | The file differs from what was copied — someone forked it deliberately | reported, never overwritten; a human decision |
+| untracked | No recorded hash: the copy predates this, or the repo has no `.repo-tooling.json` | reported, never `drift` — a missing record isn't evidence of drift |
+
+`copy` never creates a lockfile just to have somewhere to write. Run `fix lockfile` first if you want a repo's copies tracked.
+
 ## list / ls
 
 Prints all available tooling configurations.
