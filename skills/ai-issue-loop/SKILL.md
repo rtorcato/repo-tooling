@@ -60,6 +60,8 @@ header names the agent *and* says why it is wearing a human's face:
 | `ai-wip` | issue | Claimed; a worktree exists. |
 | `ai-blocked` | issue | Agent gave up; needs a human. |
 | `ai-review` | PR | Awaiting agent review. |
+| `ai-reviewing-code` | PR | `code-reviewer` claimed and running. Cleared with its verdict. |
+| `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
 | `ai-ok-code` | PR | `code-reviewer` passed. |
 | `ai-ok-sec` | PR | `security-expert` passed. |
 | `ai-changes` | PR | A reviewer requested changes. |
@@ -86,6 +88,8 @@ gh label create ai-ready    -c '#0e8a16' -d 'Eligible for an AI agent to impleme
 gh label create ai-wip     -c '#fbca04' -d 'Claimed by an agent; worktree exists'
 gh label create ai-blocked -c '#b60205' -d 'Agent gave up; needs a human'
 gh label create ai-review  -c '#1d76db' -d 'PR awaiting agent review'
+gh label create ai-reviewing-code -c '#c5def5' -d 'code-reviewer claimed and running'
+gh label create ai-reviewing-sec  -c '#c5def5' -d 'security-expert claimed and running'
 gh label create ai-ok-code -c '#0e8a16' -d 'code-reviewer passed'
 gh label create ai-ok-sec  -c '#0e8a16' -d 'security-expert passed'
 gh label create ai-changes -c '#d93f0b' -d 'Reviewer requested changes'
@@ -100,13 +104,18 @@ grep -qxF '.claude/ai-loop-status' .gitignore || echo '.claude/ai-loop-status' >
 
 ```
 issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
-PR: ai-review ─> reviewers ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> assigned to you, ai-review dropped
-                            │        (± ai-notes)       │              ─> YOU merge ─> worktree removed
-                            │                           └─ dependabot ─┬─ no ai-notes ─> auto-merge ─> worktree removed
-                            │                                          └─ ai-notes ───> assigned to you
-                            └─> ai-changes ─> fix round (max 2) ─> ai-review
-                                                        └─ round 3 ─> ai-blocked
+PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> assigned to you, ai-review dropped
+                                 │        (± ai-notes)       │              ─> YOU merge ─> worktree removed
+                                 │                           └─ dependabot ─┬─ no ai-notes ─> auto-merge ─> worktree removed
+                                 │                                          └─ ai-notes ───> assigned to you
+                                 └─> ai-changes ─> fix round (max 2) ─> ai-review
+                                                             └─ round 3 ─> ai-blocked
 ```
+
+`ai-reviewing-code` / `ai-reviewing-sec` are the *claim* step: Pass 3 applies one
+immediately before spawning that reviewer, and the reviewer clears its own
+alongside its verdict label. They are transient — a claim outliving its reviewer
+means the agent died, which is Pass 2's stall reaping, not a state of the PR.
 
 Only the Dependabot arm merges itself, and only when no reviewer left `ai-notes`.
 An issue PR ends at *assigned to you* and waits there — `ai-ok-code, ai-ok-sec`
@@ -374,7 +383,7 @@ work must never be reaped out from under itself.
 | Stalled | Condition | Do |
 |---|---|---|
 | Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me`, comment, remove the worktree |
-| Reviewer died | PR `ai-review` ≥45min with no `ai-ok-*` and no `ai-changes` | re-spawn the missing reviewer — they're cheap and diff-scoped. If `ai-review` has been applied ≥3 times, `ai-blocked` instead |
+| Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label ai-reviewing-code` — dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
 | Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch |
 
 The **no PR exists** condition on the first row is what makes reaping safe. An
@@ -404,8 +413,34 @@ means *a human must look*; do not spend it on a claim you already understand.
 
 **PRs labelled `ai-review`.** For each, spawn *in background* only the reviewers
 whose pass-label is missing — `code-reviewer` if no `ai-ok-code`,
-`security-expert` if no `ai-ok-sec`. Both can run concurrently; launch them in a
-single message.
+`security-expert` if no `ai-ok-sec` — and **only those not already claimed**: skip
+`code-reviewer` if the PR carries `ai-reviewing-code`, `security-expert` if it
+carries `ai-reviewing-sec`. Both can run concurrently; launch them in a single
+message.
+
+**Claim first, then spawn** — the same shape Pass 4 uses before picking up an
+issue. Apply the label immediately before the spawn, not after:
+
+```bash
+gh pr edit <N> --add-label ai-reviewing-code   # then spawn code-reviewer
+gh pr edit <N> --add-label ai-reviewing-sec    # then spawn security-expert
+```
+
+Without the claim there is no window in which "a reviewer is running" is visible.
+A reviewer applies its verdict label only at the *end*, after reading the diff and
+posting its comment, so from spawn until then the labels are indistinguishable
+from "nobody has started" — and a 15-minute tick is comfortably shorter than a
+review. A tick landing in that gap spawns a duplicate of every reviewer in flight:
+two agents read the same diff and post two review comments under the owner's
+avatar, and the verdicts race, one applying `ai-ok-code` while the other applies
+`ai-changes` and leaves the PR contradictory for Pass 1 to interpret. On a 4-PR
+queue that is 8 duplicated reviewers against the monthly cap the limits section
+exists to protect.
+
+Two labels rather than one, because the reviewers are spawned independently and a
+single flag could not say *which* was already running. The reviewer clears its own
+claim alongside its verdict, so a claim never outlives its run; if one does, the
+agent died and Pass 2's stall reaping drops it.
 
 Reviewer prompt template:
 
@@ -452,9 +487,14 @@ Reviewer prompt template:
 > restating the diff. Writing `Nothing.` is a real verdict and the common one —
 > say it plainly rather than padding the section to look thorough.
 >
-> Then apply exactly one verdict label:
-> - Clean, or only nit-level suggestions → `gh pr edit <N> --add-label <ai-ok-code|ai-ok-sec>`
-> - A real defect a maintainer would block on → `gh pr edit <N> --add-label ai-changes --remove-label ai-review`
+> Then apply exactly one verdict label, **clearing your claim label in the same
+> command**:
+> - Clean, or only nit-level suggestions → `gh pr edit <N> --add-label <ai-ok-code|ai-ok-sec> --remove-label <ai-reviewing-code|ai-reviewing-sec>`
+> - A real defect a maintainer would block on → `gh pr edit <N> --add-label ai-changes --remove-label ai-review --remove-label <ai-reviewing-code|ai-reviewing-sec>`
+>
+> Pass 3 applied that claim label immediately before spawning you, and skips
+> spawning a second of you for as long as it is set. Leaving it behind wedges your
+> half of the review until Pass 2 reaps it as a dead reviewer.
 >
 > And **additionally**, if and only if your `### Before merging` section is not
 > `Nothing.`:
@@ -537,7 +577,10 @@ package/from/to table survives because it sits at the top; classify from that.
 > State in your comment which rule fired, name the packages that tripped it, and say
 > whether the body was truncated so the reader knows what you could and couldn't see.
 > Same `🤖 *Automated review — …*` header line, same closing `### Before merging`
-> section, and same one-verdict-label rule as above.
+> section, and same one-verdict-label rule as above — **including clearing your
+> `<ai-reviewing-code|ai-reviewing-sec>` claim label in the same `gh pr edit`**.
+> Pass 3 claimed you with it before spawning you, and a claim left behind wedges
+> your half of the review until Pass 2 reaps it.
 >
 > Be sparing with `ai-notes` here specifically: it suppresses auto-merge, so a
 > reflexive note on every dependency bump wedges the one path that runs

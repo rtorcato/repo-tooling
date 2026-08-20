@@ -76,6 +76,8 @@ that state, so a missed tick, a crash, or a restart costs nothing.
 | `ai-blocked` | issue | Agent gave up; needs a human. |
 | `holding` | issue | A gate — closes on human judgement, never picked up. |
 | `ai-review` | PR | Awaiting agent review. |
+| `ai-reviewing-code` | PR | `code-reviewer` claimed and running. Cleared with its verdict. |
+| `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
 | `ai-ok-code` | PR | `code-reviewer` passed. |
 | `ai-ok-sec` | PR | `security-expert` passed. |
 | `ai-changes` | PR | A reviewer requested changes. |
@@ -83,12 +85,17 @@ that state, so a missed tick, a crash, or a restart costs nothing.
 
 ```
 issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
-PR: ai-review ─> reviewers ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> assigned to you
-                            │        (± ai-notes)       │              ─> YOU merge
-                            │                           └─ dependabot ─> auto-merge
-                            └─> ai-changes ─> fix round (max 2) ─> ai-review
-                                                        └─ round 3 ─> ai-blocked
+PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> assigned to you
+                                 │        (± ai-notes)       │              ─> YOU merge
+                                 │                           └─ dependabot ─> auto-merge
+                                 └─> ai-changes ─> fix round (max 2) ─> ai-review
+                                                             └─ round 3 ─> ai-blocked
 ```
+
+`ai-reviewing-code` / `ai-reviewing-sec` are the claim step. Pass 3 applies one
+immediately before spawning that reviewer and skips spawning a second while it is
+set, so a tick that fires mid-review cannot double-spawn; the reviewer clears its
+own claim alongside its verdict.
 
 `ai-changes` is the send-back — **never** re-apply `ai-ready` to an open PR's
 issue; that is what double-picks it.
