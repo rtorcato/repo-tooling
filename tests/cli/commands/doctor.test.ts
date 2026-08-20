@@ -581,7 +581,6 @@ describe('doctor extended checks', () => {
 		expect((await worktreeCheck(dir))?.status).toBe('drift')
 	})
 
-
 	it('detects lint-staged in package.json', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), {
@@ -967,6 +966,28 @@ describe('doctor security checks', () => {
 		const dep = results.find((r) => r.check === 'Dependabot')
 		expect(dep?.status).toBe('drift')
 		expect(dep?.detail).toMatch(/production bumps/)
+		expect(dep?.hint).toMatch(/fix dependabot/)
+	})
+
+	// #458: the group gate alone lets peerDependencies through, because a package
+	// that is both dev and peer is filed by Dependabot as "development". A repo
+	// that took the #423 pair but not this one still has the hole.
+	it('reports Dependabot drift when the auto-merge workflow trusts the group name', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const workflow = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		await fs.writeFile(
+			workflow,
+			(await fs.readFile(workflow, 'utf8')).replace(
+				/\s*steps\.gate\.outputs\.safe == 'true' &&/,
+				''
+			)
+		)
+		const results = await runDoctor(dir)
+		const dep = results.find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('drift')
+		expect(dep?.detail).toMatch(/peerDependencies/)
 		expect(dep?.hint).toMatch(/fix dependabot/)
 	})
 
@@ -1564,7 +1585,10 @@ describe('checkBuildApprovals', () => {
 
 	it('accepts a decision either way — declining a build is still deciding', async () => {
 		const dir = newTmpDir()
-		const pkg = { name: 'demo', devDependencies: { esbuild: '^0.25.0', '@prisma/client': '^5.0.0' } }
+		const pkg = {
+			name: 'demo',
+			devDependencies: { esbuild: '^0.25.0', '@prisma/client': '^5.0.0' },
+		}
 		await seedDep(dir, 'esbuild', { postinstall: 'node install.js' })
 		await seedDep(dir, '@prisma/client', { postinstall: 'prisma generate' })
 		await fs.writeFile(
@@ -1584,7 +1608,10 @@ describe('checkBuildApprovals', () => {
 	})
 
 	it('stays quiet when nothing is installed to inspect', async () => {
-		const result = await checkBuildApprovals(newTmpDir(), { name: 'demo', devDependencies: { x: '1' } })
+		const result = await checkBuildApprovals(newTmpDir(), {
+			name: 'demo',
+			devDependencies: { x: '1' },
+		})
 		expect(result.status).toBe('ok')
 		expect(result.detail).toContain('no installed dependencies')
 	})

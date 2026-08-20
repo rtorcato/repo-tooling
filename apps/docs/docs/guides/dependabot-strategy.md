@@ -26,7 +26,7 @@ Dependabot opens roughly **3–4 PRs per cycle** instead of one per package:
 | Group | Contents | Update types | Auto-merge |
 | --- | --- | --- | --- |
 | `production-minor` | runtime `dependencies` | minor, patch | ❌ manual |
-| `dev-minor` | `devDependencies` | minor, patch | ✅ on green |
+| `dev-minor` | `devDependencies` | minor, patch | ✅ on green, if nothing in it ships |
 | `major-updates` | all packages | major | ❌ manual |
 | `github-actions` | workflow actions | all | ❌ manual |
 
@@ -40,6 +40,20 @@ and `version-update:semver-patch` / `version-update:semver-minor`.
 
 Everything else waits for a human, and the gate **fails closed**: a PR outside a
 group reports an empty `dependency-group` and so never matches.
+
+> **The group name is not the gate.** `dependency-type: development` is
+> Dependabot's classification, and it files a package listed in *both*
+> `devDependencies` and `peerDependencies` as development — so it lands in
+> `dev-minor` while still being part of what a published package hands its
+> consumers. This repo has 32 such packages; 13 of them once rode a single
+> "dev-only" group PR. The workflow therefore resolves every bumped name against
+> the tracked manifests (`dependencies` + `optionalDependencies` +
+> `peerDependencies` of every non-private `package.json`) and stands down if any
+> of them ships. A PR reporting no dependency names at all is also refused —
+> nothing verified means nothing waved through.
+>
+> This step is npm-specific. A repo with no `package.json` finds nothing and
+> falls back to the group + semver gate alone.
 
 > **Production bumps are deliberately excluded.** A minor bump to a runtime
 > dependency of a published package ships to every consumer on the next release.
