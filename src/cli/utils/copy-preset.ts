@@ -21,6 +21,7 @@ export type PresetName =
 	| 'claude-sync-agents'
 	| 'mcp-example'
 	| 'docusaurus-sync-changelog'
+	| 'docusaurus-docs-helpers'
 	| 'docusaurus-theme-tokens'
 	| 'docusaurus-theme'
 
@@ -128,6 +129,11 @@ export const PRESETS: Record<PresetName, PresetDefinition> = {
 		source: 'tooling/docusaurus/sync-changelog.mjs',
 		target: 'scripts/sync-changelog.mjs',
 		desc: 'Canonical CHANGELOG → docs sync script for Docusaurus sites',
+	},
+	'docusaurus-docs-helpers': {
+		source: 'tooling/docusaurus/docs-helpers.mjs',
+		target: 'scripts/docs-helpers.mjs',
+		desc: 'Docs-generator helpers (markdown-table escaping, export parser, generated-block splice)',
 	},
 	'docusaurus-theme-tokens': {
 		source: 'tooling/docusaurus/theme-tokens.css',

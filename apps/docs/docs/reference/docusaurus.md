@@ -33,6 +33,29 @@ hooks reliably, so chain it in `build`/`start` rather than relying on `prebuild`
 }
 ```
 
+## `copy docusaurus-docs-helpers`
+
+Drops `scripts/docs-helpers.mjs` into your repo:
+
+```bash
+npx @rtorcato/repo-tooling copy docusaurus-docs-helpers
+```
+
+The pure pieces of a docs generator for a subpath-exports package, so the
+generator script above them stays small and project-specific:
+
+| Export | What it does |
+| --- | --- |
+| `escapeForMarkdownTable(text)` | Makes a JSDoc summary safe for a table cell — escapes `<` outside code spans (so `` `Success<T>` `` survives and `<<b>>` can't leave a live `<b>`), and escapes `\` and `\|` in one pass. |
+| `collectExportNames(file)` | Recursively parses `export function\|const\|class\|type\|interface\|enum`, `export { … }`, and both re-export forms, following relative specifiers into the files they name. For `export { foo as bar }` the exported name is `bar`. |
+| `spliceGeneratedBlock(existing, block)` | Rewrites only the region between `MARKER_START` and `MARKER_END`, so hand-written prose around it survives. Returns `null` for a page with no markers — a fully hand-written page is left alone. |
+
+Wire it into whatever generator your repo needs:
+
+```js
+import { collectExportNames, escapeForMarkdownTable, spliceGeneratedBlock } from './docs-helpers.mjs'
+```
+
 ## `copy docusaurus-theme-tokens`
 
 Drops the shared design-token base into `apps/docs/src/css/_jt-tokens.css`:
