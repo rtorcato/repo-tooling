@@ -30,8 +30,10 @@ export type GitIdentityVerdict = 'ok' | 'unset' | 'placeholder' | 'generated'
 const PLACEHOLDER_DOMAINS = ['example.com', 'example.org', 'example.net', 'invalid', 'test']
 
 /**
- * Suffixes of a machine-derived hostname. `.local` is mDNS (macOS default),
- * `.matrix` is this user's LAN — both produced real commits in the #327 set.
+ * Suffixes of a machine-derived hostname. `.local` is mDNS (macOS default); the
+ * rest are the conventional private-LAN suffixes a router hands out. `.matrix`
+ * is one such router default rather than a registered TLD — it is here because
+ * it produced real commits in the #327 set, alongside `.local`.
  */
 const HOSTNAME_SUFFIXES = ['.local', '.matrix', '.localhost', '.lan', '.home', '.internal']
 
