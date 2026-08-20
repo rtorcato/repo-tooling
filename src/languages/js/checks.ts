@@ -757,6 +757,11 @@ export async function checkSizeLimit(dir: string, pkg: Pkg | null): Promise<Chec
 	}
 }
 
+/** Changesets is in use when its config file is present. */
+export function usesChangesets(dir: string): Promise<boolean> {
+	return fs.pathExists(path.join(dir, '.changeset', 'config.json'))
+}
+
 const SEMANTIC_RELEASE_FILES = [
 	'.releaserc',
 	'.releaserc.json',
@@ -788,7 +793,7 @@ export async function checkSemanticRelease(dir: string, pkg: Pkg | null): Promis
 		}
 	}
 
-	const hasChangesets = await fs.pathExists(path.join(dir, '.changeset', 'config.json'))
+	const hasChangesets = await usesChangesets(dir)
 	const hasReleasePlease = await fs.pathExists(path.join(dir, 'release-please-config.json'))
 	const hasSemanticRelease = inPkg || !!configFile
 
@@ -1320,9 +1325,13 @@ export async function checkDocsSite(dir: string, docsAppDir: string): Promise<Ch
 	const check = 'Docs site'
 	const deltas: string[] = []
 
+	// sync-changelog pumps a root CHANGELOG.md into the site — a semantic-release
+	// shape. Changesets writes per-package changelogs and leaves the (private)
+	// root package without one, so don't require the script there (#425). If a
+	// Changesets repo keeps the script anyway, it still has to be wired.
 	const syncPath = path.join(dir, 'scripts', 'sync-changelog.mjs')
 	if (!(await fs.pathExists(syncPath))) {
-		deltas.push('scripts/sync-changelog.mjs missing')
+		if (!(await usesChangesets(dir))) deltas.push('scripts/sync-changelog.mjs missing')
 	} else {
 		const pkgPath = path.join(dir, docsAppDir, 'package.json')
 		if (await fs.pathExists(pkgPath)) {

@@ -122,6 +122,28 @@ describe('generateDocsSite', () => {
 		expect(docs?.status).toBe('ok')
 	})
 
+	// A Changesets repo writes per-package changelogs and its root package is
+	// private, so there is no root CHANGELOG.md for sync-changelog to pump (#425).
+	it('does not require sync-changelog on a Changesets repo (#425)', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), PKG)
+		await generateDocsSite(PKG, dir)
+		await fs.remove(join(dir, 'scripts/sync-changelog.mjs'))
+		const docsPkgPath = join(dir, 'apps/docs/package.json')
+		const docsPkg = await fs.readJson(docsPkgPath)
+		docsPkg.scripts = { build: 'docusaurus build', start: 'docusaurus start' }
+		await fs.writeJson(docsPkgPath, docsPkg)
+
+		// Without Changesets the same layout is still drift.
+		const before = (await runDoctor(dir)).find((r) => r.check === 'Docs site')
+		expect(before?.status).toBe('drift')
+		expect(before?.detail).toContain('sync-changelog.mjs missing')
+
+		await fs.outputJson(join(dir, '.changeset/config.json'), { changelog: '@changesets/cli' })
+		const after = (await runDoctor(dir)).find((r) => r.check === 'Docs site')
+		expect(after?.status).toBe('ok')
+	})
+
 	it('emits the shared badge row into the docs homepage (#169)', async () => {
 		const dir = newTmpDir()
 		await generateDocsSite(PKG, dir)

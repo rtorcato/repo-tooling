@@ -59,7 +59,9 @@ When a Docusaurus site exists (`apps/docs/docusaurus.config.ts` or
 `apps/doc/…`), `doctor` reports a **Docs site** check that verifies:
 
 - `scripts/sync-changelog.mjs` exists and is chained into the docs app's
-  `build`/`start` scripts.
+  `build`/`start` scripts. Skipped when `.changeset/config.json` is present —
+  Changesets writes per-package changelogs, so there is no root `CHANGELOG.md`
+  to sync.
 - The Pages deploy workflow uploads `apps/doc*/build` (not `dist`).
 
 Repos without a docs site don't see the check — it's opt-in.
