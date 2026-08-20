@@ -68,11 +68,15 @@ describe('swift fixers', () => {
 		// their own address, so there is nothing for a fixer to write. `Swift
 		// tests` is the same shape as `Package.swift`: half of it is a manifest
 		// edit (#311). `Monorepo` states the audit's own root-only scope (#317) —
-		// there is no drift for a fixer to close.
+		// there is no drift for a fixer to close. `Release gate` and `Release
+		// environment` (#429) report only — creating the environment needs a
+		// `required_reviewers` list only a human can supply.
 		expect(uncovered).toEqual([
 			'language',
 			'Monorepo',
 			'Git identity',
+			'Release gate',
+			'Release environment',
 			'README badges',
 			'Coverage upload',
 			'Package.swift',
