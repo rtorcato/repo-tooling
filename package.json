@@ -87,6 +87,7 @@
 		"tooling/docusaurus/index.mjs",
 		"tooling/docusaurus/index.d.mts",
 		"tooling/docusaurus/sync-changelog.mjs",
+		"tooling/docusaurus/docs-helpers.mjs",
 		"tooling/docusaurus/theme-tokens.css",
 		"tooling/docusaurus/theme.css",
 		"tooling/biome/biome.json",
