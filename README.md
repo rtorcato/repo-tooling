@@ -175,7 +175,7 @@ ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md 
 
 This repo is also a self-hosted Claude Code marketplace. Install the plugin to
 get three skills — `repo-tooling` (adopt/audit the presets via the CLI),
-`npm-publish` (the family's release rules) and `ai-issue-loop` (the label-driven
+`npm-publish` (never hand-cut a release) and `ai-issue-loop` (the label-driven
 issue → PR pipeline) — in any session:
 
 ```
