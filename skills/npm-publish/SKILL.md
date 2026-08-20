@@ -18,6 +18,8 @@ pipeline. There is no manual release step under any of them.
 - `npm version` (or editing `"version"` in `package.json`)
 - `git tag` / pushing tags
 - hand-editing `CHANGELOG.md`
+- merging the "Version Packages" PR (Changesets) or the release PR (Release Please) —
+  that merge *is* the publish, so it is the human's release decision, not yours
 
 This holds for all three tools. Only the "what to do instead" differs, so first
 work out which tool the repo uses.
@@ -65,15 +67,16 @@ pnpm changeset        # pick the packages + bump level, write the summary
 
 That writes `.changeset/<name>.md`. Commit it with the change. On merge to `main`
 the release action opens (or updates) a "Version Packages" PR; merging *that* is
-what publishes. Hand-authoring `.changeset/*.md` is fine — it is the one file in
-this flow you are meant to write. `CHANGELOG.md` is still generated; don't touch it.
+what publishes — so never merge it yourself, leave it for a human. Hand-authoring
+`.changeset/*.md` is fine — it is the one file in this flow you are meant to
+write. `CHANGELOG.md` is still generated; don't touch it.
 
 ### Release Please
 
 Also commit-driven, same Conventional Commit → bump mapping as semantic-release.
 On merge to `main` it opens a release PR that carries the version bump and the
-CHANGELOG entry; merging that PR tags and publishes. Don't edit
-`.release-please-manifest.json` by hand.
+CHANGELOG entry; merging that PR tags and publishes, so leave that merge to a
+human — never do it yourself. Don't edit `.release-please-manifest.json` by hand.
 
 ## What an agent should do
 
@@ -82,7 +85,8 @@ CHANGELOG entry; merging that PR tags and publishes. Don't edit
   Releases page — don't infer it from `package.json` (under semantic-release that's
   `0.0.0-development` / a placeholder until CI stamps it).
 - If a release seems stuck, inspect the release workflow run, and check for an open
-  release / "Version Packages" PR waiting to be merged — do **not** publish by hand.
+  release / "Version Packages" PR waiting to be merged — report it, do **not** merge
+  it yourself and do **not** publish by hand.
 
 ## Why
 
