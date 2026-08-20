@@ -25,17 +25,32 @@ Dependabot opens roughly **3–4 PRs per cycle** instead of one per package:
 
 | Group | Contents | Update types | Auto-merge |
 | --- | --- | --- | --- |
-| `production-minor` | runtime `dependencies` | minor, patch | ✅ on green |
+| `production-minor` | runtime `dependencies` | minor, patch | ❌ manual |
 | `dev-minor` | `devDependencies` | minor, patch | ✅ on green |
 | `major-updates` | all packages | major | ❌ manual |
-| `github-actions` | workflow actions | all | ✅ on green |
+| `github-actions` | workflow actions | all | ❌ manual |
 
-## 2. Auto-merge — safe tier only
+## 2. Auto-merge — dev dependencies only
 
-Patch and minor updates (prod and dev) **merge themselves once CI is green** —
-no human in the loop. Implemented by `.github/workflows/dependabot-automerge.yml`
-using `dependabot/fetch-metadata` + `gh pr merge --auto --squash`, gated to
-`version-update:semver-patch` and `version-update:semver-minor`.
+Patch and minor updates **of `devDependencies`** merge themselves once CI is
+green — no human in the loop. Implemented by
+`.github/workflows/dependabot-automerge.yml` using `dependabot/fetch-metadata` +
+`gh pr merge --auto --squash`, gated on **both** `dependency-group == 'dev-minor'`
+and `version-update:semver-patch` / `version-update:semver-minor`.
+
+Everything else waits for a human, and the gate **fails closed**: a PR outside a
+group reports an empty `dependency-group` and so never matches.
+
+> **Production bumps are deliberately excluded.** A minor bump to a runtime
+> dependency of a published package ships to every consumer on the next release.
+> Auto-merging those on green CI alone means the 7-day `cooldown` is the only
+> thing between a compromised upstream release and `main`. GitHub Actions bumps
+> are excluded for the same reason — a compromised action runs in CI holding
+> `GITHUB_TOKEN`.
+>
+> The gate names the group that `dependabot.yml` declares, so the two files are
+> a paired unit: rename a group in one and auto-merge silently stops (which is
+> the safe direction, but still drift — `doctor` flags it).
 
 > **Requires branch protection.** `gh pr merge --auto` only gates correctly when
 > the repo has auto-merge enabled and `main` has required status checks

@@ -31,13 +31,16 @@ export function dependabotConfig(ecosystem: string | null): string {
       prefix: chore
       include: scope
     groups:
-      # Safe tier: runtime + dev minor/patch auto-merge on green (see the
-      # dependabot-automerge workflow). Grouped so react/react-dom move together.
+      # Runtime minor/patch. Grouped so react/react-dom move together, but NOT
+      # auto-merged — these ship to consumers of a published package, so they
+      # get a human (see the dependabot-automerge workflow).
       production-minor:
         dependency-type: production
         update-types:
           - minor
           - patch
+      # The only tier that auto-merges on green — dev tooling never reaches a
+      # consumer of the published package.
       dev-minor:
         dependency-type: development
         update-types:
@@ -68,10 +71,16 @@ ${manifest}  - package-ecosystem: github-actions
 export const DEPENDABOT_CONFIG = dependabotConfig('npm')
 
 /**
- * Auto-merges patch + minor Dependabot PRs once CI is green. Requires branch
- * protection with required status checks on the target branch — without it,
- * \`gh pr merge --auto\` never fires. Majors are excluded (they land in the
- * major-updates group for manual triage).
+ * Auto-merges patch + minor Dependabot PRs **from the `dev-minor` group only**
+ * once CI is green. Requires branch protection with required status checks on
+ * the target branch — without it, \`gh pr merge --auto\` never fires.
+ *
+ * Everything else falls through to a human: production bumps ship to consumers
+ * of a published package (#423), majors are breaking by definition, and an
+ * ungrouped PR reports an empty \`dependency-group\`, so the gate fails closed.
+ *
+ * The group name is the one \`dependabotConfig()\` writes — the two files are a
+ * paired unit and have to move together.
  */
 export const DEPENDABOT_AUTOMERGE_WORKFLOW = `name: Dependabot auto-merge
 
@@ -92,10 +101,14 @@ jobs:
         with:
           github-token: \${{ secrets.GITHUB_TOKEN }}
 
-      - name: Auto-merge patch and minor updates
+      # Belt and braces: the dev-minor group is already declared minor+patch in
+      # dependabot.yml, but this workflow is the security gate and shouldn't
+      # trust a config file a consumer repo can edit independently.
+      - name: Auto-merge dev-dependency patch and minor updates
         if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          steps.metadata.outputs.dependency-group == 'dev-minor' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: \${{ github.event.pull_request.html_url }}

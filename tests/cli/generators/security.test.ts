@@ -51,6 +51,36 @@ describe('generateDependabotConfig', () => {
 			'.github/workflows/dependabot-automerge.yml',
 		])
 	})
+
+	// #423: production bumps ship to consumers of a published package, so the
+	// auto-merge gate is the dev-minor group *and* the semver type.
+	it('gates auto-merge on the dev-minor group as well as the semver type', async () => {
+		const dir = newTmpDir()
+		await generateDependabotConfig(dir)
+		const content = await fs.readFile(
+			join(dir, '.github', 'workflows', 'dependabot-automerge.yml'),
+			'utf-8'
+		)
+		expect(content).toMatch(/steps\.metadata\.outputs\.dependency-group == 'dev-minor' &&/)
+		expect(content).toMatch(/update-type == 'version-update:semver-patch'/)
+		expect(content).toMatch(/update-type == 'version-update:semver-minor'/)
+		expect(content).not.toMatch(/'production-minor'/)
+	})
+
+	// The gate names a group that the paired dependabot.yml has to declare —
+	// rename one without the other and auto-merge silently stops firing.
+	it('gates on a group the paired dependabot.yml actually declares', async () => {
+		const dir = newTmpDir()
+		await generateDependabotConfig(dir)
+		const config = await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')
+		const workflow = await fs.readFile(
+			join(dir, '.github', 'workflows', 'dependabot-automerge.yml'),
+			'utf-8'
+		)
+		const group = workflow.match(/dependency-group == '([^']+)'/)?.[1]
+		expect(group).toBeDefined()
+		expect(config).toMatch(new RegExp(`^\\s*${group}:`, 'm'))
+	})
 })
 
 describe('generateCodeQLWorkflow', () => {
