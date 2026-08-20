@@ -383,7 +383,7 @@ work must never be reaped out from under itself.
 | Stalled | Condition | Do |
 |---|---|---|
 | Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me`, comment, remove the worktree |
-| Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label ai-reviewing-code` — dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
+| Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label <the claim that stalled>` — drop **that** label, not a fixed one; a stalled `ai-reviewing-sec` cleared as `ai-reviewing-code` leaves the dead claim in place and the reviewer never re-spawns. Dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
 | Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch |
 
 The **no PR exists** condition on the first row is what makes reaping safe. An
