@@ -304,6 +304,15 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				if (!automerge.includes("dependency-group == 'dev-minor'")) {
 					deltas.push('auto-merge workflow merges production bumps (missing dev-minor group gate)')
 				}
+				// #458: the group gate alone lets peerDependencies through, because
+				// Dependabot files a package that is both dev and peer under
+				// "development". The canonical workflow re-checks the names against the
+				// manifests; a workflow without that step is the #423 hole reopened.
+				if (!automerge.includes("steps.gate.outputs.safe == 'true'")) {
+					deltas.push(
+						'auto-merge workflow trusts the dev-minor group name (missing peerDependencies check)'
+					)
+				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')
 			}

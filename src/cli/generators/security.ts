@@ -39,8 +39,11 @@ export function dependabotConfig(ecosystem: string | null): string {
         update-types:
           - minor
           - patch
-      # The only tier that auto-merges on green — dev tooling never reaches a
-      # consumer of the published package.
+      # The tier that can auto-merge on green. "development" is Dependabot's
+      # classification, not a safety property: a package listed in both
+      # devDependencies and peerDependencies lands here, and peer deps are part
+      # of a published package's contract (#458). The auto-merge workflow
+      # re-checks every name against the manifests rather than trusting this.
       dev-minor:
         dependency-type: development
         update-types:
@@ -137,6 +140,13 @@ export function dependabotIgnoreRules(content: string): string[] {
  *
  * The group name is the one \`dependabotConfig()\` writes — the two files are a
  * paired unit and have to move together.
+ *
+ * **The group name alone is not enough** (#458). Dependabot classifies a package
+ * listed in both \`devDependencies\` and \`peerDependencies\` as *development*, so
+ * it lands in \`dev-minor\` — and \`peerDependencies\` are part of what a published
+ * package hands its consumers. This repo had 32 such packages, and 13 of them
+ * rode a single "dev-only" group PR. So the workflow resolves every bumped name
+ * against the tracked manifests and stands down if any of them ships.
  */
 export const DEPENDABOT_AUTOMERGE_WORKFLOW = `name: Dependabot auto-merge
 
@@ -157,11 +167,50 @@ jobs:
         with:
           github-token: \${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/checkout@v7
+
+      # The group name is Dependabot's opinion, not a safety property: a package
+      # in both devDependencies and peerDependencies is classified "development"
+      # and lands in dev-minor, while peerDependencies ship to consumers of a
+      # published package (#458). So resolve every bumped name against the
+      # tracked manifests and stand down if any of them reaches a consumer.
+      #
+      # npm-specific by design. A repo with no package.json (Swift, Python) finds
+      # nothing here and falls back to the group + semver gate below.
+      - name: Check whether any bumped package ships to consumers
+        id: gate
+        env:
+          NAMES: \${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          set -euo pipefail
+
+          # A private workspace publishes nothing, so its deps reach nobody.
+          ships=$(git ls-files -- 'package.json' '*/package.json' | while read -r f; do
+            if [ "$(jq -r '.private // false' "$f")" = 'true' ]; then continue; fi
+            jq -r '((.dependencies // {}) + (.optionalDependencies // {}) + (.peerDependencies // {})) | keys[]' "$f"
+          done | sort -u)
+
+          safe=true
+          # No names reported means we cannot verify anything — fail closed.
+          if [ -z "\${NAMES//[, ]/}" ]; then
+            echo "::notice::no dependency names reported — leaving this PR for a human"
+            safe=false
+          fi
+          for name in \${NAMES//,/ }; do
+            if printf '%s\\n' "$ships" | grep -qxF -- "$name"; then
+              echo "::notice::$name ships to consumers — leaving this PR for a human"
+              safe=false
+              break
+            fi
+          done
+          echo "safe=$safe" >> "$GITHUB_OUTPUT"
+
       # Belt and braces: the dev-minor group is already declared minor+patch in
       # dependabot.yml, but this workflow is the security gate and shouldn't
       # trust a config file a consumer repo can edit independently.
       - name: Auto-merge dev-dependency patch and minor updates
         if: |
+          steps.gate.outputs.safe == 'true' &&
           steps.metadata.outputs.dependency-group == 'dev-minor' &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor')

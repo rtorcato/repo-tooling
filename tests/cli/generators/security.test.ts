@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
+	DEPENDABOT_AUTOMERGE_WORKFLOW,
 	DEPENDABOT_CONFIG,
 	dependabotIgnoreRules,
 	findDependabotIgnoreRules,
@@ -83,6 +84,104 @@ describe('generateDependabotConfig', () => {
 		const group = workflow.match(/dependency-group == '([^']+)'/)?.[1]
 		expect(group).toBeDefined()
 		expect(config).toMatch(new RegExp(`^\\s*${group}:`, 'm'))
+	})
+})
+
+// #458: `dependency-type: development` is Dependabot's classification, not a
+// safety property — a package in both devDependencies and peerDependencies is
+// filed as development and lands in dev-minor, while peerDependencies are part
+// of what a published package hands its consumers. This repo had 32 such
+// packages and 13 rode a single "dev-only" group PR.
+//
+// The gate is shell, so the test runs the shell. A string assertion would pass
+// on a script that never sets `safe` at all.
+describe('the auto-merge consumer-facing gate', () => {
+	/** The `run:` body of the `id: gate` step, dedented to a runnable script. */
+	function gateScript(): string {
+		const step = DEPENDABOT_AUTOMERGE_WORKFLOW.split(/^ {6}- name: Check whether/m)[1]
+		const body = step?.match(/ {8}run: \|\n([\s\S]*?)\n(?= {6}(?:#|-))/)?.[1]
+		if (!body) throw new Error('could not extract the gate script from the workflow')
+		return body
+			.split('\n')
+			.map((l) => l.replace(/^ {10}/, ''))
+			.join('\n')
+	}
+
+	/**
+	 * Run the gate against a throwaway git repo. `git ls-files` only sees tracked
+	 * files, so the manifests have to be added — which is also the real behaviour
+	 * we depend on.
+	 */
+	async function runGate(
+		manifests: Record<string, unknown>,
+		names: string
+	): Promise<'true' | 'false'> {
+		const dir = newTmpDir()
+		for (const [file, json] of Object.entries(manifests)) {
+			await fs.outputJson(join(dir, file), json)
+		}
+		const out = join(dir, 'gh-output')
+		await fs.writeFile(out, '')
+		await fs.writeFile(join(dir, 'gate.sh'), gateScript())
+
+		const { execFile } = await import('node:child_process')
+		const { promisify } = await import('node:util')
+		const run = promisify(execFile)
+		await run('git', ['init', '-q'], { cwd: dir })
+		await run('git', ['add', '-A'], { cwd: dir })
+		await run('bash', ['gate.sh'], {
+			cwd: dir,
+			env: { ...process.env, NAMES: names, GITHUB_OUTPUT: out },
+		})
+		const written = await fs.readFile(out, 'utf-8')
+		return written.trim().endsWith('safe=true') ? 'true' : 'false'
+	}
+
+	const MANIFEST = {
+		'package.json': {
+			name: 'published',
+			devDependencies: { knip: '^5.0.0', typescript: '^5.0.0' },
+			peerDependencies: { typescript: '^5.0.0' },
+			dependencies: { chalk: '^5.0.0' },
+		},
+	}
+
+	it('passes a bump that reaches no consumer', async () => {
+		expect(await runGate(MANIFEST, 'knip')).toBe('true')
+	})
+
+	// The whole point: `typescript` is a devDependency *and* a peerDependency, so
+	// Dependabot files it under dev-minor. It still ships.
+	it('stands down when a bumped package is a peerDependency', async () => {
+		expect(await runGate(MANIFEST, 'knip,typescript')).toBe('false')
+	})
+
+	it('stands down on a runtime dependency', async () => {
+		expect(await runGate(MANIFEST, 'chalk')).toBe('false')
+	})
+
+	// A private workspace publishes nothing, so its deps reach nobody — flagging
+	// them would train the reader to ignore the gate.
+	it('ignores the manifests of private workspaces', async () => {
+		const withDocs = {
+			...MANIFEST,
+			'apps/docs/package.json': { name: 'docs', private: true, dependencies: { react: '^19.0.0' } },
+		}
+		expect(await runGate(withDocs, 'react')).toBe('true')
+	})
+
+	it('reads workspace manifests that do publish', async () => {
+		const withPkg = {
+			...MANIFEST,
+			'packages/ui/package.json': { name: 'ui', peerDependencies: { react: '^19.0.0' } },
+		}
+		expect(await runGate(withPkg, 'react')).toBe('false')
+	})
+
+	// Nothing to check means nothing was verified. Failing open here would be the
+	// #423 hole reopened, quietly.
+	it('fails closed when no dependency names are reported', async () => {
+		expect(await runGate(MANIFEST, '')).toBe('false')
 	})
 })
 
