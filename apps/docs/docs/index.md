@@ -39,8 +39,8 @@ npx @rtorcato/repo-tooling setup
 ## Use with Claude Code
 
 This repo is a self-hosted Claude Code marketplace. Install the plugin to get two
-skills — `repo-tooling` (adopt/audit the presets via the CLI) and `npm-publish` (the
-family's release rules):
+skills — `repo-tooling` (adopt/audit the presets via the CLI) and `npm-publish`
+(never hand-cut a release):
 
 ```
 /plugin marketplace add rtorcato/repo-tooling
