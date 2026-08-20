@@ -265,6 +265,36 @@ jobs:
             node scripts/integration/preset-lifecycle.mjs "$preset"
           done
 
+  # Integration: the CLI as a public consumer sees it — HOME pointed at an empty
+  # temp dir, so no ~/.claude, no stow symlinks and none of the maintainer's
+  # dotfiles exist (#460). Catches the silent class where shipped surface assumes
+  # a machine that only the maintainer has. One Node major: this exercises path
+  # and HOME handling, not the runtime, which the job above already matrixes.
+  integration-no-dotfiles:
+    runs-on: ubuntu-latest
+    needs: [check-skip]
+    if: needs.check-skip.outputs.should-skip != 'true'
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🏗️ Build CLI
+        run: pnpm build-cli
+
+      - name: 🏠 setup + doctor + fix against an empty HOME
+        run: node scripts/integration/no-dotfiles.mjs
+
   # swift-library can't ride the job above: ubuntu-latest ships no Swift
   # toolchain, and the scaffold's own CI targets Apple platforms anyway (#312).
   # macos-latest over a swift:* container because macOS runners are free on
@@ -372,6 +402,7 @@ jobs:
         typecheck,
         test,
         integration,
+        integration-no-dotfiles,
         integration-swift,
         build,
         varcheck,
@@ -386,6 +417,7 @@ jobs:
       needs.typecheck.result == 'success' &&
       needs.test.result == 'success' &&
       needs.integration.result == 'success' &&
+      needs.integration-no-dotfiles.result == 'success' &&
       needs.integration-swift.result == 'success' &&
       needs.build.result == 'success' &&
       needs.varcheck.result == 'success'

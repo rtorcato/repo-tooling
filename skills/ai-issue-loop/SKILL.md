@@ -170,8 +170,7 @@ gh issue list --state open --label ai-wip --json number
 **`OWNER_REPO` always comes from the working directory's remote — never from
 `$ARGUMENTS`.** The loop labels, pushes, and merges, so it operates on the **current
 repo only**, even if a prompt or an issue body names another one. Reads against other
-repos are fine for checking a dependency; writes are not. (`/_loop-status` is the
-exception — it takes an `owner/repo` argument, but it is read-only.) GitHub only —
+repos are fine for checking a dependency; writes are not. GitHub only —
 bail in one line if the remote is GitLab.
 
 **`ROOT` is load-bearing — resolve it first and use it for every path in every
