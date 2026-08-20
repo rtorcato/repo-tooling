@@ -296,7 +296,15 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				}
 			}
 			const automergePath = path.join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
-			if (!(await fs.pathExists(automergePath))) {
+			if (await fs.pathExists(automergePath)) {
+				// Pre-#423 workflows gated on the semver type alone, so production
+				// bumps of a published package merged with nobody in the loop. The
+				// canonical gate also requires the dev-minor group.
+				const automerge = await fs.readFile(automergePath, 'utf8')
+				if (!automerge.includes("dependency-group == 'dev-minor'")) {
+					deltas.push('auto-merge workflow merges production bumps (missing dev-minor group gate)')
+				}
+			} else {
 				deltas.push('missing dependabot-automerge workflow')
 			}
 			// Repo-local `ignore:` rules aren't drift — they're deliberate, and the

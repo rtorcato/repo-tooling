@@ -949,6 +949,27 @@ describe('doctor security checks', () => {
 		expect(results.find((r) => r.check === 'Dependabot')?.status).toBe('drift')
 	})
 
+	// #423: a repo that took the scaffolded pair before the dev-minor gate is
+	// still auto-merging production bumps — flag it so `fix dependabot` lands.
+	it('reports Dependabot drift when the auto-merge workflow has the old broad gate', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const workflow = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		await fs.writeFile(
+			workflow,
+			(await fs.readFile(workflow, 'utf8')).replace(
+				/\s*steps\.metadata\.outputs\.dependency-group == 'dev-minor' &&/,
+				''
+			)
+		)
+		const results = await runDoctor(dir)
+		const dep = results.find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('drift')
+		expect(dep?.detail).toMatch(/production bumps/)
+		expect(dep?.hint).toMatch(/fix dependabot/)
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

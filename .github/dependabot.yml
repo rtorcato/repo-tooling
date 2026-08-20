@@ -17,13 +17,16 @@ updates:
       prefix: chore
       include: scope
     groups:
-      # Safe tier: runtime + dev minor/patch auto-merge on green (see the
-      # dependabot-automerge workflow). Grouped so react/react-dom move together.
+      # Runtime minor/patch. Grouped so react/react-dom move together, but NOT
+      # auto-merged — these ship to consumers of a published package, so they
+      # get a human (see the dependabot-automerge workflow).
       production-minor:
         dependency-type: production
         update-types:
           - minor
           - patch
+      # The only tier that auto-merges on green — dev tooling never reaches a
+      # consumer of the published package.
       dev-minor:
         dependency-type: development
         update-types:
