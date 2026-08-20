@@ -126,7 +126,7 @@ done, but open the comments first.
 
 These exist because the loop runs unattended against a monthly usage cap.
 
-- **4 issues in flight**, counted from open issues labelled `ai-wip`.
+- **6 issues in flight**, counted from open issues labelled `ai-wip`.
 - **Reviewers see the diff only** — `gh pr view` + `gh pr diff` + the issue body.
   No repo-wide exploration, no Explore agents.
 - **2 fix rounds per PR.** On the 3rd `ai-changes`, stop and mark `ai-blocked`.
@@ -367,7 +367,7 @@ concurrency slots, so it must run before Pass 4.
 
 **Then reap the stalled.** Nothing can time out an agent: the Agent tool takes no
 timeout, and an agent whose session died leaves its labels behind with no process
-to finish them. Four of those and the loop is permanently full while looking
+to finish them. Six of those and the loop is permanently full while looking
 merely busy. So instead of a timeout, check how long a label has sat without its
 expected transition — GitHub timestamps every application, so this needs no state
 of our own:
@@ -433,9 +433,9 @@ from "nobody has started" — and a 15-minute tick is comfortably shorter than a
 review. A tick landing in that gap spawns a duplicate of every reviewer in flight:
 two agents read the same diff and post two review comments under the owner's
 avatar, and the verdicts race, one applying `ai-ok-code` while the other applies
-`ai-changes` and leaves the PR contradictory for Pass 1 to interpret. On a 4-PR
-queue that is 8 duplicated reviewers against the monthly cap the limits section
-exists to protect.
+`ai-changes` and leaves the PR contradictory for Pass 1 to interpret. On a full
+queue that is a dozen duplicated reviewers against the monthly cap the limits
+section exists to protect.
 
 Two labels rather than one, because the reviewers are spawned independently and a
 single flag could not say *which* was already running. The reviewer clears its own
@@ -638,7 +638,7 @@ Otherwise spawn one background implementer agent:
 ### Pass 4 — pick up
 
 ```bash
-slots = 4 - (open issues labelled ai-wip)
+slots = 6 - (open issues labelled ai-wip)
 ```
 
 If `slots <= 0`, skip this pass.
