@@ -11,6 +11,7 @@ import {
 	readSkillVersion,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
+	SHIPPED_SKILLS,
 	skillDiffCommand,
 	stampSkill,
 	stampSkillVersion,
@@ -298,5 +299,29 @@ describe('claudeSkillStatus', () => {
 		const status = await claudeSkillStatus(SHIPPED_SKILL, skillsDir)
 		expect(status.contentState).toBe('modified')
 		expect(status.needsInstall).toBe(false)
+	})
+})
+
+describe('SHIPPED_SKILLS', () => {
+	it('includes the primary skill first', () => {
+		expect(SHIPPED_SKILLS[0]).toBe(SHIPPED_SKILL)
+	})
+
+	it('every entry ships a SKILL.md whose frontmatter name matches its directory', async () => {
+		for (const name of SHIPPED_SKILLS) {
+			const { content } = await readShippedSkill(name)
+			expect(content, name).toMatch(new RegExp(`^name: ${name}$`, 'm'))
+		}
+	})
+
+	it('installs every shipped skill without collisions', async () => {
+		const dir = newTmpDir()
+		for (const name of SHIPPED_SKILLS) {
+			const result = await installClaudeSkill(dir, name)
+			expect(result.status, name).toBe('installed')
+		}
+		for (const name of SHIPPED_SKILLS) {
+			expect(await fs.pathExists(join(dir, name, 'SKILL.md')), name).toBe(true)
+		}
 	})
 })

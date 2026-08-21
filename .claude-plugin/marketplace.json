@@ -9,7 +9,7 @@
     {
       "name": "repo-tooling",
       "source": "./",
-      "description": "Drive the @rtorcato/repo-tooling CLI (setup/doctor/fix) and follow the shared release rules. Three skills: repo-tooling (adopt/audit the presets), npm-publish (never hand-cut a release) and ai-issue-loop (the label-driven issue → PR pipeline)."
+      "description": "Drive the @rtorcato/repo-tooling CLI (setup/doctor/fix) and follow the shared release rules. Six skills: repo-tooling (adopt/audit the presets), npm-publish (never hand-cut a release), ai-issue-loop (the label-driven issue → PR pipeline), ai-workflow (burst the ai-ready queue in parallel worktrees), ai-issue (file agent-executable issues) and ai-loop-status (read-only pipeline status)."
     }
   ]
 }

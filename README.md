@@ -180,20 +180,22 @@ ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md 
 ### Use with Claude Code (plugin)
 
 This repo is also a self-hosted Claude Code marketplace. Install the plugin to
-get three skills — `repo-tooling` (adopt/audit the presets via the CLI),
-`npm-publish` (never hand-cut a release) and `ai-issue-loop` (the label-driven
-issue → PR pipeline) — in any session:
+get six skills — `repo-tooling` (adopt/audit the presets via the CLI),
+`npm-publish` (never hand-cut a release), `ai-issue-loop` (the label-driven
+issue → PR pipeline), `ai-workflow` (burst the `ai-ready` queue in parallel
+worktrees), `ai-issue` (file agent-executable issues) and `ai-loop-status`
+(read-only pipeline status) — in any session:
 
 ```
 /plugin marketplace add rtorcato/repo-tooling
 /plugin install repo-tooling@repo-tooling
 ```
 
-`ai-issue-loop` also installs on its own, user-globally, so every repo on the
-machine shares one copy:
+The four `ai-*` skills also install on their own, user-globally, so every repo
+on the machine shares one copy:
 
 ```bash
-npx @rtorcato/repo-tooling fix claude-skills   # → ~/.claude/skills/ai-issue-loop/SKILL.md
+npx @rtorcato/repo-tooling fix claude-skills   # → ~/.claude/skills/{ai-issue-loop,ai-workflow,ai-issue,ai-loop-status}/SKILL.md
 ```
 
 It writes outside the repo, so it is opt-in: a bare `fix` skips it. See the
@@ -234,7 +236,10 @@ MIT — see [LICENSE](LICENSE).
 Any agent that supports the [`skills`](https://www.npmjs.com/package/skills) CLI can install this repo's skills straight from GitHub — no clone, no package install:
 
 ```bash
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-issue'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-issue-loop'
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-loop-status'
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-workflow'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'npm-publish'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'repo-tooling'
 ```
