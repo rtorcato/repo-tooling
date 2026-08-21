@@ -4,8 +4,9 @@ import { BLOCK_START, hasStaleAgentBlock } from '../cli/generators/agent-rules.j
 import { BADGE_START, hasPublicOnlyBadges } from '../cli/generators/badges.js'
 import {
 	claudeSkillStatus,
-	SHIPPED_SKILL,
+	SHIPPED_SKILLS,
 	skillDiffCommand,
+	type SkillStatus,
 } from '../cli/generators/claude-skills.js'
 import { DEPENDABOT_CONFIG_PATHS, dependabotIgnoreRules } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
@@ -533,49 +534,70 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
  */
 export async function checkClaudeSkills(skillsDir?: string): Promise<CheckResult> {
 	const check = 'Claude skills'
-	const hint = `Run \`npx @rtorcato/repo-tooling fix claude-skills\` to install the ${SHIPPED_SKILL} skill (writes outside the repo; opt-in, so \`fix\` alone skips it)`
-	const status = await claudeSkillStatus(SHIPPED_SKILL, skillsDir)
-	if (!status.installed) {
+	const hint = `Run \`npx @rtorcato/repo-tooling fix claude-skills\` to install the ${SHIPPED_SKILLS.join(', ')} skills (writes outside the repo; opt-in, so \`fix\` alone skips it)`
+	const statuses: [string, SkillStatus][] = []
+	for (const name of SHIPPED_SKILLS) statuses.push([name, await claudeSkillStatus(name, skillsDir)])
+
+	if (statuses.every(([, s]) => s.file === null)) {
 		return {
 			check,
 			status: 'optional-missing',
-			detail: status.file
-				? `${SHIPPED_SKILL} skill is not installed`
-				: `no ~/.claude/skills — the ${SHIPPED_SKILL} skill is not installed`,
+			detail: `no ~/.claude/skills — the ${SHIPPED_SKILLS.join(', ')} skills are not installed`,
 			hint,
 		}
 	}
-	if (status.needsInstall) {
-		return {
-			check,
-			status: 'optional-missing',
-			detail: `${SHIPPED_SKILL} skill is at ${status.installedVersion ?? 'an unstamped version'}; this package ships ${status.shippedVersion}`,
-			hint,
-		}
+	const missing = statuses.filter(([, s]) => !s.installed).map(([name]) => name)
+	const behind = statuses.filter(([, s]) => s.installed && s.needsInstall)
+	if (missing.length > 0 || behind.length > 0) {
+		const parts = [
+			missing.length > 0 ? `not installed: ${missing.join(', ')}` : null,
+			...behind.map(
+				([name, s]) =>
+					`${name} is at ${s.installedVersion ?? 'an unstamped version'}; this package ships ${s.shippedVersion}`
+			),
+		].filter((p) => p !== null)
+		return { check, status: 'optional-missing', detail: parts.join('; '), hint }
 	}
 	// A local fork is `ok` for the same reason a modified copied asset is (#448):
 	// it is somebody's deliberate work, so it is named once and never nagged as
 	// fixable — pointing at a `fix` that would refuse is worse than saying nothing.
 	// `realFile` is set whenever `contentState` is — both mean something is
 	// installed. The extra test is TypeScript's, not a real condition.
-	if (status.realFile && status.contentState && status.contentState !== 'pristine') {
-		const why =
-			status.contentState === 'modified'
-				? `has local changes since ${status.installedVersion}`
-				: 'carries no content record, so a fork cannot be told from a stale copy'
+	const forks = statuses.filter(
+		([, s]) => s.realFile && s.contentState && s.contentState !== 'pristine'
+	)
+	if (forks.length > 0) {
+		const detail = forks
+			.map(([name, s]) => {
+				const why =
+					s.contentState === 'modified'
+						? `has local changes since ${s.installedVersion}`
+						: 'carries no content record, so a fork cannot be told from a stale copy'
+				return `${name} skill at ${s.file} ${why}; this package ships ${s.shippedVersion} and will not overwrite it`
+			})
+			.join('; ')
+		// Name both paths: "diff it against the shipped copy" left the reader
+		// with nothing to diff, in the one case they most want to look (#484).
+		const diffs = forks
+			.map(([, s]) =>
+				s.realFile
+					? `\`${skillDiffCommand({ realFile: s.realFile, shippedFile: s.shippedFile })}\``
+					: null
+			)
+			.filter((d) => d !== null)
+			.join(', ')
 		return {
 			check,
 			status: 'ok',
-			detail: `${SHIPPED_SKILL} skill at ${status.file} ${why}; this package ships ${status.shippedVersion} and will not overwrite it`,
-			// Name both paths: "diff it against the shipped copy" left the reader
-			// with nothing to diff, in the one case they most want to look (#484).
-			hint: `Diff it against the shipped copy — \`${skillDiffCommand({ realFile: status.realFile, shippedFile: status.shippedFile })}\` — then run \`npx @rtorcato/repo-tooling fix claude-skills --force-skills\` to take the shipped version`,
+			detail,
+			hint: `Diff against the shipped copy — ${diffs} — then run \`npx @rtorcato/repo-tooling fix claude-skills --force-skills\` to take the shipped version`,
 		}
 	}
+	const versions = new Set(statuses.map(([, s]) => s.installedVersion))
 	return {
 		check,
 		status: 'ok',
-		detail: `${SHIPPED_SKILL} skill installed at ${status.installedVersion}`,
+		detail: `${SHIPPED_SKILLS.length} skills installed at ${[...versions].join(', ')}`,
 	}
 }
 
