@@ -1,8 +1,0 @@
-{
-  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
-  "root": false,
-  "extends": ["../../tooling/biome/preset.json"],
-  "files": {
-    "includes": ["!**/.docusaurus", "!**/build", "!**/node_modules", "!**/docs/changelog.md"]
-  }
-}

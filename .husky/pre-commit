@@ -1,9 +1,0 @@
-echo "🔍 Pre-commit checks..."
-
-echo "🧹 biome check..."
-pnpm run check || { echo "❌ Lint/format failed. Run 'pnpm check:fix' to autofix."; exit 1; }
-
-echo "🔎 typecheck..."
-pnpm run typecheck || { echo "❌ Typecheck failed."; exit 1; }
-
-echo "✅ Pre-commit passed"

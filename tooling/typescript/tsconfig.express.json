@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ES2022"], // Only include ES libs, no DOM
-    "types": ["node", "express", "vitest"], // Add express types for API development
-  },
-  "include": ["src", "index.d.ts"],
-  "exclude": ["node_modules", "dist", "build", "test", "**/*.test.ts", "**/*.spec.ts"]
-}

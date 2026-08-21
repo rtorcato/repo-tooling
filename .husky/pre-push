@@ -1,5 +1,0 @@
-echo "🚀 Pre-push: mirroring CI gates locally..."
-
-pnpm verify || { echo "❌ Verify failed. See output above."; exit 1; }
-
-echo "✅ Pre-push passed — pushing to remote"

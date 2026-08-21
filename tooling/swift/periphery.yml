@@ -1,4 +1,0 @@
-# Periphery dead-code scan. `retain_public: true` keeps a library's public API
-# from being reported as unused — for a SwiftPM package the public surface is
-# the product, not dead code.
-retain_public: true
