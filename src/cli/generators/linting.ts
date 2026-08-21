@@ -44,61 +44,17 @@ export const BIOME_CONFIG = 'biome.json'
 export const BIOME_LEGACY_CONFIG = 'biome.jsonc'
 
 /**
- * Used when nothing in the target repo says which Biome will read the config —
- * a bare directory mid-`setup`, before `pnpm install` has run. Matches the
- * `$schema` the shipped preset carries.
- */
-const BIOME_SCHEMA_FALLBACK = '2.5.0'
-
-async function readJsonOrNull(filepath: string): Promise<Record<string, unknown> | null> {
-	try {
-		return (await fs.readJson(filepath)) as Record<string, unknown>
-	} catch {
-		return null
-	}
-}
-
-/**
- * The `@biomejs/biome` actually installed under `targetDir`, or null when
- * node_modules isn't populated. This is the binary that will parse the config
- * and emit the schema-mismatch warning, so it is the only version worth
- * comparing a written `$schema` against — a declared range like `^2.5.0` says
- * nothing about which 2.x resolved (#424).
- */
-export async function installedBiomeVersion(targetDir: string): Promise<string | null> {
-	const installed = await readJsonOrNull(
-		path.join(targetDir, 'node_modules', '@biomejs', 'biome', 'package.json')
-	)
-	const match =
-		typeof installed?.version === 'string' ? /(\d+\.\d+\.\d+)/.exec(installed.version) : null
-	return match?.[1] ?? null
-}
-
-/**
- * The Biome version the scaffolded `$schema` URL should name (#363).
+ * Unversioned on purpose (#468). A `$schema` naming an exact version is only
+ * ever right until the next `@biomejs/biome` bump, at which point Biome prints
+ * "The configuration schema version does not match the CLI version" on every
+ * invocation and doctor reports drift — so every Dependabot bump needed a hand
+ * edit before it could go green. Biome accepts `latest` and says nothing about
+ * it (verified against 2.5.5), which removes the failure class outright.
  *
- * A hardcoded version drifts the moment the consumer's Biome moves, and Biome
- * reports the mismatch on *every* invocation ("The configuration schema version
- * does not match the CLI version 2.5.7") — noise on a file the consumer never
- * wrote. The installed package wins because it is literally the binary that
- * will parse the file and emit that warning; the declared range is the next
- * best statement of intent when node_modules isn't populated yet.
+ * `latest` rather than dropping the key: editors still resolve a real schema
+ * for autocomplete and validation, which is the only reason the key is there.
  */
-export async function resolveBiomeSchemaVersion(targetDir: string): Promise<string> {
-	const installed = await installedBiomeVersion(targetDir)
-	if (installed) return installed
-
-	const pkg = await readJsonOrNull(path.join(targetDir, 'package.json'))
-	const deps = {
-		...((pkg?.dependencies as Record<string, string> | undefined) ?? {}),
-		...((pkg?.devDependencies as Record<string, string> | undefined) ?? {}),
-	}
-
-	// A range ("^2.5.0") carries the x.y.z we need just as an exact version does.
-	const declared = deps['@biomejs/biome']
-	const match = typeof declared === 'string' ? /(\d+\.\d+\.\d+)/.exec(declared) : null
-	return match?.[1] ?? BIOME_SCHEMA_FALLBACK
-}
+const BIOME_SCHEMA_URL = 'https://biomejs.dev/schemas/latest/schema.json'
 
 /**
  * The thin pointer config — the same shape this repo dogfoods. `fix biome` used
@@ -111,9 +67,8 @@ export async function generateBiomeConfig(targetDir: string): Promise<string> {
 	// file globs via `files.includes`; emitting the old 1.x `include`/`ignore`
 	// keys here forced consumers to run `biome migrate` before `biome check`
 	// would run at all.
-	const version = await resolveBiomeSchemaVersion(targetDir)
 	const biomeConfig = {
-		$schema: `https://biomejs.dev/schemas/${version}/schema.json`,
+		$schema: BIOME_SCHEMA_URL,
 		extends: ['@rtorcato/repo-tooling/biome'],
 	}
 

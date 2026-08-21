@@ -2,7 +2,6 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import type { BadgeAudience, FileCheck, GitHooksProfile } from '../../base/checks.js'
 import { checkFile, hookHasUncommented } from '../../base/checks.js'
-import { installedBiomeVersion } from '../../cli/generators/linting.js'
 import {
 	CLAUDE_SETTINGS_FILE,
 	readClaudeSettings,
@@ -197,24 +196,24 @@ export const BIOME_FILE_CHECK: FileCheck = {
 
 /**
  * The Biome check plus the one thing a contents-only matcher can't see: whether
- * the `$schema` URL still names the Biome that will read it (#424).
+ * the `$schema` URL still pins a version (#424, #468).
  *
- * `fix biome` writes the URL from the version resolved at scaffold time, and
- * nothing re-checked it afterwards — so once the repo's Biome moved on, every
- * single invocation (the pre-commit hook included) printed "The configuration
- * schema version does not match the CLI version", while doctor stayed clean.
+ * It began as a drift check — the URL named the Biome resolved at scaffold
+ * time, nothing re-checked it, and once the repo's Biome moved on every single
+ * invocation (the pre-commit hook included) printed "The configuration schema
+ * version does not match the CLI version" while doctor stayed clean.
  *
- * Compared against the *installed* package only, never the declared range: an
- * exact match is what Biome itself demands, and `^2.5.0` doesn't say which 2.x
- * resolved. With no node_modules there is nothing to be wrong about, so the
- * check says nothing rather than guessing.
+ * Chasing the installed version was treating the symptom: an exact pin is
+ * *only ever* correct until the next bump, so every `@biomejs/biome` update
+ * failed the build until someone hand-edited a URL. `fix biome` now writes the
+ * unpinned `latest`, and this reads as a migration signal instead — any
+ * surviving pin is a repo that predates the unpinning, whatever version it
+ * names. That makes it independent of node_modules, so it also fires on a
+ * fresh clone, and it goes quiet for good once the repo is migrated.
  */
 export async function checkBiome(dir: string): Promise<CheckResult> {
 	const result = await checkFile(dir, BIOME_FILE_CHECK)
 	if (result.status !== 'ok') return result
-
-	const installed = await installedBiomeVersion(dir)
-	if (!installed) return result
 
 	// The same candidate checkFile settled on — first one that exists wins.
 	for (const candidate of BIOME_FILE_CHECK.candidates) {
@@ -222,13 +221,13 @@ export async function checkBiome(dir: string): Promise<CheckResult> {
 		if (!(await fs.pathExists(filepath))) continue
 
 		const url = readSchemaUrl(await fs.readFile(filepath, 'utf8'))
-		const targeted = url?.includes('biomejs.dev') ? schemaUrlVersion(url)?.join('.') : null
-		if (targeted && targeted !== installed) {
+		const pinned = url?.includes('biomejs.dev') ? schemaUrlVersion(url)?.join('.') : null
+		if (pinned) {
 			return {
 				check: BIOME_FILE_CHECK.check,
 				status: 'drift',
-				detail: `${candidate} targets Biome ${targeted} but @biomejs/biome ${installed} is installed`,
-				hint: 'Run `npx @rtorcato/repo-tooling fix biome` to rewrite the $schema URL',
+				detail: `${candidate} pins Biome ${pinned} in $schema — the next @biomejs/biome bump past it breaks every Biome run`,
+				hint: 'Run `npx @rtorcato/repo-tooling fix biome` to drop the version from the $schema URL',
 			}
 		}
 		return result
