@@ -32,6 +32,20 @@ export interface Lockfile {
 	 * entry here is simply untracked; absence is not evidence of drift.
 	 */
 	assets?: Record<string, string>
+	/**
+	 * Settings for the `ai-issue-loop` skills (#524). Repo-scoped on purpose: the
+	 * agent account is a collaborator on *this* repo, so a machine-wide env var
+	 * would be both the wrong granularity and invisible — committed here it
+	 * travels with the repo and survives a new laptop.
+	 */
+	aiLoop?: {
+		/**
+		 * Login that in-flight work is assigned to, so `assignee` says whose turn
+		 * it is. Must be an assignable collaborator; the skills verify that at
+		 * runtime and assign nothing if it is not.
+		 */
+		agentUser?: string
+	}
 	writtenBy: string
 	writtenAt: string
 }
@@ -85,13 +99,18 @@ export async function writeLockfile(
 	if (!valid) {
 		throw new Error(`Refusing to write invalid lockfile:\n  - ${errors.join('\n  - ')}`)
 	}
-	const carried = assets ?? (await readLockfile(dir))?.assets
+	// One read, because everything not rebuilt from `config` has to be carried
+	// forward explicitly — this object is constructed from scratch, so any key
+	// not named here is dropped by the next `fix lockfile`.
+	const existing = await readLockfile(dir)
+	const carried = assets ?? existing?.assets
 	const filepath = path.join(dir, LOCKFILE_NAME)
 	const lockfile: Lockfile = {
 		$schema: LOCKFILE_SCHEMA_URL,
 		version: LOCKFILE_VERSION,
 		config,
 		...(carried && Object.keys(carried).length > 0 ? { assets: carried } : {}),
+		...(existing?.aiLoop ? { aiLoop: existing.aiLoop } : {}),
 		writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
 		writtenAt: new Date().toISOString(),
 	}

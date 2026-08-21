@@ -212,12 +212,24 @@ unset, every step below that would assign it simply does nothing, and assignment
 behaves exactly as it did before this existed.
 
 ```bash
-AGENT_USER="${AI_LOOP_AGENT:-}"
+# Repo config first — committed, so it travels with the repo and survives a new
+# machine. `AI_LOOP_AGENT` overrides it for a repo with no lockfile.
+AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
 # A typo would fail every `gh` edit for the whole tick, so prove it is assignable
 # once, here. 204 = yes, 404 = no; push access is what qualifies an account.
 [ -n "$AGENT_USER" ] && { gh api "repos/$OWNER_REPO/assignees/$AGENT_USER" --silent 2>/dev/null || {
-  echo "⚠ AI_LOOP_AGENT=$AGENT_USER is not an assignable collaborator — assigning nothing"
+  echo "⚠ agentUser '$AGENT_USER' is not an assignable collaborator — assigning nothing"
   AGENT_USER=""; }; }
+```
+
+**It lives in the repo, not a shell profile.** The agent account is a
+collaborator on *this* repo, so a machine-wide env var is both the wrong
+granularity and invisible — forgotten on a new laptop, with the only symptom
+being that assignment quietly stops. In `.repo-tooling.json` it is committed,
+reviewable, and carried forward by `fix lockfile`:
+
+```json
+{ "aiLoop": { "agentUser": "your-bot-account" } }
 ```
 
 Every later use is `${AGENT_USER:+--add-assignee "$AGENT_USER"}`, which expands
