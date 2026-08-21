@@ -183,6 +183,11 @@ From the main checkout (not a worktree):
 ```bash
 ROOT=$(git rev-parse --path-format=absolute --git-common-dir)/..; ROOT=$(cd "$ROOT" && pwd)
 WT_ROOT="$(dirname "$ROOT")/$(basename "$ROOT")-worktrees"
+git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
+  git -C "$ROOT" config core.bare false || {
+    echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
+}
 git fetch --prune
 OWNER_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 gh pr list --state open --json number,labels,headRefName,autoMergeRequest
@@ -199,6 +204,23 @@ bail in one line if the remote is GitLab.
 pass.** A session can be pinned to a worktree, so the orchestrator can find itself
 inside one it did not choose. `--git-common-dir` resolves to the main checkout's
 `.git` from anywhere, including a worktree, so `ROOT` is correct either way.
+
+**The bare-checkout guard runs before anything else touches the repo.**
+`core.bare = true` has turned up in the main checkout's `.git/config` — every
+ordinary git command then fails with `fatal: this operation must be run in a work
+tree` and the repo reads as destroyed when only that one key is wrong. **The trigger
+is unidentified, and it is not `git worktree remove`**: removing the last worktree
+was tried deliberately and left `core.bare` false, as did a controlled repro on the
+same git (2.55.0), and it has recurred here in Pass 0 with no removal preceding it.
+So this is detection and repair only — do not go hunting a cause to fix. Keep the
+timestamp; when it recurs, the log line's time relative to the pass that emitted it
+is the only instrumentation likely to pin the trigger.
+
+**The repair must fail loudly.** Setting the key needs write access to
+`$ROOT/.git/config`, which a restrictive sandbox refuses with `error: could not lock
+config file .git/config: Operation not permitted` — detection still works there, only
+the write is blocked. Abort the tick and report it rather than carrying on: a guard
+that swallows that error reports healthy while the repo stays broken.
 
 Never use a relative path like `ai-*`. From inside a worktree it matches nothing, and
 the failure is **silent**: Pass 2 concludes there is nothing to clean, every worktree
@@ -472,6 +494,19 @@ and say in the comment that you re-queued it, that you deviated, and why. Re-add
 `ai-ready` is not optional: pickup cleared it, so clearing `ai-wip` alone drops the
 issue out of the queue silently, which is the worse failure. `ai-blocked` means *a
 human must look*; do not spend it on a claim you already understand.
+
+**Then run the bare-checkout guard again.** Removal is not the trigger — see Pass 0 —
+but this pass is the last thing to touch the main checkout in a tick, and a bare repo
+left behind surfaces in the human's next `git status` with nothing connecting it to
+the loop. Same snippet, same fail-loudly rule:
+
+```bash
+git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
+  git -C "$ROOT" config core.bare false || {
+    echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
+}
+```
 
 ### Pass 3 — review
 
