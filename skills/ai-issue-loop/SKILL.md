@@ -70,9 +70,9 @@ drift with a second copy to maintain.
 
 | Label | On | Meaning |
 |---|---|---|
-| `ai-ready` | issue | Eligible for an agent. The hard gate. |
-| `ai-wip` | issue | Claimed; a worktree exists. |
-| `ai-blocked` | issue | Agent gave up; needs a human. |
+| `ai-ready` | issue | Eligible for an agent. The hard gate; **cleared on pickup**. |
+| `ai-wip` | issue | Claimed; a worktree exists. Never rides alongside `ai-ready`. |
+| `ai-blocked` | issue | Agent gave up; needs a human. Only a human re-adds `ai-ready`. |
 | `ai-review` | PR | Awaiting agent review. |
 | `ai-reviewing-code` | PR | `code-reviewer` claimed and running. Cleared with its verdict. |
 | `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
@@ -400,13 +400,21 @@ Only then:
 git -C "$ROOT" worktree remove --force "$WT_DIR"   # the path found above, not a rebuilt one
 git -C "$ROOT" branch -D "$BRANCH" 2>/dev/null
 gh issue edit <N> --remove-label ai-wip 2>/dev/null
+# Still OPEN means the PR said only `Refs #N`; a `Closes #N` issue is already closed.
+if [ "$(gh issue view <N> --json state -q .state)" = OPEN ]; then
+  gh issue edit <N> --add-assignee @me
+fi
 ```
 
 A closed-unmerged PR is the exception: there is no squash to find, so skip the
 confirmation and remove — the work was abandoned deliberately.
 
-The issue itself closes from the PR body's `Closes #N`. This pass is what frees
-concurrency slots, so it must run before Pass 4.
+The issue itself closes from the PR body's `Closes #N`, so both edits are normally
+no-ops on a closed issue. A PR that said only `Refs #N` leaves it **open**, which is
+what the state check catches. The work has landed, so it must not go back in
+the queue; pickup already dropped `ai-ready`, and assigning it is what stops a
+merged issue sitting unowned instead (#429 had to be moved to `holding` by hand).
+This pass is what frees concurrency slots, so it must run before Pass 4.
 
 **Then reap the stalled.** Nothing can time out an agent: the Agent tool takes no
 timeout, and an agent whose session died leaves its labels behind with no process
@@ -432,8 +440,10 @@ work must never be reaped out from under itself.
 The **no PR exists** condition on the first row is what makes reaping safe. An
 agent that got as far as opening a PR has handed off to the label state machine
 and is no longer the thing being waited on; only a run that produced nothing is
-presumed dead. The reaped issue keeps its worktree removed, so a re-labelled
-`ai-ready` starts clean.
+presumed dead. Reaping deliberately does **not** restore `ai-ready` — `ai-blocked`
+means a human decides when the issue re-enters the queue, and the removed worktree
+means their re-label starts clean. The other two `ai-blocked` exits, Pass 3's
+ping-pong stop and an implementer handing back, leave it off for the same reason.
 
 **Every `ai-blocked` must say why, and land in front of a human.** So reaping always
 does three things together — label, assign, comment — and the comment opens with
@@ -448,9 +458,12 @@ puts it in the statusline and fires a notification with a sound.
 **Reaping is not always the right call — say so when it isn't.** The rule assumes a
 dead agent, but a stale `ai-wip` can also come from a run that was cancelled
 deliberately, in which case the work is fine and only the claim is stale. If you know
-the cause and it is benign, clear `ai-wip` **without** `ai-blocked` so Pass 4 can pick
-it straight back up, and say in the comment that you deviated and why. `ai-blocked`
-means *a human must look*; do not spend it on a claim you already understand.
+the cause and it is benign, **return it to the queue** — `gh issue edit <N> --add-label
+ai-ready --remove-label ai-wip`, no `ai-blocked` — so Pass 4 picks it straight back up,
+and say in the comment that you re-queued it, that you deviated, and why. Re-adding
+`ai-ready` is not optional: pickup cleared it, so clearing `ai-wip` alone drops the
+issue out of the queue silently, which is the worse failure. `ai-blocked` means *a
+human must look*; do not spend it on a claim you already understand.
 
 ### Pass 3 — review
 
@@ -769,8 +782,16 @@ Take the first `slots` issues. For each, **claim it first** so a concurrent tick
 can't double-pick:
 
 ```bash
-gh issue edit <N> --add-label ai-wip
+gh issue edit <N> --add-label ai-wip --remove-label ai-ready
 ```
+
+Dropping `ai-ready` is half the claim, not tidiness — the diagram above is a
+transition, not an accumulation. An issue left carrying both re-enters the queue
+the instant `ai-wip` clears for any reason other than the PR closing it, and the
+next tick spawns an agent to re-implement work already sitting in an open PR
+(#458, #467, #461, #452, all in one session). Every path that legitimately returns
+an issue to the queue therefore re-adds `ai-ready` explicitly; Pass 2's benign-stall
+path is the only one, and a human does the rest.
 
 **Then create the worktree yourself**, before spawning anything. `<slug>` is 3–4
 kebab-case words from the title:
