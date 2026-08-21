@@ -52,6 +52,20 @@ header names the agent *and* says why it is wearing a human's face:
 
 `🤖 *Automated — <which agent> via ai-issue-loop. Posted under the owner's account by an agent; not a human message. There is no separate GitHub account for AI agents, so this appears under @<owner>'s avatar.*`
 
+**Comment budget: ≤10 lines, and a clean outcome gets no comment at all.** A
+40-line comment on every PR trains the reader to skip all of them, including the
+one that matters — the same failure mode as `ai-notes` on every PR, below. Link
+the reviewer's `### Before merging` rather than restating it; a paraphrase is
+drift with a second copy to maintain.
+
+| Outcome | Comment |
+|---|---|
+| Clean and ready | **None.** `ai-ok-code, ai-ok-sec` + assigned + no `ai-review` already says it. |
+| `ai-notes` | ≤10 lines; link the reviewer's `### Before merging`. |
+| `ai-changes`, CI red, `ai-blocked` | ≤10 lines, action first, then the specific cause. |
+| Reviewer verdict | `### Before merging` plus at most 3 short paragraphs above it. |
+| Declining an issue | The one exception — a hard handoff needs its reasoning; see Pass 4. |
+
 ## Labels
 
 | Label | On | Meaning |
@@ -250,7 +264,10 @@ It lands in the user's *Assigned to you* view, and the labels then read as state
 than noise — `ai-ok-code, ai-ok-sec` with no `ai-review` means **waiting on you**. Both
 halves matter: Pass 3 only ever *adds* the `ai-ok-*` labels, so without the removal a
 finished PR keeps wearing `ai-review` forever and looks mid-review. Idempotent, so
-re-running a tick is harmless. Take no other action — do not merge.
+re-running a tick is harmless. Take no other action — do not merge, and **post no
+comment**: nothing is wrong, so those three labels are the whole message. A
+comment is how the loop records what a label cannot; a clean PR has nothing to
+record.
 
 **Never strip `ai-notes` here.** It is the whole point of the handoff: it has to
 survive to the moment of merging, which is the moment it is for. A ready PR reads
@@ -281,7 +298,8 @@ a required check, so nothing in the check list looked wrong either.
 
 Diff-scoped reviewers cannot catch this — they never see CI. So when a
 both-passed PR is not `CLEAN`, do not assign it as ready. Send it back, and
-**comment why**: the reviewers passed it, so the fix-round implementer would
+**comment why** — ≤10 lines, leading with what must change, then the failing
+check and its error. The reviewers passed it, so the fix-round implementer would
 otherwise read the comments and find no instruction to act on.
 
 ```bash
@@ -506,7 +524,10 @@ Reviewer prompt template:
 >
 > That section is what a human reads at merge time, so put anything you would
 > want them to know there rather than leaving it in the prose above — a finding
-> buried mid-paragraph does not survive the handoff. The bar is a finding that
+> buried mid-paragraph does not survive the handoff. For the same reason, **cap
+> the body at that section plus at most 3 short paragraphs above it**: no process
+> narration, no restating the diff, no listing what you checked and found fine.
+> The bar is a finding that
 > **changes what a human would do**: a semver implication, a deliberate
 > omission, a follow-up that must be filed. Not observations, not praise, not
 > restating the diff. Writing `Nothing.` is a real verdict and the common one —
@@ -543,7 +564,8 @@ Reviewer prompt template:
 > a Dependabot PR it suppresses auto-merge outright. Use `ai-changes` only when
 > you can name a concrete change an agent could make.
 >
-> Say nothing else and return a one-line summary.
+> Say nothing else and return a one-line summary — that governs your reply to the
+> orchestrator; the comment body is capped separately, above.
 
 **Dependabot PRs use a different prompt** — the one above would burn the tick on a
 lockfile. `js-common` #148 bumps 20 packages and its *entire* diff is
@@ -611,7 +633,8 @@ package/from/to table survives because it sits at the top; classify from that.
 > State in your comment which rule fired, name the packages that tripped it, and say
 > whether the body was truncated so the reader knows what you could and couldn't see.
 > Same `🤖 *Automated review — …*` header line, same closing `### Before merging`
-> section, and same one-verdict-label rule as above — **including clearing your
+> section, same 3-paragraph cap on the body, and same one-verdict-label rule as
+> above — **including clearing your
 > `<ai-reviewing-code|ai-reviewing-sec>` claim label in the same `gh pr edit`**.
 > Pass 3 claimed you with it before spawning you, and a claim left behind wedges
 > your half of the review until Pass 2 reaps it.
@@ -716,7 +739,9 @@ real work to reach is lost.
 
 The comment opens with the standard `🤖 *Automated …*` header — see the top of this
 file; it must state that no GitHub account exists for AI agents, so the comment
-wears the owner's avatar. Then, in the body:
+wears the owner's avatar. Then, in the body — **this is the one comment exempt
+from the ≤10-line budget, and only this one.** Declining is a hard handoff whose
+whole value is the reasoning; do not reach for this shape on a PR handoff:
 
 - **Why an agent cannot finish it**, concretely. "Not suitable" is useless. Name
   the blocker: binary assets it cannot author, a force-push past branch
