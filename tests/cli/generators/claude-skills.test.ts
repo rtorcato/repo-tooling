@@ -3,12 +3,16 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
 	claudeSkillStatus,
+	HASH_KEY,
 	installClaudeSkill,
 	isNewerVersion,
+	readShippedSkill,
 	readSkillVersion,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
+	stampSkill,
 	stampSkillVersion,
+	stripSkillStamps,
 	VERSION_KEY,
 } from '../../../src/cli/generators/claude-skills.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -17,6 +21,17 @@ const newTmpDir = useTmpDir()
 
 function skillFile(skillsDir: string): string {
 	return join(skillsDir, SHIPPED_SKILL, 'SKILL.md')
+}
+
+/**
+ * What an older release left behind: its own content, stamped with its own
+ * version and its own pristine hash. The `stale but unmodified` case.
+ */
+async function installedByOlderRelease(skillsDir: string, body: string): Promise<void> {
+	await fs.outputFile(
+		skillFile(skillsDir),
+		stampSkill(`---\nname: ai-issue-loop\n---\n\n${body}\n`, '0.0.1')
+	)
 }
 
 describe('resolveSkillsDir', () => {
@@ -101,12 +116,78 @@ describe('installClaudeSkill', () => {
 		expect(await fs.readFile(skillFile(skillsDir), 'utf8')).toContain('from the future')
 	})
 
-	it('adopts an unstamped copy', async () => {
+	it('updates a stale copy that is still verbatim what an older release shipped', async () => {
+		const skillsDir = newTmpDir()
+		await installedByOlderRelease(skillsDir, 'the 0.0.1 body')
+
+		const result = await installClaudeSkill(skillsDir)
+
+		expect(result.status).toBe('updated')
+		expect(result.contentState).toBe('pristine')
+		expect(result.installedVersion).toBe('0.0.1')
+		expect(await fs.readFile(skillFile(skillsDir), 'utf8')).toContain('# ai-issue-loop')
+	})
+
+	// #480: the version stamp alone cannot see this. The fork was *older* than
+	// what we ship, so the downgrade guard waves it through and 121 lines of
+	// somebody's work vanish with no warning.
+	it('refuses to overwrite a copy whose content has diverged since it was installed', async () => {
+		const skillsDir = newTmpDir()
+		await installedByOlderRelease(skillsDir, 'the 0.0.1 body')
+		const forked = `${await fs.readFile(skillFile(skillsDir), 'utf8')}\n## a section only the fork has\n`
+		await fs.outputFile(skillFile(skillsDir), forked)
+
+		const result = await installClaudeSkill(skillsDir)
+
+		expect(result.status).toBe('declined-fork')
+		expect(result.contentState).toBe('modified')
+		expect(await fs.readFile(skillFile(skillsDir), 'utf8')).toBe(forked)
+		// Actionable: the refusal can name the shipped file to diff against.
+		expect(result.shippedFile).toBe((await readShippedSkill()).file)
+	})
+
+	it('refuses an unstamped copy rather than guessing it is merely stale', async () => {
 		const skillsDir = newTmpDir()
 		await fs.outputFile(skillFile(skillsDir), '---\nname: ai-issue-loop\n---\n\nold\n')
+
 		const result = await installClaudeSkill(skillsDir)
-		expect(result.status).toBe('updated')
+
+		expect(result.status).toBe('declined-fork')
+		expect(result.contentState).toBe('unknown')
 		expect(result.installedVersion).toBeNull()
+		expect(await fs.readFile(skillFile(skillsDir), 'utf8')).toContain('old')
+	})
+
+	it('overwrites a fork when explicitly forced', async () => {
+		const skillsDir = newTmpDir()
+		await fs.outputFile(skillFile(skillsDir), '---\nname: ai-issue-loop\n---\n\nold\n')
+
+		const result = await installClaudeSkill(skillsDir, SHIPPED_SKILL, { force: true })
+
+		expect(result.status).toBe('updated')
+		expect(await fs.readFile(skillFile(skillsDir), 'utf8')).toContain('# ai-issue-loop')
+	})
+
+	// An unstamped copy of exactly what we ship is not a fork — it just predates
+	// the hash. Refusing it would make `--force-skills` a routine step.
+	it('stamps an unstamped copy that already matches the shipped content', async () => {
+		const skillsDir = newTmpDir()
+		const { content } = await readShippedSkill()
+		await fs.outputFile(skillFile(skillsDir), content)
+
+		const result = await installClaudeSkill(skillsDir)
+
+		expect(result.status).toBe('updated')
+		expect(result.contentState).toBe('pristine')
+	})
+
+	it('records a hash that survives a round trip through the stamps', async () => {
+		const skillsDir = newTmpDir()
+		await installClaudeSkill(skillsDir)
+		const written = await fs.readFile(skillFile(skillsDir), 'utf8')
+
+		expect(written).toContain(`${HASH_KEY}: `)
+		expect(stripSkillStamps(written)).toBe((await readShippedSkill()).content)
 	})
 
 	// The failure mode the feature exists to prevent: stow symlinks at file level,
@@ -115,7 +196,7 @@ describe('installClaudeSkill', () => {
 	it('writes through a symlink instead of replacing it', async () => {
 		const skillsDir = newTmpDir()
 		const dotfiles = join(newTmpDir(), 'SKILL.md')
-		await fs.outputFile(dotfiles, '---\nname: ai-issue-loop\n---\n\nold\n')
+		await fs.outputFile(dotfiles, stampSkill('---\nname: ai-issue-loop\n---\n\nold\n', '0.0.1'))
 		await fs.ensureDir(join(skillsDir, SHIPPED_SKILL))
 		await fs.symlink(dotfiles, skillFile(skillsDir))
 
@@ -142,6 +223,25 @@ describe('claudeSkillStatus', () => {
 		const status = await claudeSkillStatus(SHIPPED_SKILL, skillsDir)
 		expect(status.installed).toBe(true)
 		expect(status.needsInstall).toBe(false)
+		expect(status.contentState).toBe('pristine')
 		expect(status.installedVersion).toBe(status.shippedVersion)
+	})
+
+	it('flags an out-of-date but unmodified copy as needing an install', async () => {
+		const skillsDir = newTmpDir()
+		await installedByOlderRelease(skillsDir, 'the 0.0.1 body')
+		const status = await claudeSkillStatus(SHIPPED_SKILL, skillsDir)
+		expect(status.contentState).toBe('pristine')
+		expect(status.needsInstall).toBe(true)
+	})
+
+	// Never "needs install": the fix would refuse, so nagging about it is noise.
+	it('does not ask for an install it knows will be declined', async () => {
+		const skillsDir = newTmpDir()
+		await installedByOlderRelease(skillsDir, 'the 0.0.1 body')
+		await fs.appendFile(skillFile(skillsDir), '\nlocal edit\n')
+		const status = await claudeSkillStatus(SHIPPED_SKILL, skillsDir)
+		expect(status.contentState).toBe('modified')
+		expect(status.needsInstall).toBe(false)
 	})
 })

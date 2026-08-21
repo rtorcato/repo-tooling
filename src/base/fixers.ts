@@ -20,6 +20,7 @@ import {
 	installClaudeSkill,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
+	type SkillInstallResult,
 } from '../cli/generators/claude-skills.js'
 import { generateBrand } from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
@@ -53,6 +54,8 @@ interface FixerContext {
 	lock: Lockfile | null
 	/** `--skills-dir`, for the one fixer that writes user-global state (#404). */
 	skillsDir?: string
+	/** `--force-skills`: overwrite a locally forked skill anyway (#480). */
+	forceSkills?: boolean
 	/** True under `--yes` / `--json`, so a fixer knows a prompt is not available. */
 	assumeYes: boolean
 }
@@ -139,6 +142,25 @@ async function resolveInstallDir(explicit: string | undefined, assumeYes: boolea
 	])
 	const trimmed = typeof answer === 'string' ? answer.trim() : ''
 	return trimmed ? path.resolve(trimmed) : null
+}
+
+/**
+ * Why the install refused, and what to do about it. A bare "skipped" would be
+ * its own failure mode: the user still wants the update, and nothing on screen
+ * would say how to get it or what they would be giving up (#480).
+ */
+function describeSkillFork(result: SkillInstallResult): string[] {
+	const target = result.viaSymlink ? `${result.file} → ${result.realFile}` : result.realFile
+	const why =
+		result.contentState === 'modified'
+			? `its content has diverged from the ${result.installedVersion} release it was installed from`
+			: 'it carries no content record, so a local fork and a stale copy are indistinguishable'
+	return [
+		`skipped — ${SHIPPED_SKILL} was not overwritten with ${result.shippedVersion}: ${why}`,
+		`  ${target}`,
+		`  compare:  diff "${result.realFile}" "${result.shippedFile}"`,
+		'  overwrite anyway:  fix claude-skills --force-skills',
+	]
 }
 
 export const BASE_FIXERS: Fixer[] = [
@@ -402,16 +424,22 @@ export const BASE_FIXERS: Fixer[] = [
 		riskLevel: 'safe-add',
 		explicitOnly: true,
 		canFixDrift: true,
-		async run({ skillsDir, assumeYes }) {
+		async run({ skillsDir, forceSkills, assumeYes }) {
 			const dir = await resolveInstallDir(skillsDir, assumeYes)
 			if (!dir) return { filesWritten: [] }
-			const result = await installClaudeSkill(dir)
+			const result = await installClaudeSkill(dir, SHIPPED_SKILL, { force: forceSkills })
 			if (result.status === 'declined-downgrade') {
 				console.error(
 					chalk.yellow(
 						`   skipped — ${result.file} is at ${result.installedVersion}, newer than the ${result.shippedVersion} this package ships`
 					)
 				)
+				return { filesWritten: [] }
+			}
+			if (result.status === 'declined-fork') {
+				// Name `realFile`: through a stow symlink the overwrite would land in a
+				// *second* repo's working tree, and that is the path to look at (#480).
+				for (const line of describeSkillFork(result)) console.error(chalk.yellow(`   ${line}`))
 				return { filesWritten: [] }
 			}
 			if (result.status === 'up-to-date') return { filesWritten: [] }

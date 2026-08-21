@@ -23,7 +23,7 @@ the machine — which is why it is **opt-in**: a bare `fix` or `fix --yes` skips
 it and says so, and `doctor` reports it as *not configured* rather than as a
 finding against your repo.
 
-Three things follow from that:
+Four things follow from that:
 
 - **`--skills-dir <path>`** overrides the destination. It is required alongside
   `--yes` / `--json` when `~/.claude/skills` does not exist, since a prompt
@@ -37,6 +37,16 @@ Three things follow from that:
   `repo-tooling-version` stamp in its frontmatter. A repo pinned to an older
   release reports and skips rather than overwriting a newer skill — otherwise
   two repos on different versions would fight over it on every `fix`.
+- **The install refuses to overwrite a local fork.** Alongside the version, each
+  copy carries a `repo-tooling-hash` of the content we wrote. If the installed
+  file no longer matches that hash — or predates it, so nothing can be proven —
+  the install prints what diverged and stops, the same rule
+  [`fix copied-assets`](./cli.md) follows for copied presets. This is the case
+  the version stamp alone cannot see: a fork that is merely *older* than the
+  package looks exactly like a stale copy. Diff it against the shipped file the
+  message names, then pass **`--force-skills`** to take the shipped version.
+  `--yes` deliberately does *not* imply it: unattended runs pass `--yes`, and
+  this is the one overwrite that destroys work living outside the repo.
 
 Any agent that reads the [`skills`](https://www.npmjs.com/package/skills) CLI
 format can also take it straight from GitHub:

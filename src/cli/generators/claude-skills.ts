@@ -5,6 +5,7 @@
  * version stamp, the symlink handling, and the fixer's opt-in `explicitOnly`.
  */
 
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import fs from 'fs-extra'
@@ -20,6 +21,21 @@ export const SHIPPED_SKILL = 'ai-issue-loop'
  * is wrong to do so.
  */
 export const VERSION_KEY = 'repo-tooling-version'
+
+/**
+ * The pristine sha256 of the content we wrote, stamped beside the version — the
+ * skills half of #448. The version alone cannot tell a stale copy from a
+ * deliberate local fork: a fork that is merely older than the package looks
+ * exactly like a copy waiting for an update, and gets overwritten (#480).
+ * With the hash, "installed content still matches what some release of this
+ * package shipped" is a fact rather than an inference.
+ *
+ * It lives in the file instead of `.repo-tooling.json` because skills are
+ * user-global — no one repo owns the record.
+ */
+export const HASH_KEY = 'repo-tooling-hash'
+
+const STAMP_KEYS = [VERSION_KEY, HASH_KEY]
 
 const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
 
@@ -50,25 +66,81 @@ export async function resolveSkillsDir(
 	return { dir: null, source: 'none' }
 }
 
+function readStamp(content: string, key: string): string | null {
+	return content.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1]?.trim() ?? null
+}
+
 /** The version recorded in an installed copy, or null if it predates the stamp. */
 export function readSkillVersion(content: string): string | null {
-	return content.match(new RegExp(`^${VERSION_KEY}:\\s*(.+)$`, 'm'))?.[1]?.trim() ?? null
+	return readStamp(content, VERSION_KEY)
+}
+
+/** The pristine hash recorded in an installed copy, or null if it predates it. */
+export function readSkillHash(content: string): string | null {
+	return readStamp(content, HASH_KEY)
 }
 
 /**
- * Replace (or add) the version line in the frontmatter. Appending it last is
+ * Replace (or add) the stamp lines in the frontmatter. Appending them last is
  * safe even after a multi-line `description: |` block: an unindented key ends
- * the block scalar, which is exactly what this line is.
+ * the block scalar, which is exactly what these lines are.
+ *
+ * With no stamps this is the exact inverse of stamping, so a file we wrote
+ * strips back to the bytes we were given — which is what makes the hash
+ * comparable.
+ */
+function setStamps(content: string, stamps: string[]): string {
+	const match = content.match(FRONTMATTER)
+	if (!match) return stamps.length === 0 ? content : `---\n${stamps.join('\n')}\n---\n\n${content}`
+	const kept = (match[1] ?? '')
+		.split('\n')
+		.filter((line) => !STAMP_KEYS.some((key) => line.startsWith(`${key}:`)))
+	return `---\n${[...kept, ...stamps].join('\n')}\n---\n${content.slice(match[0].length)}`
+}
+
+/** An installed copy with this package's own bookkeeping lines removed. */
+export function stripSkillStamps(content: string): string {
+	return setStamps(content, [])
+}
+
+/**
+ * The version stamp on its own — the shape releases before #480 wrote, and what
+ * `classifySkillContent` sees as `unknown`. Not the write path; `stampSkill` is.
  */
 export function stampSkillVersion(content: string, version: string): string {
-	const stamp = `${VERSION_KEY}: ${version}`
-	const match = content.match(FRONTMATTER)
-	if (!match) return `---\n${stamp}\n---\n\n${content}`
-	const fields = (match[1] ?? '')
-		.split('\n')
-		.filter((line) => !line.startsWith(`${VERSION_KEY}:`))
-		.join('\n')
-	return `---\n${fields}\n${stamp}\n---\n${content.slice(match[0].length)}`
+	return setStamps(content, [`${VERSION_KEY}: ${version}`])
+}
+
+/** sha256 of the content this package shipped, ignoring the stamps it adds. */
+export function hashSkillContent(content: string): string {
+	return createHash('sha256').update(stripSkillStamps(content)).digest('hex')
+}
+
+/** The version + hash stamps, as written to disk. */
+export function stampSkill(content: string, version: string): string {
+	return setStamps(content, [
+		`${VERSION_KEY}: ${version}`,
+		`${HASH_KEY}: ${hashSkillContent(content)}`,
+	])
+}
+
+/**
+ * How an installed copy relates to the releases this package has shipped —
+ * #448's vocabulary, applied to skills.
+ *
+ * - `pristine` — content still matches the hash the install recorded (or is
+ *   verbatim what we ship right now), so re-writing it loses nothing.
+ * - `modified` — content has diverged from that record. Somebody's fork.
+ * - `unknown` — no record at all (installed before this stamp existed). A fork
+ *   and a stale copy are indistinguishable, so it is not safe to overwrite.
+ */
+export type SkillContentState = 'pristine' | 'modified' | 'unknown'
+
+export function classifySkillContent(installed: string, shipped: string): SkillContentState {
+	if (stripSkillStamps(installed) === stripSkillStamps(shipped)) return 'pristine'
+	const recorded = readSkillHash(installed)
+	if (!recorded) return 'unknown'
+	return recorded === hashSkillContent(installed) ? 'pristine' : 'modified'
 }
 
 function versionParts(version: string): number[] {
@@ -88,21 +160,32 @@ export function isNewerVersion(a: string, b: string): boolean {
 export interface ShippedSkill {
 	content: string
 	version: string
+	/** Where that content lives on disk, inside this package. */
+	file: string
 }
 
 /** The skill source and the package version that will be stamped into it. */
 export async function readShippedSkill(name: string = SHIPPED_SKILL): Promise<ShippedSkill> {
 	const root = getPackageRoot()
-	const content = await fs.readFile(path.join(root, 'skills', name, 'SKILL.md'), 'utf8')
+	const file = path.join(root, 'skills', name, 'SKILL.md')
+	const content = await fs.readFile(file, 'utf8')
 	const pkg = await fs.readJson(path.join(root, 'package.json'))
-	return { content, version: String(pkg.version) }
+	return { content, version: String(pkg.version), file }
 }
 
-export type SkillInstallStatus = 'installed' | 'updated' | 'up-to-date' | 'declined-downgrade'
+export type SkillInstallStatus =
+	| 'installed'
+	| 'updated'
+	| 'up-to-date'
+	| 'declined-downgrade'
+	/** Content this package never shipped — a local fork, or unprovable either way. */
+	| 'declined-fork'
 
 export interface SkillInstallResult {
 	name: string
 	status: SkillInstallStatus
+	/** Null when nothing is installed yet. */
+	contentState: SkillContentState | null
 	/** The nominal path — `<skillsDir>/<name>/SKILL.md`. */
 	file: string
 	/**
@@ -113,6 +196,8 @@ export interface SkillInstallResult {
 	realFile: string
 	/** True when `file` is a symlink — a stow-managed copy living in dotfiles. */
 	viaSymlink: boolean
+	/** The shipped source inside this package, so a refusal can name a real `diff`. */
+	shippedFile: string
 	installedVersion: string | null
 	shippedVersion: string
 }
@@ -139,7 +224,8 @@ async function isSymlink(file: string): Promise<boolean> {
  */
 export async function installClaudeSkill(
 	skillsDir: string,
-	name: string = SHIPPED_SKILL
+	name: string = SHIPPED_SKILL,
+	{ force = false }: { force?: boolean } = {}
 ): Promise<SkillInstallResult> {
 	const shipped = await readShippedSkill(name)
 	const file = path.join(skillsDir, name, 'SKILL.md')
@@ -148,8 +234,10 @@ export async function installClaudeSkill(
 	const viaSymlink = await isSymlink(file)
 	const base = {
 		name,
+		contentState: existing === null ? null : classifySkillContent(existing, shipped.content),
 		file,
 		viaSymlink,
+		shippedFile: shipped.file,
 		realFile: viaSymlink ? await fs.realpath(file) : file,
 		installedVersion,
 		shippedVersion: shipped.version,
@@ -159,7 +247,14 @@ export async function installClaudeSkill(
 		return { ...base, status: 'declined-downgrade' }
 	}
 
-	const next = stampSkillVersion(shipped.content, shipped.version)
+	// Only `pristine` content is provably ours to replace. Anything else is a
+	// fork (or unprovable, which for a destructive write is the same thing) and
+	// stays a human decision — the same rule `fix copied-assets` follows (#448).
+	if (!force && base.contentState !== null && base.contentState !== 'pristine') {
+		return { ...base, status: 'declined-fork' }
+	}
+
+	const next = stampSkill(shipped.content, shipped.version)
 	if (existing === next) return { ...base, status: 'up-to-date' }
 
 	await fs.ensureDir(path.dirname(file))
@@ -174,7 +269,13 @@ export interface SkillStatus {
 	/** Null when installed but unstamped — a copy that predates this feature. */
 	installedVersion: string | null
 	shippedVersion: string
-	/** True when nothing is installed, or what is installed predates what we ship. */
+	/** Null when nothing is installed. */
+	contentState: SkillContentState | null
+	/**
+	 * True when nothing is installed, or what is installed predates what we ship
+	 * *and* `fix` would actually replace it. A fork is never "needs install":
+	 * pointing at a fix that will refuse is worse than saying nothing.
+	 */
 	needsInstall: boolean
 }
 
@@ -183,23 +284,28 @@ export async function claudeSkillStatus(
 	name: string = SHIPPED_SKILL,
 	explicit?: string
 ): Promise<SkillStatus> {
-	const { version } = await readShippedSkill(name)
+	const shipped = await readShippedSkill(name)
 	const { dir } = await resolveSkillsDir(explicit)
 	const absent = {
 		installed: false,
 		installedVersion: null,
-		shippedVersion: version,
+		shippedVersion: shipped.version,
+		contentState: null,
 		needsInstall: true,
 	}
 	if (!dir) return { file: null, ...absent }
 	const file = path.join(dir, name, 'SKILL.md')
 	if (!(await fs.pathExists(file))) return { file, ...absent }
-	const installedVersion = readSkillVersion(await fs.readFile(file, 'utf8'))
+	const content = await fs.readFile(file, 'utf8')
+	const installedVersion = readSkillVersion(content)
+	const contentState = classifySkillContent(content, shipped.content)
+	const behind = installedVersion === null || isNewerVersion(shipped.version, installedVersion)
 	return {
 		file,
 		installed: true,
 		installedVersion,
-		shippedVersion: version,
-		needsInstall: installedVersion === null || isNewerVersion(version, installedVersion),
+		shippedVersion: shipped.version,
+		contentState,
+		needsInstall: behind && contentState === 'pristine',
 	}
 }
