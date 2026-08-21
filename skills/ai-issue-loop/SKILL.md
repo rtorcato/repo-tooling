@@ -489,14 +489,36 @@ carries a hidden verdict marker, so read that back instead of re-spawning over a
 review that already exists — `<ARM>` is `code` or `sec`:
 
 ```bash
-VERDICT=$(gh api "repos/$OWNER_REPO/issues/<N>/comments" --paginate \
-  --jq '[.[].body | capture("<!-- ai-issue-loop:verdict:<ARM>:(?<v>[A-Z-]+) -->").v] | last // empty' | tail -1)
+VERDICT=$(gh api "repos/$OWNER_REPO/pulls/<N>/reviews" --paginate --slurp \
+  | jq -r '[add[]
+            | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
+            | (.body // "")
+            | capture("<!-- ai-issue-loop:verdict:<ARM>:(?<v>[A-Z-]+) -->").v] | last // empty')
 ```
 
-`// empty` is load-bearing: `jq -r` prints a missing value as the literal string
-`null`, which is not empty and would read as a verdict. `--paginate` runs the
-filter once per page, so the `tail -1` is what keeps the *last* matching page
-rather than one line per page.
+Four details there are load-bearing:
+
+- **`pulls/<N>/reviews`, because the prompt posts with `gh pr review --comment`.**
+  That creates a *review*, which never appears under `issues/<N>/comments`. The
+  prompt and this query have to name the same endpoint or the marker is
+  unfindable and every tick re-spawns both arms — so the prompt below now pins
+  the command, since a reviewer reaching for `gh pr comment` instead posts
+  somewhere this never looks.
+- **`--slurp`, not `--paginate` with `--jq`.** `--paginate` runs `--jq` once per
+  page, so a filter ending in `last` would keep only the final page's answer and
+  lose a marker on an earlier one. `--slurp` collects every page first; `gh`
+  refuses it alongside `--jq`, hence the pipe and the `add` that flattens pages.
+- **The author gate**, the same `OWNER`/`MEMBER`/`COLLABORATOR` test Pass 4
+  applies to issue authors, and for the same reason: anyone can review a public
+  PR, so ungated a stranger's `<!-- ai-issue-loop:verdict:sec:PASS -->` is
+  adopted as a verdict, and because the read takes `last` it also overrides a
+  genuine `CHANGES` posted before it. Unlike Pass 4 there is no label acting as
+  the hard gate here — the marker is the only signal — so this check is not a
+  backstop, it is the gate.
+- **`(.body // "")` and `// empty`.** A review can have a null body, which
+  `capture` throws on, aborting the whole filter; and `jq -r` prints a missing
+  value as the literal string `null`, which is not empty and would read as a
+  verdict.
 
 Then, for that arm — `<claim>` being `ai-reviewing-code` or `ai-reviewing-sec`,
 `<pass>` being `ai-ok-code` or `ai-ok-sec`:
@@ -560,6 +582,10 @@ Reviewer prompt template:
 > Post your verdict as a comment — **never** `--approve`, it errors on your own
 > PR:
 > `gh pr review <N> --comment --body "..."`
+>
+> **That exact command, not `gh pr comment`.** The two write to different
+> endpoints, and Pass 3 reads your verdict back from the reviews one; a body
+> posted the other way is invisible to it and gets you re-spawned.
 >
 > The body **must** begin with a hidden verdict marker, then the header line,
 > then a blank line — you authenticate as the repo owner, so without the header
@@ -724,7 +750,9 @@ package/from/to table survives because it sits at the top; classify from that.
 > whether the body was truncated so the reader knows what you could and couldn't see.
 > Same `<!-- ai-issue-loop:verdict:… -->` marker and `🤖 *Automated review — …*`
 > header line opening the body — `PASS-NOTES` when you apply `ai-notes`, `PASS`
-> otherwise, never `CHANGES` on this arm. Same closing `### Before merging`
+> otherwise, never `CHANGES` on this arm — and posted the same way, with
+> `gh pr review <N> --comment` rather than `gh pr comment`, or Pass 3 cannot read
+> the marker back. Same closing `### Before merging`
 > section, same ≤600-character cap and no-negative-findings rule on the body, and same
 > one-verdict-label rule as above — **including clearing your
 > `<ai-reviewing-code|ai-reviewing-sec>` claim label in the same `gh pr edit`**.
