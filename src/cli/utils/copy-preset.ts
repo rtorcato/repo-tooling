@@ -37,7 +37,9 @@ export interface PresetDefinition {
 
 export const PRESETS: Record<PresetName, PresetDefinition> = {
 	biome: {
-		source: 'tooling/biome/biome.json',
+		// Not named `biome.json`: Biome auto-discovers any file by that name, so
+		// shipping one inside this package made it a second root config here (#486).
+		source: 'tooling/biome/preset.json',
 		target: 'biome.json',
 		desc: 'Biome formatter and linter configuration',
 	},

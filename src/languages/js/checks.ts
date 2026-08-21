@@ -108,7 +108,7 @@ function matchesBiomeConfig(contents: string): boolean {
 	if (BIOME_PRESET_REF.test(JSON.stringify(config.extends ?? ''))) return true
 
 	// The inlined preset: biome's own `$schema` plus the `linter.rules.preset`
-	// key the shipped `tooling/biome/biome.json` sets.
+	// key the shipped `tooling/biome/preset.json` sets.
 	const schema = config.$schema
 	return (
 		typeof schema === 'string' &&
@@ -1501,7 +1501,7 @@ function readSchemaUrl(contents: string): string | null {
  * of which version the config targets, so comparing it against the declared
  * dependency floor is exact — no heuristics, no false positives.
  *
- * This is the #330 defect precisely: `tooling/biome/biome.json` carries
+ * This is the #330 defect precisely: `tooling/biome/preset.json` carries
  * `$schema` 2.5.0 and uses `linter.rules.preset`, a 2.5 key, while
  * `peerDependencies` advertised `@biomejs/biome: ^2.0.0`. Consumers on 2.0–2.4
  * got `Found an unknown key \`preset\`` with nothing pointing at the range.

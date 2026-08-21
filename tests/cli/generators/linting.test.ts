@@ -118,7 +118,9 @@ describe('generateLintingConfigs', () => {
 	// #363: `useIgnoreFile` does nothing while `vcs.enabled` is false, so the
 	// preset linted build output — 1477 errors from .next/ on a Next.js app.
 	it('ships a preset whose .gitignore setting is actually switched on', async () => {
-		const preset = await fs.readJson(join(import.meta.dirname, '../../../tooling/biome/biome.json'))
+		const preset = await fs.readJson(
+			join(import.meta.dirname, '../../../tooling/biome/preset.json')
+		)
 		expect(preset.vcs).toMatchObject({ enabled: true, clientKind: 'git', useIgnoreFile: true })
 	})
 
@@ -144,7 +146,9 @@ describe('generateLintingConfigs', () => {
 	// The shipped preset is parsed by whichever Biome the consumer installed, so
 	// it must not pin either — it carried its own separate stale 2.5.0 (#468).
 	it('ships a preset whose $schema is unpinned too', async () => {
-		const preset = await fs.readJson(join(import.meta.dirname, '../../../tooling/biome/biome.json'))
+		const preset = await fs.readJson(
+			join(import.meta.dirname, '../../../tooling/biome/preset.json')
+		)
 		expect(preset.$schema).toBe('https://biomejs.dev/schemas/latest/schema.json')
 	})
 
@@ -157,27 +161,36 @@ describe('generateLintingConfigs', () => {
 })
 
 /**
- * #486 — does the shipped preset's `"root": false` (#469) actually win where it
- * lands? Every assertion here is a real `biome` run, because the failure mode is
- * a config that resolves to nothing while the build stays green; no amount of
- * reading JSON keys catches that.
+ * #486 — does the shipped preset actually win where it lands? Every assertion
+ * here is a real `biome` run, because the failure mode is a config that resolves
+ * to nothing while the build stays green; no amount of reading JSON keys catches
+ * that.
  *
  * The probe is `any`, not `debugger`: `noExplicitAny` is on under Biome's
  * built-in defaults and explicitly **off** in our preset, so its absence proves
  * the preset was applied. A `debugger` is reported either way and would pass
  * against a config that had silently evaporated.
  *
- * Two of the three tests are `it.fails` — they state the behaviour we want and
- * assert it does not hold yet. Deleting the `.fails` is the whole fix-side edit
- * once #486 is decided; the suite goes red the moment someone fixes it by
- * accident, which is the point.
+ * #486 renamed the shipped file to `preset.json` and dropped `"root": false`
+ * (#469). One file cannot be both a root and a non-root, so that traded one
+ * failure for another — and the trade is the point:
+ *
+ * - **Fixed:** a `copy biome` into a standalone repo used to be discarded in
+ *   silence, leaving the consumer on stock Biome with exit 0. It now applies.
+ * - **Traded:** that same verbatim copy, landed in a package under someone
+ *   else's monorepo root, is now a second root config and Biome aborts loudly.
+ *
+ * The trade is worth taking because it *converges* the residual: the copied
+ * config and the scaffolded `extends` pointer now fail the same way, for the
+ * same reason, and one fix — teaching the scaffold when it is nested — closes
+ * both. #486 left that open, so the last test stays `it.fails`.
  */
 describe.skipIf(!fs.existsSync(join(process.cwd(), 'node_modules', '.bin', 'biome')))(
 	'shipped biome preset: which config actually wins (#486)',
 	() => {
 		const newTmpDir = useTmpDir()
 		const biomeBin = join(process.cwd(), 'node_modules', '.bin', 'biome')
-		const PRESET = join(import.meta.dirname, '../../../tooling/biome/biome.json')
+		const PRESET = join(import.meta.dirname, '../../../tooling/biome/preset.json')
 		const PROBE = 'export const v: any = "x"\n'
 		/** A monorepo root that already owns a root config, on Biome's own defaults. */
 		const PARENT = {
@@ -194,11 +207,11 @@ describe.skipIf(!fs.existsSync(join(process.cwd(), 'node_modules', '.bin', 'biom
 
 			const pkg = join(dir, 'node_modules', '@rtorcato', 'repo-tooling')
 			await fs.ensureDir(join(pkg, 'tooling', 'biome'))
-			await fs.copy(PRESET, join(pkg, 'tooling', 'biome', 'biome.json'))
+			await fs.copy(PRESET, join(pkg, 'tooling', 'biome', 'preset.json'))
 			await fs.writeJson(join(pkg, 'package.json'), {
 				name: '@rtorcato/repo-tooling',
 				version: '0.0.0',
-				exports: { './biome': './tooling/biome/biome.json' },
+				exports: { './biome': './tooling/biome/preset.json' },
 			})
 			return dir
 		}
@@ -212,8 +225,11 @@ describe.skipIf(!fs.existsSync(join(process.cwd(), 'node_modules', '.bin', 'biom
 			return `${run.stdout}${run.stderr}`
 		}
 
-		// The case #486 was filed about, and the one `root: false` describes. It holds.
-		it('applies to a nested package, overriding the monorepo root config', async () => {
+		// The case #469's `root: false` bought, and what #486 gave back for it: a
+		// verbatim copy under a monorepo root is a second root, so the run aborts
+		// before any file is read. Loud — and it is the same defect the scaffolded
+		// pointer hits below, which is why one `--nested` fix would close both.
+		it('is a second root config when copied into a package under a monorepo root', async () => {
 			const root = await project()
 			await fs.writeJson(join(root, 'biome.json'), PARENT)
 			// `copy biome` drops the preset verbatim; the sibling has no config at all.
@@ -221,23 +237,41 @@ describe.skipIf(!fs.existsSync(join(process.cwd(), 'node_modules', '.bin', 'biom
 			await fs.outputFile(join(root, 'packages', 'nested', 'src', 'probe.ts'), PROBE)
 			await fs.outputFile(join(root, 'packages', 'sibling', 'src', 'probe.ts'), PROBE)
 
-			// A second root aborts the run outright, before any file is looked at.
-			expect(check(root)).not.toContain('nested root configuration')
-			// The nested preset won: it turns noExplicitAny off.
-			expect(check(root, 'packages/nested')).not.toContain('noExplicitAny')
-			// ...and the parent really was in force, so the silence above means something.
+			// It fails, but it says so — no silent fallback to stock Biome.
+			expect(check(root)).toContain('nested root configuration')
+			// ...and the parent really is in force, so that abort is the only thing
+			// standing between the monorepo root and a working check.
 			expect(check(root, 'packages/sibling')).toContain('noExplicitAny')
 		})
 
-		// `copy biome` writes the preset — `root: false` and all — as the consumer's
-		// own root config. Biome finds no root above it and silently falls back to
-		// its built-in defaults: no warning, no error, the preset simply gone.
-		it.fails('applies when copied in as the consumer’s own root config', async () => {
+		// The whole point of the rename: `copy biome` lands the preset as the
+		// consumer's own root config. With `root: false` still on it, Biome found no
+		// root above, silently fell back to built-in defaults and exited 0 — the
+		// preset simply gone. Dropping the key is what makes this hold.
+		it('applies when copied in as the consumer’s own root config', async () => {
 			const dir = await project()
 			await fs.copy(PRESET, join(dir, 'biome.json'))
 			await fs.outputFile(join(dir, 'src', 'probe.ts'), PROBE)
 
 			expect(check(dir)).not.toContain('noExplicitAny')
+		})
+
+		// The shape consumers actually use, and the one the rename could silently
+		// break: `extends` goes through the `./biome` exports entry, so if that entry
+		// and the file on disk drift apart the preset stops arriving. This repo's own
+		// `biome check .` proves nothing here — its node_modules symlinks back to the
+		// working tree, so it resolves whatever is checked out rather than what ships.
+		it('applies through the extends pointer, resolved via the exports map', async () => {
+			const dir = await project()
+			await generateBiomeConfig(dir)
+			await fs.outputFile(join(dir, 'src', 'probe.ts'), PROBE)
+
+			const out = check(dir)
+			// `Checked N files` only prints once config resolution succeeded — an
+			// exports entry pointing at nothing aborts the run instead, which would
+			// otherwise make the assertion below pass by printing nothing at all.
+			expect(out).toContain('Checked')
+			expect(out).not.toContain('noExplicitAny')
 		})
 
 		// `root` is not inherited through `extends`, so the thin pointer

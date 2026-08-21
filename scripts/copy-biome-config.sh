@@ -13,7 +13,7 @@ if [ ! -d "node_modules/@rtorcato/repo-tooling" ]; then
 fi
 
 # Copy the base configuration
-cp node_modules/@rtorcato/repo-tooling/tooling/biome/biome.json ./biome.json
+cp node_modules/@rtorcato/repo-tooling/tooling/biome/preset.json ./biome.json
 
 echo "✅ Biome configuration copied successfully!"
 echo ""
