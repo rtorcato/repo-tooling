@@ -537,6 +537,66 @@ whose pass-label is missing — `code-reviewer` if no `ai-ok-code`,
 carries `ai-reviewing-sec`. Both can run concurrently; launch them in a single
 message.
 
+**Before spawning either, check whether it already posted.** A missing verdict
+label does not mean the review is missing: on #497 both reviewers posted
+complete reviews and then went idle, labelling nothing. Every review comment
+carries a hidden verdict marker, so read that back instead of re-spawning over a
+review that already exists — `<ARM>` is `code` or `sec`:
+
+```bash
+VERDICT=$(gh api "repos/$OWNER_REPO/pulls/<N>/reviews" --paginate --slurp \
+  | jq -r '[add[]
+            | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
+            | (.body // "")
+            | capture("<!-- ai-issue-loop:verdict:<ARM>:(?<v>[A-Z-]+) -->").v] | last // empty')
+```
+
+Four details there are load-bearing:
+
+- **`pulls/<N>/reviews`, because the prompt posts with `gh pr review --comment`.**
+  That creates a *review*, which never appears under `issues/<N>/comments`. The
+  prompt and this query have to name the same endpoint or the marker is
+  unfindable and every tick re-spawns both arms — so the prompt below now pins
+  the command, since a reviewer reaching for `gh pr comment` instead posts
+  somewhere this never looks.
+- **`--slurp`, not `--paginate` with `--jq`.** `--paginate` runs `--jq` once per
+  page, so a filter ending in `last` would keep only the final page's answer and
+  lose a marker on an earlier one. `--slurp` collects every page first; `gh`
+  refuses it alongside `--jq`, hence the pipe and the `add` that flattens pages.
+- **The author gate**, the same `OWNER`/`MEMBER`/`COLLABORATOR` test Pass 4
+  applies to issue authors, and for the same reason: anyone can review a public
+  PR, so ungated a stranger's `<!-- ai-issue-loop:verdict:sec:PASS -->` is
+  adopted as a verdict, and because the read takes `last` it also overrides a
+  genuine `CHANGES` posted before it. Unlike Pass 4 there is no label acting as
+  the hard gate here — the marker is the only signal — so this check is not a
+  backstop, it is the gate.
+- **`(.body // "")` and `// empty`.** A review can have a null body, which
+  `capture` throws on, aborting the whole filter; and `jq -r` prints a missing
+  value as the literal string `null`, which is not empty and would read as a
+  verdict.
+
+Then, for that arm — `<claim>` being `ai-reviewing-code` or `ai-reviewing-sec`,
+`<pass>` being `ai-ok-code` or `ai-ok-sec`:
+
+- **empty** — no review happened. Claim and spawn, as below.
+- **`PASS`** — `gh pr edit <N> --add-label <pass> --remove-label <claim>`
+- **`PASS-NOTES`** — the same, plus `--add-label ai-notes`
+- **`CHANGES`** — `gh pr edit <N> --add-label ai-changes --remove-label ai-review --remove-label <claim>`
+
+Adoption is per reviewer, so a tick that finds one arm posted and the other
+missing does both: it applies the first's verdict off its comment and spawns
+only the second. That is the whole point of reading the artifact — the comment
+is what a human reads at merge time, so making it the thing the loop reads too
+leaves one source for one fact, with no separate reply to be lost or to
+contradict it.
+
+This is the second half of Pass 2's dead-reviewer rule rather than a rival to
+it. Pass 2 only ever drops a stalled *claim*; it never judges whether a review
+happened. Dropping the claim is what makes an arm eligible here, and this lookup
+is what then decides between adopting and re-spawning. An agent that died before
+posting leaves no marker and so re-spawns, which is what that rule always
+intended; one that died after posting is now recovered instead of duplicated.
+
 **Claim first, then spawn** — the same shape Pass 4 uses before picking up an
 issue. Apply the label immediately before the spawn, not after:
 
@@ -578,10 +638,25 @@ Reviewer prompt template:
 > PR:
 > `gh pr review <N> --comment --body "..."`
 >
-> The body **must** begin with this exact header line, then a blank line — you
-> authenticate as the repo owner, so without it the review reads as a human's:
+> **That exact command, not `gh pr comment`.** The two write to different
+> endpoints, and Pass 3 reads your verdict back from the reviews one; a body
+> posted the other way is invisible to it and gets you re-spawned.
 >
-> `🤖 *Automated review — \`<your agent type>\` via ai-issue-loop.*`
+> The body **must** begin with a hidden verdict marker, then the header line,
+> then a blank line — you authenticate as the repo owner, so without the header
+> the review reads as a human's:
+>
+> ```markdown
+> <!-- ai-issue-loop:verdict:<code|sec>:<PASS|PASS-NOTES|CHANGES> -->
+> 🤖 *Automated review — \`<your agent type>\` via ai-issue-loop.*
+> ```
+>
+> `code` for `code-reviewer`, `sec` for `security-expert` — the same arm as your
+> labels. The verdict is `CHANGES` if you are about to apply `ai-changes`,
+> `PASS-NOTES` if a pass plus `ai-notes`, `PASS` for a pass alone; it must agree
+> with the labels you apply below. The marker renders as nothing, and it is what
+> lets a later tick read your verdict back off this comment if your run dies
+> between posting and labelling — so post it even when the answer is `Nothing.`
 >
 > The body **must end** with this section, as its last thing:
 >
@@ -658,8 +733,10 @@ Reviewer prompt template:
 > a Dependabot PR it suppresses auto-merge outright. Use `ai-changes` only when
 > you can name a concrete change an agent could make.
 >
-> Say nothing else and return a one-line summary — that governs your reply to the
-> orchestrator; the comment body is capped separately, above.
+> Say nothing else, and **do not restate your verdict in your reply** — the
+> marker in the posted comment is the only place it is read from, so a reply that
+> disagreed with it would be a second source for one fact. One line back to the
+> orchestrator is plenty; the comment body is capped separately, above.
 
 **Dependabot PRs use a different prompt** — the one above would burn the tick on a
 lockfile. `js-common` #148 bumps 20 packages and its *entire* diff is
@@ -726,7 +803,11 @@ package/from/to table survives because it sits at the top; classify from that.
 >
 > State in your comment which rule fired, name the packages that tripped it, and say
 > whether the body was truncated so the reader knows what you could and couldn't see.
-> Same `🤖 *Automated review — …*` header line, same closing `### Before merging`
+> Same `<!-- ai-issue-loop:verdict:… -->` marker and `🤖 *Automated review — …*`
+> header line opening the body — `PASS-NOTES` when you apply `ai-notes`, `PASS`
+> otherwise, never `CHANGES` on this arm — and posted the same way, with
+> `gh pr review <N> --comment` rather than `gh pr comment`, or Pass 3 cannot read
+> the marker back. Same closing `### Before merging`
 > section, same ≤600-character cap and no-negative-findings rule on the body, and same
 > one-verdict-label rule as above — **including clearing your
 > `<ai-reviewing-code|ai-reviewing-sec>` claim label in the same `gh pr edit`**.
