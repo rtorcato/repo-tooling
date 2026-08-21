@@ -1,4 +1,5 @@
 import fs from 'fs-extra'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
@@ -154,3 +155,104 @@ describe('generateLintingConfigs', () => {
 		expect(await fs.pathExists(join(dir, '.oxlintrc.json'))).toBe(false)
 	})
 })
+
+/**
+ * #486 — does the shipped preset's `"root": false` (#469) actually win where it
+ * lands? Every assertion here is a real `biome` run, because the failure mode is
+ * a config that resolves to nothing while the build stays green; no amount of
+ * reading JSON keys catches that.
+ *
+ * The probe is `any`, not `debugger`: `noExplicitAny` is on under Biome's
+ * built-in defaults and explicitly **off** in our preset, so its absence proves
+ * the preset was applied. A `debugger` is reported either way and would pass
+ * against a config that had silently evaporated.
+ *
+ * Two of the three tests are `it.fails` — they state the behaviour we want and
+ * assert it does not hold yet. Deleting the `.fails` is the whole fix-side edit
+ * once #486 is decided; the suite goes red the moment someone fixes it by
+ * accident, which is the point.
+ */
+describe.skipIf(!fs.existsSync(join(process.cwd(), 'node_modules', '.bin', 'biome')))(
+	'shipped biome preset: which config actually wins (#486)',
+	() => {
+		const newTmpDir = useTmpDir()
+		const biomeBin = join(process.cwd(), 'node_modules', '.bin', 'biome')
+		const PRESET = join(import.meta.dirname, '../../../tooling/biome/biome.json')
+		const PROBE = 'export const v: any = "x"\n'
+		/** A monorepo root that already owns a root config, on Biome's own defaults. */
+		const PARENT = {
+			$schema: 'https://biomejs.dev/schemas/latest/schema.json',
+			linter: { enabled: true, rules: { preset: 'recommended' } },
+		}
+
+		/** A tmp project with the preset installed the way a consumer would have it. */
+		async function project(): Promise<string> {
+			const dir = newTmpDir()
+			await fs.writeFile(join(dir, '.gitignore'), 'node_modules\n')
+			// The preset sets vcs.useIgnoreFile, which wants a real repo above it.
+			spawnSync('git', ['init', '--quiet'], { cwd: dir })
+
+			const pkg = join(dir, 'node_modules', '@rtorcato', 'repo-tooling')
+			await fs.ensureDir(join(pkg, 'tooling', 'biome'))
+			await fs.copy(PRESET, join(pkg, 'tooling', 'biome', 'biome.json'))
+			await fs.writeJson(join(pkg, 'package.json'), {
+				name: '@rtorcato/repo-tooling',
+				version: '0.0.0',
+				exports: { './biome': './tooling/biome/biome.json' },
+			})
+			return dir
+		}
+
+		function check(cwd: string, target = '.'): string {
+			const run = spawnSync(biomeBin, ['check', '--colors=off', target], {
+				cwd,
+				encoding: 'utf8',
+				timeout: 30_000,
+			})
+			return `${run.stdout}${run.stderr}`
+		}
+
+		// The case #486 was filed about, and the one `root: false` describes. It holds.
+		it('applies to a nested package, overriding the monorepo root config', async () => {
+			const root = await project()
+			await fs.writeJson(join(root, 'biome.json'), PARENT)
+			// `copy biome` drops the preset verbatim; the sibling has no config at all.
+			await fs.copy(PRESET, join(root, 'packages', 'nested', 'biome.json'))
+			await fs.outputFile(join(root, 'packages', 'nested', 'src', 'probe.ts'), PROBE)
+			await fs.outputFile(join(root, 'packages', 'sibling', 'src', 'probe.ts'), PROBE)
+
+			// A second root aborts the run outright, before any file is looked at.
+			expect(check(root)).not.toContain('nested root configuration')
+			// The nested preset won: it turns noExplicitAny off.
+			expect(check(root, 'packages/nested')).not.toContain('noExplicitAny')
+			// ...and the parent really was in force, so the silence above means something.
+			expect(check(root, 'packages/sibling')).toContain('noExplicitAny')
+		})
+
+		// `copy biome` writes the preset — `root: false` and all — as the consumer's
+		// own root config. Biome finds no root above it and silently falls back to
+		// its built-in defaults: no warning, no error, the preset simply gone.
+		it.fails('applies when copied in as the consumer’s own root config', async () => {
+			const dir = await project()
+			await fs.copy(PRESET, join(dir, 'biome.json'))
+			await fs.outputFile(join(dir, 'src', 'probe.ts'), PROBE)
+
+			expect(check(dir)).not.toContain('noExplicitAny')
+		})
+
+		// `root` is not inherited through `extends`, so the thin pointer
+		// `generateBiomeConfig` writes is still read as a root of its own. Loud
+		// rather than silent, but a scaffolded package inside someone else's
+		// monorepo cannot be checked from that monorepo's root at all.
+		it.fails('lets the scaffolded extends pointer sit inside a monorepo', async () => {
+			const root = await project()
+			await fs.writeJson(join(root, 'biome.json'), PARENT)
+			const scaffolded = join(root, 'packages', 'scaffolded')
+			await fs.ensureDir(scaffolded)
+			await generateBiomeConfig(scaffolded)
+			await fs.outputFile(join(scaffolded, 'src', 'probe.ts'), PROBE)
+
+			expect(check(root)).not.toContain('nested root configuration')
+		})
+	}
+)
