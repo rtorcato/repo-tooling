@@ -458,11 +458,15 @@ export const BASE_FIXERS: Fixer[] = [
 			for (const name of SHIPPED_SKILLS) {
 				const result = await installClaudeSkill(dir, name, { force: forceSkills })
 				if (result.status === 'declined-downgrade') {
+					// Say what was compared, not what is newer: the version is a label,
+					// and on a git checkout it can understate the content behind it
+					// (#522). Naming the escape hatch matters for exactly that case.
 					console.error(
 						chalk.yellow(
-							`   skipped — ${result.file} is at ${result.installedVersion}, newer than the ${result.shippedVersion} this package ships`
+							`   skipped — ${result.file} is stamped ${result.installedVersion}, above the ${result.shippedVersion} this package reports; not overwritten`
 						)
 					)
+					console.error(chalk.yellow('   overwrite anyway:  fix claude-skills --force-skills'))
 					continue
 				}
 				if (result.status === 'declined-fork') {

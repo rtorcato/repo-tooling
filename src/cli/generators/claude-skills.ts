@@ -9,8 +9,12 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import fs from 'fs-extra'
+import { realGitExec } from '../../base/git-identity.js'
 import { getPackageRoot } from '../utils/copy-preset.js'
 import { shellQuote } from '../utils/shell.js'
+
+/** Injectable git runner — never rejects; a missing or failing git is null. */
+export type GitExec = (args: string[], cwd?: string) => Promise<string | null>
 
 /**
  * Skills this package owns the content of and keeps up to date. The loop first —
@@ -171,13 +175,47 @@ export interface ShippedSkill {
 	file: string
 }
 
+/**
+ * The version to stamp, given what `package.json` claims.
+ *
+ * In a published tarball that field is authoritative — `@semantic-release/npm`
+ * rewrites it before packing. In a *git checkout* it is not: this repo runs
+ * semantic-release without `@semantic-release/git` (#417), so nothing ever
+ * writes the released version back and the field sits at whatever it was last
+ * hand-set to. Observed 2026-08-22: `package.json` 3.11.0 against npm 3.21.1,
+ * ten minor versions of drift.
+ *
+ * That mattered because the stamp feeds the downgrade guard below: a skill
+ * installed from npm could not be updated from a local checkout, and the
+ * refusal claimed the installed copy was "newer" when only its *label* was.
+ *
+ * So when the package root is a git checkout, take the nearest tag as well and
+ * keep whichever is higher. Monotonic on purpose — this can only ever raise the
+ * answer, so a tagless, shallow, or git-less environment keeps today's
+ * behaviour rather than silently stamping something lower.
+ */
+export async function resolveShippedVersion(
+	root: string,
+	pkgVersion: string,
+	git: GitExec = realGitExec
+): Promise<string> {
+	if (!(await fs.pathExists(path.join(root, '.git')))) return pkgVersion
+	const described = await git(['describe', '--tags', '--abbrev=0'], root)
+	const tag = described?.trim().replace(/^v/, '')
+	if (!tag || !/^\d+\.\d+/.test(tag)) return pkgVersion
+	return isNewerVersion(tag, pkgVersion) ? tag : pkgVersion
+}
+
 /** The skill source and the package version that will be stamped into it. */
-export async function readShippedSkill(name: string = SHIPPED_SKILL): Promise<ShippedSkill> {
+export async function readShippedSkill(
+	name: string = SHIPPED_SKILL,
+	git: GitExec = realGitExec
+): Promise<ShippedSkill> {
 	const root = getPackageRoot()
 	const file = path.join(root, 'skills', name, 'SKILL.md')
 	const content = await fs.readFile(file, 'utf8')
 	const pkg = await fs.readJson(path.join(root, 'package.json'))
-	return { content, version: String(pkg.version), file }
+	return { content, version: await resolveShippedVersion(root, String(pkg.version), git), file }
 }
 
 export type SkillInstallStatus =
@@ -268,7 +306,12 @@ export async function installClaudeSkill(
 		shippedVersion: shipped.version,
 	}
 
-	if (installedVersion && isNewerVersion(installedVersion, shipped.version)) {
+	// `force` overrides this too, not just the fork check below. It already
+	// overrides the *stronger* protection — overwriting content someone
+	// deliberately edited — so refusing on a version comparison while allowing
+	// that was backwards, and left no escape hatch at all when the comparison
+	// was wrong (#522).
+	if (!force && installedVersion && isNewerVersion(installedVersion, shipped.version)) {
 		return { ...base, status: 'declined-downgrade' }
 	}
 

@@ -8,6 +8,7 @@ import {
 	installClaudeSkill,
 	isNewerVersion,
 	readShippedSkill,
+	resolveShippedVersion,
 	readSkillVersion,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
@@ -323,5 +324,70 @@ describe('SHIPPED_SKILLS', () => {
 		for (const name of SHIPPED_SKILLS) {
 			expect(await fs.pathExists(join(dir, name, 'SKILL.md')), name).toBe(true)
 		}
+	})
+})
+
+// #522: package.json is authoritative in a published tarball (semantic-release's
+// npm plugin rewrites it before packing) but stale in a git checkout, because
+// this repo runs semantic-release without @semantic-release/git (#417). The
+// stamp feeds the downgrade guard, so a stale label blocked real installs.
+describe('resolveShippedVersion', () => {
+	const gitSaying = (out: string | null) => async () => out
+
+	it('keeps package.json when the root is not a git checkout', async () => {
+		const dir = newTmpDir()
+		// Would be preferred if it were consulted — proves it is not.
+		expect(await resolveShippedVersion(dir, '3.11.0', gitSaying('v9.9.9'))).toBe('3.11.0')
+	})
+
+	it('prefers the nearest tag when it is ahead of package.json', async () => {
+		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		expect(await resolveShippedVersion(dir, '3.11.0', gitSaying('v3.21.1'))).toBe('3.21.1')
+	})
+
+	it('never lowers the answer', async () => {
+		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		expect(await resolveShippedVersion(dir, '4.0.0', gitSaying('v3.21.1'))).toBe('4.0.0')
+	})
+
+	it('falls back to package.json when git fails or has no tags', async () => {
+		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		expect(await resolveShippedVersion(dir, '3.11.0', gitSaying(null))).toBe('3.11.0')
+		expect(await resolveShippedVersion(dir, '3.11.0', gitSaying(''))).toBe('3.11.0')
+	})
+
+	it('ignores a tag that is not a version', async () => {
+		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		expect(await resolveShippedVersion(dir, '3.11.0', gitSaying('nightly'))).toBe('3.11.0')
+	})
+})
+
+describe('installClaudeSkill — downgrade guard (#522)', () => {
+	/** A pristine install stamped by a *newer* release than the one shipping now. */
+	async function installedByNewerRelease(skillsDir: string): Promise<void> {
+		const { content } = await readShippedSkill()
+		await fs.outputFile(skillFile(skillsDir), stampSkill(content, '99.0.0'))
+	}
+
+	it('still declines a genuine downgrade without --force', async () => {
+		const dir = newTmpDir()
+		await installedByNewerRelease(dir)
+		expect((await installClaudeSkill(dir)).status).toBe('declined-downgrade')
+	})
+
+	// The case that had no escape hatch: force gates the *stronger* fork check,
+	// so refusing on a version comparison while allowing a fork overwrite was
+	// backwards — and a stale stamp made the comparison wrong.
+	it('force overrides the downgrade guard', async () => {
+		const dir = newTmpDir()
+		await installedByNewerRelease(dir)
+		const result = await installClaudeSkill(dir, SHIPPED_SKILL, { force: true })
+		expect(result.status).toBe('updated')
+		const written = await fs.readFile(skillFile(dir), 'utf8')
+		expect(readSkillVersion(written)).not.toBe('99.0.0')
 	})
 })
