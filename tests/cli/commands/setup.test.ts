@@ -626,6 +626,22 @@ describe('setup language prompt', () => {
 		vi.restoreAllMocks()
 	})
 
+	// #475: the greeting was still "JS Tooling Setup" months after the rename
+	// because nothing pinned it. It is the first thing a user ever sees.
+	it('greets with the current product name, not the pre-rename one', async () => {
+		const dir = newTmpDir()
+		mockPrompt({ language: 'js' }, JS_ANSWERS)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, skipInstall: true })
+			const greeting = logSpy.mock.calls.map((c) => String(c[0])).join('\n')
+			expect(greeting).toContain('Welcome to repo-tooling setup!')
+			expect(greeting).not.toMatch(/JS Tooling/i)
+		} finally {
+			logSpy.mockRestore()
+		}
+	})
+
 	it('defaults to the language detected in the target directory', async () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, 'Package.swift'), '// swift-tools-version:6.0\n')
