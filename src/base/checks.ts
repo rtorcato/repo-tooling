@@ -2,7 +2,11 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { BLOCK_START, hasStaleAgentBlock } from '../cli/generators/agent-rules.js'
 import { BADGE_START, hasPublicOnlyBadges } from '../cli/generators/badges.js'
-import { claudeSkillStatus, SHIPPED_SKILL } from '../cli/generators/claude-skills.js'
+import {
+	claudeSkillStatus,
+	SHIPPED_SKILL,
+	skillDiffCommand,
+} from '../cli/generators/claude-skills.js'
 import { DEPENDABOT_CONFIG_PATHS, dependabotIgnoreRules } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { CheckResult } from './types.js'
@@ -552,7 +556,9 @@ export async function checkClaudeSkills(skillsDir?: string): Promise<CheckResult
 	// A local fork is `ok` for the same reason a modified copied asset is (#448):
 	// it is somebody's deliberate work, so it is named once and never nagged as
 	// fixable — pointing at a `fix` that would refuse is worse than saying nothing.
-	if (status.contentState && status.contentState !== 'pristine') {
+	// `realFile` is set whenever `contentState` is — both mean something is
+	// installed. The extra test is TypeScript's, not a real condition.
+	if (status.realFile && status.contentState && status.contentState !== 'pristine') {
 		const why =
 			status.contentState === 'modified'
 				? `has local changes since ${status.installedVersion}`
@@ -561,7 +567,9 @@ export async function checkClaudeSkills(skillsDir?: string): Promise<CheckResult
 			check,
 			status: 'ok',
 			detail: `${SHIPPED_SKILL} skill at ${status.file} ${why}; this package ships ${status.shippedVersion} and will not overwrite it`,
-			hint: `Diff it against the shipped copy, then run \`npx @rtorcato/repo-tooling fix claude-skills --force-skills\` to take the shipped version`,
+			// Name both paths: "diff it against the shipped copy" left the reader
+			// with nothing to diff, in the one case they most want to look (#484).
+			hint: `Diff it against the shipped copy — \`${skillDiffCommand({ realFile: status.realFile, shippedFile: status.shippedFile })}\` — then run \`npx @rtorcato/repo-tooling fix claude-skills --force-skills\` to take the shipped version`,
 		}
 	}
 	return {

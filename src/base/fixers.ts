@@ -20,6 +20,7 @@ import {
 	installClaudeSkill,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
+	skillDiffCommand,
 	type SkillInstallResult,
 } from '../cli/generators/claude-skills.js'
 import { generateBrand } from '../cli/generators/brand.js'
@@ -158,7 +159,7 @@ function describeSkillFork(result: SkillInstallResult): string[] {
 	return [
 		`skipped — ${SHIPPED_SKILL} was not overwritten with ${result.shippedVersion}: ${why}`,
 		`  ${target}`,
-		`  compare:  diff "${result.realFile}" "${result.shippedFile}"`,
+		`  compare:  ${skillDiffCommand(result)}`,
 		'  overwrite anyway:  fix claude-skills --force-skills',
 	]
 }
