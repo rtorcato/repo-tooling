@@ -103,6 +103,8 @@ is work someone would plausibly do gets filed as its own issue labelled
 a link. It does **not** earn `ai-notes` — later work does not decide this merge.
 An observation is not a follow-up. Prose in a merged PR's comments is
 archaeology, which is how every follow-up left there so far has died on merge.
+The checkable test: writing "optional", "residual" or "non-blocking" in a
+`### Before merging` section means that finding belongs in an issue instead.
 
 First run in a repo, create any that are missing (`gh label create` is a no-op
 error if it exists — ignore that):
@@ -843,8 +845,14 @@ Reviewer prompt template:
 > ```bash
 > gh issue create --label ai-suggested --title "<what to do>" --body "🤖 *Automated — \`<your agent type>\` via ai-issue-loop.*
 >
-> Surfaced reviewing #<N>. <What, and why it matters. A few lines.>"
+> Surfaced reviewing #<N>. <What. Why it matters. A one-line fix sketch.>"
 > ```
+>
+> **Cap the issue body at 10 lines.** The title is the action; the body is
+> what/why/fix-sketch and nothing else — no options tables, no "why this was
+> not blocking" essays, no restated diff. The full analysis already lives in
+> your review comment, and GitHub's cross-link points there; a triage queue
+> that takes a minute per item gets read, one that takes five gets skipped.
 >
 > Then put `Follow-up: #<new>` on one line in the body above `### Before
 > merging` and keep it out of that section, so it does not pull `ai-notes` in —
@@ -1333,10 +1341,11 @@ statusline file below is plain text and works anywhere.
 When `SUMMARY` carries a `⚠` (anything `blocked`, `ci-red`, or `rebuild`), append
 `sound name "Basso"` so a stall is audibly different from routine progress.
 
-Write the file **last**, both lines:
+Write the file **last** — summary, idle counter, and the sorted `ai-suggested`
+numbers the digest rule above compares against:
 
 ```bash
-printf '%s\n%s\n' "$SUMMARY" "$IDLE" > "$STATUS"
+printf '%s\n%s\n%s\n' "$SUMMARY" "$IDLE" "$SUGGESTED" > "$STATUS"
 ```
 
 The statusline segment reads line 1 and hides itself once the file is older than
@@ -1351,6 +1360,13 @@ cleaned up, sent to review, picked up, blocked. Nothing else; this repeats every
 15 minutes. On the ready line, mark any PR carrying `ai-notes` so the tick says
 which ones need reading before they are merged — that is the one place the notes
 reach a human who is not already looking at GitHub.
+
+**End with the triage digest** — the open `ai-suggested` queue, one line per
+issue, straight from `gh issue list --label ai-suggested --state open --json
+number,title`. No new state, no extra prose: the queue only ever shrinks when a
+human promotes or closes an item, and a list scanned in one glance is what makes
+that happen. Skip the digest when the queue is empty or unchanged since the last
+tick (compare against a third line in `$STATUS`: the sorted issue numbers).
 
 ---
 
