@@ -27,9 +27,7 @@ describe('generateBun', () => {
 	})
 
 	it('the shipped bun tsconfig preset extends base and sets bun types', async () => {
-		const preset = await fs.readJson(
-			join(process.cwd(), 'tooling/typescript/tsconfig.bun.json')
-		)
+		const preset = await fs.readJson(join(process.cwd(), 'tooling/typescript/tsconfig.bun.json'))
 		expect(preset.extends).toBe('./tsconfig.base.json')
 		expect(preset.compilerOptions.types).toEqual(['bun'])
 	})

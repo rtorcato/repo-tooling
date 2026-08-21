@@ -48,10 +48,7 @@ describe('generateGitLabCI', () => {
 
 	it('omits typecheck stage when TypeScript is disabled', async () => {
 		const dir = newTmpDir()
-		await generateGitLabCI(
-			baseConfig({ typescript: { enabled: false, config: 'base' } }),
-			dir
-		)
+		await generateGitLabCI(baseConfig({ typescript: { enabled: false, config: 'base' } }), dir)
 		const yaml = await fs.readFile(join(dir, '.gitlab-ci.yml'), 'utf-8')
 		expect(yaml).not.toMatch(/^typecheck:/m)
 	})

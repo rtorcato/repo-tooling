@@ -83,10 +83,7 @@ describe('generateLintingConfigs', () => {
 
 	it('drops .oxlintrc.json when oxlint is enabled (additive to Biome)', async () => {
 		const dir = newTmpDir()
-		await generateLintingConfigs(
-			baseConfig({ linting: { tool: 'biome' }, oxlint: true }),
-			dir
-		)
+		await generateLintingConfigs(baseConfig({ linting: { tool: 'biome' }, oxlint: true }), dir)
 
 		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(true)
 		const oxlint = await fs.readJson(join(dir, '.oxlintrc.json'))
@@ -121,9 +118,7 @@ describe('generateLintingConfigs', () => {
 	// #363: `useIgnoreFile` does nothing while `vcs.enabled` is false, so the
 	// preset linted build output — 1477 errors from .next/ on a Next.js app.
 	it('ships a preset whose .gitignore setting is actually switched on', async () => {
-		const preset = await fs.readJson(
-			join(import.meta.dirname, '../../../tooling/biome/biome.json')
-		)
+		const preset = await fs.readJson(join(import.meta.dirname, '../../../tooling/biome/biome.json'))
 		expect(preset.vcs).toMatchObject({ enabled: true, clientKind: 'git', useIgnoreFile: true })
 	})
 

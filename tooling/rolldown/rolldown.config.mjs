@@ -24,7 +24,12 @@ import { defineConfig } from 'rolldown'
  * @param {import('./rolldown.config.d.mts').GetConfigOptions} [options]
  */
 export function getConfig(options = {}) {
-	const { input = 'src/index.ts', outDir = 'dist', sourcemap = true, external = isBareImport } = options
+	const {
+		input = 'src/index.ts',
+		outDir = 'dist',
+		sourcemap = true,
+		external = isBareImport,
+	} = options
 
 	return defineConfig({
 		input,

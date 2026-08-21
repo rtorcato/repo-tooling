@@ -1,10 +1,7 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
-import {
-	GH_WORKFLOWS,
-	generateGhWorkflow,
-} from '../../../src/cli/generators/github-workflows.js'
+import { GH_WORKFLOWS, generateGhWorkflow } from '../../../src/cli/generators/github-workflows.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()

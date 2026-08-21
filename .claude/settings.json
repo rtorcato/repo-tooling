@@ -1,8 +1,5 @@
 {
   "worktree": {
-    "symlinkDirectories": [
-      "node_modules",
-      "apps/docs/node_modules"
-    ]
+    "symlinkDirectories": ["node_modules", "apps/docs/node_modules"]
   }
 }

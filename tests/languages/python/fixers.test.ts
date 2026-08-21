@@ -84,9 +84,7 @@ describe('python fixers', () => {
 		const dir = newTmpDir()
 		const { filesWritten } = await fixer('ruff').run(ctx(dir))
 		expect(filesWritten).toEqual(['ruff.toml'])
-		expect(
-			(await runPythonChecks(dir)).find((r) => r.check === 'Ruff')?.status
-		).toBe('ok')
+		expect((await runPythonChecks(dir)).find((r) => r.check === 'Ruff')?.status).toBe('ok')
 	})
 
 	it('mypy writes a config the mypy check accepts', async () => {

@@ -79,7 +79,11 @@ describe('generateSizeLimitConfig', () => {
 			limit: string
 		}>
 		expect(config).toHaveLength(2)
-		expect(config).toContainEqual({ name: 'demo/hooks', path: 'dist/hooks/index.js', limit: '10 kB' })
+		expect(config).toContainEqual({
+			name: 'demo/hooks',
+			path: 'dist/hooks/index.js',
+			limit: '10 kB',
+		})
 		expect(config).toContainEqual({
 			name: 'demo/providers',
 			path: 'dist/providers/index.js',

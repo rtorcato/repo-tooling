@@ -45,8 +45,13 @@ describe('resolveSkillsDir', () => {
 
 describe('version stamping', () => {
 	it('appends the stamp after a multi-line description block', () => {
-		const stamped = stampSkillVersion('---\nname: x\ndescription: |\n  one\n  two\n---\n\nBody\n', '1.2.3')
-		expect(stamped).toBe(`---\nname: x\ndescription: |\n  one\n  two\n${VERSION_KEY}: 1.2.3\n---\n\nBody\n`)
+		const stamped = stampSkillVersion(
+			'---\nname: x\ndescription: |\n  one\n  two\n---\n\nBody\n',
+			'1.2.3'
+		)
+		expect(stamped).toBe(
+			`---\nname: x\ndescription: |\n  one\n  two\n${VERSION_KEY}: 1.2.3\n---\n\nBody\n`
+		)
 		expect(readSkillVersion(stamped)).toBe('1.2.3')
 	})
 

@@ -3,11 +3,6 @@
   "root": false,
   "extends": ["@rtorcato/repo-tooling/biome"],
   "files": {
-    "includes": [
-      "!**/.docusaurus",
-      "!**/build",
-      "!**/node_modules",
-      "!**/docs/changelog.md"
-    ]
+    "includes": ["!**/.docusaurus", "!**/build", "!**/node_modules", "!**/docs/changelog.md"]
   }
 }
