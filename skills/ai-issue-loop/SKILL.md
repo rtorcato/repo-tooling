@@ -200,6 +200,44 @@ pass.** A session can be pinned to a worktree, so the orchestrator can find itse
 inside one it did not choose. `--git-common-dir` resolves to the main checkout's
 `.git` from anywhere, including a worktree, so `ROOT` is correct either way.
 
+**Check the main checkout is not bare before anything else uses `ROOT`.** It has gone
+`core.bare = true` on its own, repeatedly — four times in one session, some occurrences
+immediately after a `worktree remove` and some with nothing removed at all. The trigger
+is unidentified, so this is detection and repair only:
+
+```bash
+if [ "$(git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
+  echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
+  git -C "$ROOT" config core.bare false || {
+    echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
+fi
+```
+
+**It corrupts commits — this is not a cosmetic error message.** A bare main checkout
+wipes a worktree's index while every file sits untouched on disk, and the next commit
+faithfully records the whole repository as deleted. PR #500 died that way: a diff of
+`0 additions, 67703 deletions` across 359 files, not one of which had moved.
+
+**Test stdout, not the exit code.** `rev-parse --is-inside-work-tree` exits `0` either
+way and only *prints* the answer, so an exit-code probe is dead code. Verified on git
+2.55.0:
+
+| repo state | `--is-inside-work-tree` | `.git` |
+|---|---|---|
+| healthy checkout | `true`, exit 0 | directory |
+| **wrongly bare** | `false`, **exit 0** | directory |
+| genuinely bare | `false`, exit 0 | absent |
+| linked worktree | `true`, exit 0 | file |
+
+**`.git` must be a directory before repairing.** A genuinely bare repo prints `false`
+too, and nothing else separates the two — this skill ships to users' `~/.claude/skills/`,
+where "repairing" someone's real bare clone is the damage rather than the fix. The same
+check skips a linked worktree, whose `.git` is a file.
+
+**Fail loudly.** The repair writes `$ROOT/.git/config`, which a restrictive sandbox
+refuses with `error: could not lock config file .git/config: Operation not permitted` —
+observed. Aborting beats reporting a healthy repo while it stays broken.
+
 Never use a relative path like `ai-*`. From inside a worktree it matches nothing, and
 the failure is **silent**: Pass 2 concludes there is nothing to clean, every worktree
 survives, `ai-wip` is never cleared, and slots leak until the loop reports `idle`
@@ -472,6 +510,23 @@ and say in the comment that you re-queued it, that you deviated, and why. Re-add
 `ai-ready` is not optional: pickup cleared it, so clearing `ai-wip` alone drops the
 issue out of the queue silently, which is the worse failure. `ai-blocked` means *a
 human must look*; do not spend it on a claim you already understand.
+
+**Then re-check `core.bare`** — the same probe as Pass 0, against the same `ROOT`:
+
+```bash
+if [ "$(git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
+  echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
+  git -C "$ROOT" config core.bare false || {
+    echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
+fi
+```
+
+This is the last pass that *removes* worktrees, not the tick's last touch on the main
+checkout — Pass 4 still runs `git -C "$ROOT" worktree add` against it. That is exactly
+why the re-check belongs here: it catches a flip after this pass's removals and before
+Pass 4 branches every new worktree off a broken `ROOT`. Keep the timestamp in both log
+lines; which pass emitted one, and when, is the only instrumentation likely to pin the
+trigger down.
 
 ### Pass 3 — review
 
