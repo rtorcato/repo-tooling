@@ -207,6 +207,42 @@ pass.** A session can be pinned to a worktree, so the orchestrator can find itse
 inside one it did not choose. `--git-common-dir` resolves to the main checkout's
 `.git` from anywhere, including a worktree, so `ROOT` is correct either way.
 
+**Resolve `AGENT_USER` — the account in-flight work is assigned to.** Optional:
+unset, every step below that would assign it simply does nothing, and assignment
+behaves exactly as it did before this existed.
+
+```bash
+AGENT_USER="${AI_LOOP_AGENT:-}"
+# A typo would fail every `gh` edit for the whole tick, so prove it is assignable
+# once, here. 204 = yes, 404 = no; push access is what qualifies an account.
+[ -n "$AGENT_USER" ] && { gh api "repos/$OWNER_REPO/assignees/$AGENT_USER" --silent 2>/dev/null || {
+  echo "⚠ AI_LOOP_AGENT=$AGENT_USER is not an assignable collaborator — assigning nothing"
+  AGENT_USER=""; }; }
+```
+
+Every later use is `${AGENT_USER:+--add-assignee "$AGENT_USER"}`, which expands
+to nothing when it is empty — so there is one code path, not two.
+
+**The point is that assignee answers "whose turn is it", which no label does
+well.** Today an issue an agent is mid-way through and an issue nobody has
+touched are both assigned to no one, so the *Assigned to you* view is only ever
+half the story:
+
+| State | Assignee |
+|---|---|
+| issue `ai-ready`, unclaimed | nobody |
+| issue `ai-wip` — an agent is implementing it | `AGENT_USER` |
+| PR `ai-review` / `ai-changes` — an agent is reviewing or fixing | `AGENT_USER` |
+| PR passed both reviews, waiting to merge | the human |
+| `ai-blocked`, declined, or held | the human |
+
+`@me` cannot express this: it resolves to whichever token is running, and the
+agents authenticate as the owner, so `@me` is *always* the human. That is why
+this is a separate name rather than a reuse.
+
+Note the web UI's assignee picker can show a stale list that omits a
+freshly-added collaborator; `repos/{repo}/assignees` is the authority.
+
 **Check the main checkout is not bare before anything else uses `ROOT`.** It has gone
 `core.bare = true` on its own, repeatedly — four times in one session, some occurrences
 immediately after a `worktree remove` and some with nothing removed at all. The trigger
@@ -389,8 +425,12 @@ worked. So for every non-Dependabot PR carrying both `ai-ok-code` and `ai-ok-sec
 not `ai-changes`, assign it and clear the stale review flag:
 
 ```bash
-gh pr edit <N> --add-assignee @me --remove-label ai-review
+gh pr edit <N> --add-assignee @me --remove-label ai-review \
+  ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
 ```
+
+Dropping `AGENT_USER` is half the signal: leaving the agent assigned alongside
+you says you both owe it something, which is the one thing never true here.
 
 It lands in the user's *Assigned to you* view, and the labels then read as state rather
 than noise — `ai-ok-code, ai-ok-sec` with no `ai-review` means **waiting on you**. Both
@@ -451,7 +491,7 @@ no other branch of this pass assigns it, which leaves it in no *Assigned to you*
 view at all:
 
 ```bash
-gh pr edit <N> --add-assignee @me
+gh pr edit <N> --add-assignee @me ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
 ```
 
 Count it as `rev`. Idempotent, so it also picks up ones an earlier tick stranded.
@@ -536,7 +576,7 @@ Only then:
 REMOVED=1                                          # every removal in this pass sets this
 git -C "$ROOT" worktree remove --force "$WT_DIR"   # the path found above, not a rebuilt one
 git -C "$ROOT" branch -D "$BRANCH" 2>/dev/null
-gh issue edit <N> --remove-label ai-wip 2>/dev/null
+gh issue edit <N> --remove-label ai-wip ${AGENT_USER:+--remove-assignee "$AGENT_USER"} 2>/dev/null
 # Still OPEN means the PR said only `Refs #N`; a `Closes #N` issue is already closed.
 if [ "$(gh issue view <N> --json state -q .state)" = OPEN ]; then
   gh issue edit <N> --add-assignee @me
@@ -570,7 +610,7 @@ work must never be reaped out from under itself.
 
 | Stalled | Condition | Do |
 |---|---|---|
-| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me`, comment, remove the worktree (and set `REMOVED=1`) |
+| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me ${AGENT_USER:+--remove-assignee "$AGENT_USER"}`, comment, remove the worktree (and set `REMOVED=1`) |
 | Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label <the claim that stalled>` — drop **that** label, not a fixed one; a stalled `ai-reviewing-sec` cleared as `ai-reviewing-code` leaves the dead claim in place and the reviewer never re-spawns. Dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
 | Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch (and set `REMOVED=1`) |
 
@@ -755,9 +795,12 @@ intended; one that died after posting is now recovered instead of duplicated.
 issue. Apply the label immediately before the spawn, not after:
 
 ```bash
-gh pr edit <N> --add-label ai-reviewing-code   # then spawn code-reviewer
-gh pr edit <N> --add-label ai-reviewing-sec    # then spawn security-expert
+gh pr edit <N> --add-label ai-reviewing-code ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn code-reviewer
+gh pr edit <N> --add-label ai-reviewing-sec  ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn security-expert
 ```
+
+Assigning `AGENT_USER` on the claim is idempotent — both arms adding the same
+account is one assignee, and Pass 1 removes it at the handoff.
 
 Without the claim there is no window in which "a reviewer is running" is visible.
 A reviewer applies its verdict label only at the *end*, after reading the diff and
@@ -1016,8 +1059,10 @@ and a blank line — naming what each round changed and why the reviewer kept ob
 then:
 
 ```bash
-gh issue edit <M> --add-label ai-blocked --remove-label ai-wip --add-assignee @me
-gh pr edit <N> --add-assignee @me --remove-label ai-review
+gh issue edit <M> --add-label ai-blocked --remove-label ai-wip --add-assignee @me \
+  ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+gh pr edit <N> --add-assignee @me --remove-label ai-review \
+  ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
 ```
 
 Leave the worktree and PR in place for the human; a ping-pong stall is the case where
@@ -1135,8 +1180,12 @@ Take the first `slots` issues. For each, **claim it first** so a concurrent tick
 can't double-pick:
 
 ```bash
-gh issue edit <N> --add-label ai-wip --remove-label ai-ready
+gh issue edit <N> --add-label ai-wip --remove-label ai-ready \
+  ${AGENT_USER:+--add-assignee "$AGENT_USER"}
 ```
+
+Assigning here is what makes the issue list honest: from this moment an agent
+owns the work, and an unassigned `ai-ready` issue is genuinely untouched.
 
 Dropping `ai-ready` is half the claim, not tidiness — the diagram above is a
 transition, not an accumulation. An issue left carrying both re-enters the queue
@@ -1274,8 +1323,12 @@ Then spawn a background implementer agent:
 > If you cannot finish, hand it back so a human can see it:
 >
 > ```bash
-> gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me
+> gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me \
+>   <the orchestrator substitutes `--remove-assignee <AGENT_USER>` here, or nothing>
 > ```
+>
+> Handing back means the issue stops being the agent's: the human must end up the
+> only assignee, or the list still reads as though something is working on it.
 >
 > Then comment why. **Leave your worktree in place — never run
 > `git worktree remove`.** Pass 2 of the next tick reaps it (the issue is no

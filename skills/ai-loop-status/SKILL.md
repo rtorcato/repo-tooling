@@ -42,6 +42,12 @@ argument.
    Filter the PR list to those carrying an `ai-*` label — a PR without one is
    not in the pipeline and the loop will never touch it.
 
+   **Read the assignee as "whose turn"**, when the loop is configured with an
+   agent account (`AI_LOOP_AGENT`): that account assigned means an agent is
+   working or reviewing, the human assigned means it is waiting on them, and
+   nobody assigned means queued. Say which in the report rather than listing raw
+   logins — "waiting on you" beats "assignee: someone".
+
 3. **Work out each PR's next move** from its labels, so the report says what
    happens rather than just listing state:
 
