@@ -1800,7 +1800,9 @@ describe('doctor: a forked Claude skill', () => {
 
 		const result = await claudeSkills(dir, skillsDir)
 		expect(result?.status).toBe('ok')
-		expect(result?.hint).toContain(`diff "${skillFile(skillsDir)}" "${shippedFile}"`)
+		// Single-quoted: the paths are user-influenced and the line is meant to be
+		// pasted into a shell (#493). skillDiffCommand's own tests cover the escaping.
+		expect(result?.hint).toContain(`diff '${skillFile(skillsDir)}' '${shippedFile}'`)
 	})
 
 	// stow symlinks at file level, so the installed path is routinely a link into
