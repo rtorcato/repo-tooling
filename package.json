@@ -90,7 +90,7 @@
 		"tooling/docusaurus/docs-helpers.mjs",
 		"tooling/docusaurus/theme-tokens.css",
 		"tooling/docusaurus/theme.css",
-		"tooling/biome/biome.json",
+		"tooling/biome/preset.json",
 		"tooling/bun/bunfig.toml",
 		"tooling/nx/nx.json",
 		"tooling/changesets/config.json",
@@ -201,7 +201,7 @@
 			"types": "./tooling/docusaurus/index.d.mts",
 			"import": "./tooling/docusaurus/index.mjs"
 		},
-		"./biome": "./tooling/biome/biome.json",
+		"./biome": "./tooling/biome/preset.json",
 		"./nx": "./tooling/nx/nx.json",
 		"./changesets": "./tooling/changesets/config.json",
 		"./release-please": "./tooling/release-please/release-please-config.json",

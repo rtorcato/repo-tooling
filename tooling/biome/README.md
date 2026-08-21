@@ -16,13 +16,17 @@ npm install -D @rtorcato/repo-tooling @biomejs/biome
 npx @rtorcato/repo-tooling copy biome
 ```
 
-This will copy the base `biome.json` configuration to your project root.
+This will copy the base configuration to your project root as `biome.json`.
 
 ### Option 2: Manual Copy
 
 ```bash
-cp node_modules/@rtorcato/repo-tooling/tooling/biome/biome.json ./biome.json
+cp node_modules/@rtorcato/repo-tooling/tooling/biome/preset.json ./biome.json
 ```
+
+The shipped file is `preset.json`, not `biome.json`, so Biome's config discovery
+never picks it up out of `node_modules` as a config of its own (#486). The copy
+you land in your repo must still be named `biome.json`.
 
 ### Option 3: Reference in package.json
 
