@@ -64,7 +64,7 @@ describe.skipIf(!fs.existsSync(CLI))('CLI smoke tests (requires pnpm build)', ()
 		const dir = newTmpDir()
 		const { status, stderr } = cli(['copy', 'nonexistent'], dir)
 		expect(status).not.toBe(0)
-		expect(stderr + '').toContain('') // exits cleanly, no crash
+		expect(String(stderr)).toContain('') // exits cleanly, no crash
 	})
 
 	it('doctor --json on empty dir returns parseable results', () => {
