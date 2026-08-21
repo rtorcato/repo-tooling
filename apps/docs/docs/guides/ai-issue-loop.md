@@ -57,9 +57,12 @@ npx skills add https://github.com/rtorcato/repo-tooling --skill ai-issue-loop
 
 ## The one constraint
 
-Every agent in the pipeline authenticates as **your own `gh`** — no PATs, no bot
-account. GitHub refuses `gh pr review --approve` on your own PR, so **a real
-GitHub approval is impossible.**
+By default every agent in the pipeline authenticates as **your own `gh`** — no
+PATs, no bot account, nothing to set up. GitHub refuses `gh pr review --approve`
+on your own PR, so under that default **a real GitHub approval is impossible.**
+That is a consequence of the zero-setup choice, not a limit of GitHub — see
+[Running reviewers as a second identity](#running-reviewers-as-a-second-identity)
+below.
 
 Two consequences, and both are load-bearing:
 
@@ -73,6 +76,44 @@ The same constraint means everything an agent posts *looks* hand-written by the
 repo owner. So every comment an agent leaves opens with a `🤖 *Automated …*`
 header naming which agent wrote it. A detailed security review under a human's
 avatar misrepresents who reviewed the code.
+
+### Running reviewers as a second identity
+
+Give the reviewing agents their own GitHub account — a machine user invited as a
+collaborator, or a GitHub App — and the reviewer is no longer the PR author, so
+`--approve` works and the `ai-ok-*` labels stop being necessary. Keep the two
+apart on the machine rather than switching profiles, so an agent can never act
+as you by accident:
+
+```bash
+GH_CONFIG_DIR=~/.config/gh-bot gh auth login --web --scopes repo   # once, as the bot
+GH_CONFIG_DIR=~/.config/gh-bot gh pr review 42 --approve           # runs as the bot
+```
+
+Complete the device flow in a private window logged in as the bot — your default
+browser will authorise *you* instead, leaving two profiles holding one identity.
+
+Be clear about what this buys, because it is easy to overstate:
+
+- **Attribution** — agent reviews are visibly not you in every timeline, which no
+  comment header can guarantee.
+- **Scope** — a machine user's token reaches only the repos you invited it to.
+- **Compatibility** — its approvals can satisfy branch protection wherever a real
+  second party exists.
+
+What it does **not** buy is a second reviewer. One agent system drives both
+accounts, so making reviews *required* would let the pipeline satisfy its own
+merge gate — two-party on paper, one-party in fact. Your merge decision stays the
+only genuine second party either way, which is why the loop hands issue PRs to a
+human regardless.
+
+Two things to settle before relying on it. Repo-settings tooling — including this
+package's own `fix github-settings` — asserts `required_pull_request_reviews:
+null`, because required review deadlocks solo Dependabot auto-merge; it will
+revert an approval rule on its next run unless you change that standard first.
+And the shipped skill still records verdicts as labels, so today this is
+groundwork rather than a supported mode
+([#518](https://github.com/rtorcato/repo-tooling/issues/518) tracks the rewrite).
 
 ## Labels and the state machine
 
