@@ -313,6 +313,12 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 						'auto-merge workflow trusts the dev-minor group name (missing peerDependencies check)'
 					)
 				}
+				// #452: a repo that took the #423 pair has CI action bumps waiting on a
+				// human for no benefit — they reach no consumer. Drift in the
+				// convenience direction, not the safety one, but still drift.
+				if (!automerge.includes("package-ecosystem == 'github-actions'")) {
+					deltas.push('auto-merge workflow leaves CI action bumps to a human (#452)')
+				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')
 			}

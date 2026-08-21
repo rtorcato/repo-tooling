@@ -56,19 +56,50 @@ describe('generateDependabotConfig', () => {
 		])
 	})
 
-	// #423: production bumps ship to consumers of a published package, so the
-	// auto-merge gate is the dev-minor group *and* the semver type.
-	it('gates auto-merge on the dev-minor group as well as the semver type', async () => {
+	// #423 + #452: production bumps ship to consumers of a published package, so
+	// the auto-merge gate is (dev-minor OR the github-actions ecosystem) *and*
+	// the semver type *and* the consumer-facing gate.
+	//
+	// Asserted whole rather than clause by clause: every exclusion this file
+	// exists to defend lives in this one expression, and a partial match would
+	// pass on an expression that dropped one of them.
+	it('gates auto-merge on the group or ecosystem, the semver type, and the ships-check', async () => {
 		const dir = newTmpDir()
 		await generateDependabotConfig(dir)
 		const content = await fs.readFile(
 			join(dir, '.github', 'workflows', 'dependabot-automerge.yml'),
 			'utf-8'
 		)
-		expect(content).toMatch(/steps\.metadata\.outputs\.dependency-group == 'dev-minor' &&/)
-		expect(content).toMatch(/update-type == 'version-update:semver-patch'/)
-		expect(content).toMatch(/update-type == 'version-update:semver-minor'/)
+		const expression = content.match(/^ {8}if: \|\n([\s\S]*?)\n {8}run:/m)?.[1]
+		expect(expression).toBeDefined()
+		expect(expression?.replace(/^ {10}/gm, '')).toBe(
+			[
+				"steps.gate.outputs.safe == 'true' &&",
+				"(steps.metadata.outputs.dependency-group == 'dev-minor' ||",
+				"steps.metadata.outputs.package-ecosystem == 'github-actions') &&",
+				"(steps.metadata.outputs.update-type == 'version-update:semver-patch' ||",
+				"steps.metadata.outputs.update-type == 'version-update:semver-minor')",
+			].join('\n')
+		)
 		expect(content).not.toMatch(/'production-minor'/)
+	})
+
+	// #452: the ecosystem arm is an alternative to the group, not to the semver
+	// clause — an `actions/checkout@v7 → v8` is still a human's call.
+	it('leaves major github-actions bumps to a human', async () => {
+		const dir = newTmpDir()
+		await generateDependabotConfig(dir)
+		const content = await fs.readFile(
+			join(dir, '.github', 'workflows', 'dependabot-automerge.yml'),
+			'utf-8'
+		)
+		const expression = content.match(/^ {8}if: \|\n([\s\S]*?)\n {8}run:/m)?.[1] ?? ''
+		// The ecosystem arm sits inside the parenthesised group alternation, so
+		// the semver clause that follows still applies to it.
+		expect(expression).toMatch(
+			/\(steps\.metadata\.outputs\.dependency-group == 'dev-minor' \|\|\s*steps\.metadata\.outputs\.package-ecosystem == 'github-actions'\) &&/
+		)
+		expect(expression).not.toMatch(/semver-major/)
 	})
 
 	// The gate names a group that the paired dependabot.yml has to declare —
@@ -154,6 +185,12 @@ describe('the auto-merge consumer-facing gate', () => {
 	// Dependabot files it under dev-minor. It still ships.
 	it('stands down when a bumped package is a peerDependency', async () => {
 		expect(await runGate(MANIFEST, 'knip,typescript')).toBe('false')
+	})
+
+	// #452: a CI action bump reports names like `actions/checkout`, which appear
+	// in no manifest — so the gate resolves safe and the ecosystem arm decides.
+	it('passes a CI action bump, whose names are in no manifest', async () => {
+		expect(await runGate(MANIFEST, 'actions/checkout,actions/setup-node')).toBe('true')
 	})
 
 	it('stands down on a runtime dependency', async () => {

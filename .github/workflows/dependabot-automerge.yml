@@ -58,10 +58,17 @@ jobs:
       # Belt and braces: the dev-minor group is already declared minor+patch in
       # dependabot.yml, but this workflow is the security gate and shouldn't
       # trust a config file a consumer repo can edit independently.
-      - name: Auto-merge dev-dependency patch and minor updates
+      #
+      # github-actions bumps are ungrouped, so they report an empty
+      # dependency-group and are matched by ecosystem instead (#452). They reach
+      # no consumer of the published package, and their squash subject is
+      # "ci(deps): …", which cuts no release. Majors still fall through to a
+      # human — the update-type clause below applies to them too.
+      - name: Auto-merge dev-dependency and CI action patch and minor updates
         if: |
           steps.gate.outputs.safe == 'true' &&
-          steps.metadata.outputs.dependency-group == 'dev-minor' &&
+          (steps.metadata.outputs.dependency-group == 'dev-minor' ||
+          steps.metadata.outputs.package-ecosystem == 'github-actions') &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor')
         run: gh pr merge --auto --squash "$PR_URL"
