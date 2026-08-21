@@ -188,7 +188,7 @@ export async function setupProject(options: SetupOptions) {
 	const dryRun = options.dryRun === true
 
 	if (interactive && !dryRun) {
-		console.log(chalk.cyan('\n🛠️  Welcome to JS Tooling Setup!\n'))
+		console.log(chalk.cyan('\n🛠️  Welcome to repo-tooling setup!\n'))
 		console.log(chalk.gray(`Setting up tooling in: ${targetDir}\n`))
 	}
 

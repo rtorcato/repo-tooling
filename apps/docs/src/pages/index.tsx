@@ -189,7 +189,7 @@ const EXAMPLES: Example[] = [
 		language: 'bash',
 		code: `$ npx @rtorcato/repo-tooling setup
 
-🛠️  Welcome to JS Tooling Setup!
+🛠️  Welcome to repo-tooling setup!
 ? Project type:    📚 Library/Package
 ? TypeScript:      ✅ Yes
 ? Linter:          ⚡ Biome
