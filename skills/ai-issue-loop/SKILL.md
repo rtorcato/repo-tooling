@@ -400,14 +400,18 @@ Only then:
 git -C "$ROOT" worktree remove --force "$WT_DIR"   # the path found above, not a rebuilt one
 git -C "$ROOT" branch -D "$BRANCH" 2>/dev/null
 gh issue edit <N> --remove-label ai-wip 2>/dev/null
+# Still OPEN means the PR said only `Refs #N`; a `Closes #N` issue is already closed.
+if [ "$(gh issue view <N> --json state -q .state)" = OPEN ]; then
+  gh issue edit <N> --add-assignee @me
+fi
 ```
 
 A closed-unmerged PR is the exception: there is no squash to find, so skip the
 confirmation and remove — the work was abandoned deliberately.
 
-The issue itself closes from the PR body's `Closes #N`, so that edit is normally a
-no-op on a closed issue. A PR that said only `Refs #N` leaves it **open** — add
-`--add-assignee @me` in that case. The work has landed, so it must not go back in
+The issue itself closes from the PR body's `Closes #N`, so both edits are normally
+no-ops on a closed issue. A PR that said only `Refs #N` leaves it **open**, which is
+what the state check catches. The work has landed, so it must not go back in
 the queue; pickup already dropped `ai-ready`, and assigning it is what stops a
 merged issue sitting unowned instead (#429 had to be moved to `holding` by hand).
 This pass is what frees concurrency slots, so it must run before Pass 4.
