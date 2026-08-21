@@ -43,14 +43,12 @@ real approvals.
 
 The same constraint makes everything an agent posts *look* hand-written by the
 owner. So **every comment any agent leaves — review, blocked, gave-up, declined —
-opens with a `🤖 *Automated …*` italic header line** naming which agent wrote it,
-followed by a blank line. Non-negotiable: a detailed security review under a
-human's avatar misrepresents who reviewed the code.
+opens with a `🤖 *Automated …*` italic header line naming which agent wrote it**,
+then a blank line. Name the agent and stop there: a detailed security review
+under a human's avatar misrepresents who reviewed the code, but *why* it wears
+that avatar is read once and then reread on every comment forever.
 
-Spell the reason out rather than assuming the reader knows the convention — the
-header names the agent *and* says why it is wearing a human's face:
-
-`🤖 *Automated — <which agent> via ai-issue-loop. Posted under the owner's account by an agent; not a human message. There is no separate GitHub account for AI agents, so this appears under @<owner>'s avatar.*`
+`🤖 *Automated — <which agent> via ai-issue-loop.*`
 
 **Comment budget: ≤10 lines, and a clean outcome gets no comment at all.** A
 40-line comment on every PR trains the reader to skip all of them, including the
@@ -63,7 +61,7 @@ drift with a second copy to maintain.
 | Clean and ready | **None.** `ai-ok-code, ai-ok-sec` + assigned + no `ai-review` already says it. |
 | `ai-notes` | ≤10 lines; link the reviewer's `### Before merging`. |
 | `ai-changes`, CI red, `ai-blocked` | ≤10 lines, action first, then the specific cause. |
-| Reviewer verdict | `### Before merging` plus at most 3 short paragraphs above it. |
+| Reviewer verdict | `### Before merging` plus ≤600 characters above it. |
 | Declining an issue | The one exception — a hard handoff needs its reasoning; see Pass 4. |
 
 ## Labels
@@ -448,7 +446,7 @@ ping-pong stop and an implementer handing back, leave it off for the same reason
 **Every `ai-blocked` must say why, and land in front of a human.** So reaping always
 does three things together — label, assign, comment — and the comment opens with
 
-`🤖 *Automated — \`ai-issue-loop\` Pass 2 (stall reaping). Posted under the owner's account; not a human message.*`
+`🤖 *Automated — \`ai-issue-loop\` Pass 2 (stall reaping).*`
 
 then a blank line. State which stall rule fired, how long the label sat, and whether a
 worktree was removed. A bare `ai-blocked` with no explanation is worse than no label:
@@ -506,20 +504,19 @@ Reviewer prompt template:
 > purpose. Also read the repo's `CLAUDE.md` if the diff plausibly touches a rule
 > it states.
 >
-> `<code-reviewer: Judge correctness, obvious bugs, and adherence to the repo's
-> stated conventions.>` / `<security-expert: Judge injection risk, leaked
-> secrets, unsafe shell/SQL construction, and dependency or supply-chain
-> changes.>`
+> `<code-reviewer: Judge correctness, obvious bugs, and adherence to the repo's stated
+> conventions.>` / `<security-expert: Judge injection risk, leaked secrets, unsafe
+> shell/SQL construction, and dependency or supply-chain changes.>` That is the
+> checklist to run, not an outline to write up.
 >
 > Post your verdict as a comment — **never** `--approve`, it errors on your own
 > PR:
 > `gh pr review <N> --comment --body "..."`
 >
-> The body **must** begin with this exact header line, then a blank line. Every
-> agent authenticates as the repo owner, so without it the timeline reads as if
-> a human wrote the review:
+> The body **must** begin with this exact header line, then a blank line — you
+> authenticate as the repo owner, so without it the review reads as a human's:
 >
-> `🤖 *Automated review — \`<your agent type>\` via ai-issue-loop. Posted under the owner's account; not a human review.*`
+> `🤖 *Automated review — \`<your agent type>\` via ai-issue-loop.*`
 >
 > The body **must end** with this section, as its last thing:
 >
@@ -538,13 +535,14 @@ Reviewer prompt template:
 > That section is what a human reads at merge time, so put anything you would
 > want them to know there rather than leaving it in the prose above — a finding
 > buried mid-paragraph does not survive the handoff. For the same reason, **cap
-> the body at that section plus at most 3 short paragraphs above it**: no process
-> narration, no restating the diff, no listing what you checked and found fine.
-> The bar is a finding that
-> **changes what a human would do**: a semver implication, a deliberate
-> omission, a follow-up that must be filed. Not observations, not praise, not
-> restating the diff. Writing `Nothing.` is a real verdict and the common one —
-> say it plainly rather than padding the section to look thorough.
+> the body at that section plus ≤600 characters above it**. Verify everything;
+> narrate only where the PR is **wrong** or **silent**. Never list what you
+> checked and found clean, and never confirm a claim the PR body already makes —
+> agreement is what the pass label is for, so a review that agrees is nearly
+> empty. The bar is a finding that **changes what a human would do**: a semver
+> implication, a deliberate omission, a follow-up that must be filed. Writing
+> `Nothing.` is a real verdict and the common one — say it plainly rather than
+> padding to look thorough.
 >
 > Then apply exactly one verdict label, **clearing your claim label in the same
 > command**:
@@ -646,8 +644,8 @@ package/from/to table survives because it sits at the top; classify from that.
 > State in your comment which rule fired, name the packages that tripped it, and say
 > whether the body was truncated so the reader knows what you could and couldn't see.
 > Same `🤖 *Automated review — …*` header line, same closing `### Before merging`
-> section, same 3-paragraph cap on the body, and same one-verdict-label rule as
-> above — **including clearing your
+> section, same ≤600-character cap and no-negative-findings rule on the body, and same
+> one-verdict-label rule as above — **including clearing your
 > `<ai-reviewing-code|ai-reviewing-sec>` claim label in the same `gh pr edit`**.
 > Pass 3 claimed you with it before spawning you, and a claim left behind wedges
 > your half of the review until Pass 2 reaps it.
@@ -682,7 +680,7 @@ gh api "repos/$OWNER_REPO/issues/<N>/timeline" \
 ```
 
 If that count is **≥ 3**, stop looping. Comment the reason on the PR — opening with
-`🤖 *Automated — \`ai-issue-loop\` Pass 3. Posted under the owner's account; not a human message.*`
+`🤖 *Automated — \`ai-issue-loop\` Pass 3.*`
 and a blank line — naming what each round changed and why the reviewer kept objecting,
 then:
 
@@ -751,10 +749,9 @@ same issue gets re-triaged from scratch every time, and the reasoning that took
 real work to reach is lost.
 
 The comment opens with the standard `🤖 *Automated …*` header — see the top of this
-file; it must state that no GitHub account exists for AI agents, so the comment
-wears the owner's avatar. Then, in the body — **this is the one comment exempt
-from the ≤10-line budget, and only this one.** Declining is a hard handoff whose
-whole value is the reasoning; do not reach for this shape on a PR handoff:
+file. Then, in the body — **this is the one comment exempt from the ≤10-line
+budget, and only this one.** Declining is a hard handoff whose whole value is the
+reasoning; do not reach for this shape on a PR handoff:
 
 - **Why an agent cannot finish it**, concretely. "Not suitable" is useless. Name
   the blocker: binary assets it cannot author, a force-push past branch
@@ -879,7 +876,7 @@ Then spawn a background implementer agent:
 > **must** open with this exact line, then a blank line — you authenticate as the
 > owner, so without it the issue reads as if they wrote it themselves:
 >
-> `🤖 *Automated — implementer via ai-issue-loop. Posted under the owner's account; not a human message.*`
+> `🤖 *Automated — implementer via ai-issue-loop.*`
 >
 > Say what you tried, the exact error, and what a human would need to decide. "Could
 > not finish" with no detail wastes the handoff — the whole point of the label is that
