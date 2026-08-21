@@ -43,7 +43,9 @@ describe('detectNestedLanguages', () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, 'Package.swift'), '')
 		await seed(dir, 'apps/docs', 'package.json')
-		expect(await detectNestedLanguages(dir, 'swift')).toEqual([{ dir: 'apps/docs', language: 'js' }])
+		expect(await detectNestedLanguages(dir, 'swift')).toEqual([
+			{ dir: 'apps/docs', language: 'js' },
+		])
 	})
 
 	it('stays quiet when every package matches the root language', async () => {

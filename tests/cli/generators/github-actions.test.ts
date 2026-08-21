@@ -76,10 +76,7 @@ describe('generateGitHubActions', () => {
 
 	it('omits typecheck job when TypeScript is disabled', async () => {
 		const dir = newTmpDir()
-		await generateGitHubActions(
-			baseConfig({ typescript: { enabled: false, config: 'base' } }),
-			dir
-		)
+		await generateGitHubActions(baseConfig({ typescript: { enabled: false, config: 'base' } }), dir)
 
 		const content = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
 		expect(content).not.toContain('typecheck:')

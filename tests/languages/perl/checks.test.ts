@@ -99,7 +99,7 @@ describe('checkPerlGitignore', () => {
 	})
 
 	// Only Carton users have local/, so demanding it would nag everyone else.
-	it('does not require Carton\'s local/', async () => {
+	it("does not require Carton's local/", async () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, '.gitignore'), '/blib/\nMYMETA.*\npm_to_blib\n')
 		expect((await checkPerlGitignore(dir)).status).toBe('ok')
@@ -118,12 +118,18 @@ describe('checkPerlTests', () => {
 		expect((await checkPerlTests(dir)).status).toBe('drift')
 	})
 
-	it.each(['prove -lr t', 'make test', 'dzil test'])('accepts %s as running the suite', async (cmd) => {
-		const dir = newTmpDir()
-		await fs.outputFile(join(dir, 't/00-load.t'), '')
-		await fs.outputFile(join(dir, '.github/workflows/ci.yml'), `jobs:\n  test:\n    run: ${cmd}\n`)
-		expect((await checkPerlTests(dir)).status).toBe('ok')
-	})
+	it.each(['prove -lr t', 'make test', 'dzil test'])(
+		'accepts %s as running the suite',
+		async (cmd) => {
+			const dir = newTmpDir()
+			await fs.outputFile(join(dir, 't/00-load.t'), '')
+			await fs.outputFile(
+				join(dir, '.github/workflows/ci.yml'),
+				`jobs:\n  test:\n    run: ${cmd}\n`
+			)
+			expect((await checkPerlTests(dir)).status).toBe('ok')
+		}
+	)
 
 	it('counts an xt/ author-test tree as tests', async () => {
 		const dir = newTmpDir()

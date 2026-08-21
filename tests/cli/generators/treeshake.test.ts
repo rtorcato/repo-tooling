@@ -110,10 +110,7 @@ describe('generateTreeshakeCheck', () => {
 			allowedSubpath: 'clipboard',
 			forbiddenSubpaths: ['geolocation', 'storage'],
 		})
-		const check = await fs.readFile(
-			join(dir, 'apps', 'treeshake-check', 'check.mjs'),
-			'utf-8'
-		)
+		const check = await fs.readFile(join(dir, 'apps', 'treeshake-check', 'check.mjs'), 'utf-8')
 		expect(check).toContain('ALLOWED_MODULES = ["clipboard"]')
 		expect(check).toContain('FORBIDDEN_MODULES')
 		expect(check).toContain('geolocation')

@@ -318,9 +318,9 @@ describe('fix targeted', () => {
 		expect(yaml).toMatch(/^\s*production-minor:/m)
 		expect(yaml).toMatch(/^\s*major-updates:/m)
 		// and it scaffolds the paired auto-merge workflow
-		expect(
-			await fs.pathExists(join(dir, '.github', 'workflows', 'dependabot-automerge.yml'))
-		).toBe(true)
+		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'dependabot-automerge.yml'))).toBe(
+			true
+		)
 	})
 
 	it('fix dependabot refuses rather than drop repo-local ignore rules', async () => {
@@ -998,10 +998,7 @@ describe('fix --json', () => {
 				target: 'dependabot',
 				check: 'Dependabot',
 				status: 'applied',
-				filesWritten: [
-					'.github/dependabot.yml',
-					'.github/workflows/dependabot-automerge.yml',
-				],
+				filesWritten: ['.github/dependabot.yml', '.github/workflows/dependabot-automerge.yml'],
 			})
 		} finally {
 			logSpy.mockRestore()
@@ -1663,9 +1660,9 @@ describe('fix claude-skills', () => {
 			throw new Error('exit')
 		}) as never)
 		try {
-			await expect(
-				fixCommand('claude-skills', { directory: dir, json: true })
-			).rejects.toThrow('exit')
+			await expect(fixCommand('claude-skills', { directory: dir, json: true })).rejects.toThrow(
+				'exit'
+			)
 			expect(exitSpy).toHaveBeenCalledWith(1)
 			const payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
 			expect(payload.error).toBe('no-skills-dir')

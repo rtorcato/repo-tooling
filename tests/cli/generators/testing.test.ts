@@ -89,10 +89,7 @@ describe('generateTestingConfigs', () => {
 	})
 
 	it('the shipped playwright preset references defineConfig and devices', async () => {
-		const presetPath = join(
-			process.cwd(),
-			'tooling/playwright/playwright.config.mjs'
-		)
+		const presetPath = join(process.cwd(), 'tooling/playwright/playwright.config.mjs')
 		const preset = await fs.readFile(presetPath, 'utf-8')
 		expect(preset).toMatch(/from '@playwright\/test'/)
 		expect(preset).toMatch(/\bdefineConfig\b/)
@@ -114,7 +111,9 @@ describe('generateTestingConfigs', () => {
 		const dir = newTmpDir()
 		await fs.outputFile(join(dir, 'tests/e2e/example.cy.ts'), '// my real spec\n')
 		await generateTestingConfigs(baseConfig({ testing: { framework: 'cypress' } }), dir)
-		expect(await fs.readFile(join(dir, 'tests/e2e/example.cy.ts'), 'utf-8')).toBe('// my real spec\n')
+		expect(await fs.readFile(join(dir, 'tests/e2e/example.cy.ts'), 'utf-8')).toBe(
+			'// my real spec\n'
+		)
 	})
 
 	it('the shipped cypress preset references cypress defineConfig', async () => {

@@ -1,11 +1,7 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-	checkGitIdentity,
-	classifyGitEmail,
-	type GitExec,
-} from '../../src/base/git-identity.js'
+import { checkGitIdentity, classifyGitEmail, type GitExec } from '../../src/base/git-identity.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -17,7 +13,10 @@ function gitRepo(): string {
 	return dir
 }
 
-const emailIs = (email: string | null): GitExec => async () => email
+const emailIs =
+	(email: string | null): GitExec =>
+	async () =>
+		email
 
 // checkGitIdentity self-skips under CI, which is exactly where these run.
 const realCi = process.env.CI

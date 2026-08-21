@@ -49,9 +49,7 @@ describe('generateDocsSite', () => {
 		// scaffolded site must track the running version. It had been a literal
 		// `^2.47.0` — two majors stale — so new sites were given a pre-rename
 		// version predating the peer-dependency split.
-		expect(docsPkg.devDependencies['@rtorcato/repo-tooling']).toBe(
-			`^${selfPackageJson.version}`
-		)
+		expect(docsPkg.devDependencies['@rtorcato/repo-tooling']).toBe(`^${selfPackageJson.version}`)
 
 		// Smoke test reuses the shipped preset and targets the site's base path.
 		const pw = await fs.readFile(join(dir, 'apps/docs/playwright.config.ts'), 'utf-8')
@@ -188,7 +186,9 @@ describe('generateDocsSite', () => {
 		await generateDocsSite(modulePkg, dir, { typedoc: true })
 
 		const config = await fs.readFile(join(dir, 'apps/docs/docusaurus.config.ts'), 'utf-8')
-		expect(config).toContain("import { getTypedocPlugins } from '@rtorcato/repo-tooling/docusaurus'")
+		expect(config).toContain(
+			"import { getTypedocPlugins } from '@rtorcato/repo-tooling/docusaurus'"
+		)
 		expect(config).toContain('getTypedocPlugins(["errors","env"])')
 		expect(config).not.toContain('typescript/base')
 

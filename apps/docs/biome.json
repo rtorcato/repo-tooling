@@ -1,13 +1,8 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
   "root": false,
-  "extends": ["@rtorcato/repo-tooling/biome"],
+  "extends": ["../../tooling/biome/biome.json"],
   "files": {
-    "includes": [
-      "!**/.docusaurus",
-      "!**/build",
-      "!**/node_modules",
-      "!**/docs/changelog.md"
-    ]
+    "includes": ["!**/.docusaurus", "!**/build", "!**/node_modules", "!**/docs/changelog.md"]
   }
 }

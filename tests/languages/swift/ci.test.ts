@@ -86,7 +86,9 @@ describe('swiftGithubJobs', () => {
 	it('builds a matrix over the declared platforms using the first product as scheme', () => {
 		const yaml = renderSwiftWorkflow(pkg)
 		expect(yaml).toContain('-scheme MatrixSwiftBaseCore')
-		expect(yaml).toContain('          - iOS\n          - macOS\n          - tvOS\n          - watchOS')
+		expect(yaml).toContain(
+			'          - iOS\n          - macOS\n          - tvOS\n          - watchOS'
+		)
 	})
 
 	it('skips the platform matrix when the manifest declares no platforms', () => {

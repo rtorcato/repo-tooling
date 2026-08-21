@@ -18,9 +18,9 @@ describe('parsePyproject', () => {
 	})
 
 	it('reads the Poetry spelling of the same constraint', () => {
-		expect(
-			parsePyproject('[tool.poetry.dependencies]\npython = "^3.11"\n').pythonVersions
-		).toEqual(['3.11', '3.13'])
+		expect(parsePyproject('[tool.poetry.dependencies]\npython = "^3.11"\n').pythonVersions).toEqual(
+			['3.11', '3.13']
+		)
 	})
 
 	it('falls back to a floor when the manifest declares none', () => {

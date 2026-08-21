@@ -172,9 +172,7 @@ describe('runPythonChecks', () => {
 			join(dir, 'pyproject.toml'),
 			`${VALID_PYPROJECT}\n[tool.ruff]\nline-length = 100\n\n[tool.mypy]\nstrict = true\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n`
 		)
-		const byName = Object.fromEntries(
-			(await runPythonChecks(dir)).map((r) => [r.check, r.status])
-		)
+		const byName = Object.fromEntries((await runPythonChecks(dir)).map((r) => [r.check, r.status]))
 		expect(byName.Ruff).toBe('ok')
 		expect(byName.mypy).toBe('ok')
 		expect(byName.pytest).toBe('ok')
@@ -184,9 +182,7 @@ describe('runPythonChecks', () => {
 	it('accepts the setup.cfg and tox.ini forms', async () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, 'setup.cfg'), '[mypy]\nstrict = True\n\n[tool:pytest]\n')
-		const byName = Object.fromEntries(
-			(await runPythonChecks(dir)).map((r) => [r.check, r.status])
-		)
+		const byName = Object.fromEntries((await runPythonChecks(dir)).map((r) => [r.check, r.status]))
 		expect(byName.mypy).toBe('ok')
 		expect(byName.pytest).toBe('ok')
 	})
@@ -204,9 +200,7 @@ describe('runPythonChecks', () => {
 	it('does not read a bare pyproject.toml as a broken tool config', async () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, 'pyproject.toml'), VALID_PYPROJECT)
-		const byName = Object.fromEntries(
-			(await runPythonChecks(dir)).map((r) => [r.check, r.status])
-		)
+		const byName = Object.fromEntries((await runPythonChecks(dir)).map((r) => [r.check, r.status]))
 		expect(byName.Ruff).toBe('missing')
 		expect(byName.mypy).toBe('missing')
 		expect(byName.pytest).toBe('missing')

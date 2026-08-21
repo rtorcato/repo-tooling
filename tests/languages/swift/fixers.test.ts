@@ -130,7 +130,9 @@ describe('swift fixers', () => {
 		const dir = newTmpDir()
 		await fs.outputFile(join(dir, 'Sources/Demo/Demo.docc/Demo.md'), '# ``Demo``\n\nMine.\n')
 		expect((await fixer('docc').run(ctx(dir))).filesWritten).toEqual([])
-		expect(await fs.readFile(join(dir, 'Sources/Demo/Demo.docc/Demo.md'), 'utf-8')).toContain('Mine.')
+		expect(await fs.readFile(join(dir, 'Sources/Demo/Demo.docc/Demo.md'), 'utf-8')).toContain(
+			'Mine.'
+		)
 	})
 
 	it('docc refuses a package with no Sources/ directory', async () => {

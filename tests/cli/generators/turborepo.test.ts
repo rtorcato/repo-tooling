@@ -23,8 +23,7 @@ describe('generateTurborepo', () => {
 })
 
 describe('doctor Turborepo check', () => {
-	const findTurbo = (results: { check: string }[]) =>
-		results.find((r) => r.check === 'Turborepo')
+	const findTurbo = (results: { check: string }[]) => results.find((r) => r.check === 'Turborepo')
 
 	it('does not surface the check in a single-package repo', async () => {
 		const dir = newTmpDir()

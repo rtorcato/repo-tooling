@@ -238,9 +238,7 @@ describe('runSwiftChecks', () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, '.swiftlint.yml'), 'disabled_rules:\n  - line_length\n')
 		await fs.writeFile(join(dir, '.periphery.yml'), 'retain_public: true\n')
-		const byName = Object.fromEntries(
-			(await runSwiftChecks(dir)).map((r) => [r.check, r.status])
-		)
+		const byName = Object.fromEntries((await runSwiftChecks(dir)).map((r) => [r.check, r.status]))
 		expect(byName.SwiftLint).toBe('ok')
 		expect(byName.Periphery).toBe('ok')
 	})
