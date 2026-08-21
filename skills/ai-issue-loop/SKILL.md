@@ -60,6 +60,7 @@ drift with a second copy to maintain.
 |---|---|
 | Clean and ready | **None.** `ai-ok-code, ai-ok-sec` + assigned + no `ai-review` already says it. |
 | `ai-notes` | ≤10 lines; link the reviewer's `### Before merging`. |
+| Follow-up found | One line — `Follow-up: #<new>`. The issue carries the context. |
 | `ai-changes`, CI red, `ai-blocked` | ≤10 lines, action first, then the specific cause. |
 | Reviewer verdict | `### Before merging` plus ≤600 characters above it. |
 | Declining an issue | The one exception — a hard handoff needs its reasoning; see Pass 4. |
@@ -78,6 +79,7 @@ drift with a second copy to maintain.
 | `ai-ok-sec` | PR | `security-expert` passed. |
 | `ai-changes` | PR | A reviewer requested changes. Reviewers never apply it to a Dependabot PR. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
+| `ai-suggested` | issue | Follow-up a reviewer filed. A triage queue, never auto-picked. |
 | `holding` | issue | A gate — closes on human judgement, never picked up. |
 
 **`ai-notes` is advisory and never blocks.** It rides *alongside* a pass label,
@@ -87,11 +89,18 @@ so `ai-notes` is the hold itself: it suppresses auto-merge and routes the PR to
 the human. It exists because a pass label currently means both "clean" and
 "I found something real but would not hold the PR over it", and those two are
 indistinguishable in the *Assigned to you* view where merges actually happen.
-The bar is a finding that **changes what a human would do**: a semver
-implication, a deliberate omission, a follow-up that must be filed. Not
+The bar is a finding that **changes what a human would do at merge time**: a
+semver implication, a deliberate omission, a question only they can answer. Not
 observations, not praise, not restating the diff. `ai-notes` on every PR is the
 failure mode — it trains the reader to ignore it, which is worse than not having
 it.
+
+**Follow-up work is an issue, not a note.** A finding that clears that bar *and*
+is work someone would plausibly do gets filed as its own issue labelled
+`ai-suggested`, by the reviewer that found it; the PR comment keeps one line and
+a link. It does **not** earn `ai-notes` — later work does not decide this merge.
+An observation is not a follow-up. Prose in a merged PR's comments is
+archaeology, which is how every follow-up left there so far has died on merge.
 
 First run in a repo, create any that are missing (`gh label create` is a no-op
 error if it exists — ignore that):
@@ -108,6 +117,7 @@ gh label create ai-ok-code -c '#0e8a16' -d 'code-reviewer passed'
 gh label create ai-ok-sec  -c '#0e8a16' -d 'security-expert passed'
 gh label create ai-changes -c '#d93f0b' -d 'Reviewer requested changes'
 gh label create ai-notes   -c '#fbca04' -d 'Passed, but a reviewer left something to read before merging'
+gh label create ai-suggested -c '#c2e0c6' -d 'Follow-up surfaced by an agent review — triage queue, never auto-picked'
 ```
 
 Bootstrap only. `gh label create` **cannot repair a label that already exists** —
@@ -539,10 +549,28 @@ Reviewer prompt template:
 > narrate only where the PR is **wrong** or **silent**. Never list what you
 > checked and found clean, and never confirm a claim the PR body already makes —
 > agreement is what the pass label is for, so a review that agrees is nearly
-> empty. The bar is a finding that **changes what a human would do**: a semver
-> implication, a deliberate omission, a follow-up that must be filed. Writing
-> `Nothing.` is a real verdict and the common one — say it plainly rather than
-> padding to look thorough.
+> empty. The bar is a finding that **changes what a human would do at merge
+> time**: a semver implication, a deliberate omission. Writing `Nothing.` is a
+> real verdict and the common one — say it plainly rather than padding to look
+> thorough.
+>
+> **Follow-up work is an issue, and you file it — it does not go in that
+> section.** When a finding clears that bar but is work someone would plausibly
+> do *later* rather than something that decides this merge:
+>
+> ```bash
+> gh issue create --label ai-suggested --title "<what to do>" --body "🤖 *Automated — \`<your agent type>\` via ai-issue-loop.*
+>
+> Surfaced reviewing #<N>. <What, and why it matters. A few lines.>"
+> ```
+>
+> Then put `Follow-up: #<new>` on one line in the body above `### Before
+> merging` and keep it out of that section, so it does not pull `ai-notes` in —
+> later work is not a merge gate. GitHub cross-links the two, so the trail
+> survives the merge in both directions; the comment prose does not. Filing is
+> the alternative to blocking, not a precondition for it. An observation is not
+> a follow-up — do not file one, and a trade-off that changes nothing a human
+> does is one line of body and nothing else.
 >
 > Then apply exactly one verdict label, **clearing your claim label in the same
 > command**:
@@ -655,6 +683,12 @@ package/from/to table survives because it sits at the top; classify from that.
 > unattended. A major, a package that ships to consumers, or a truncated body you
 > could not fully read **is** worth a note; restating the version table on a
 > routine dev-only patch bump is not.
+>
+> **Follow-up work is an issue here too** — same `gh issue create --label
+> ai-suggested` as the generic prompt, same `Follow-up: #<new>` one-liner in the
+> body, never in `### Before merging`. That separation matters more on this arm
+> than the other: a note here costs a human the merge, so routing "someone should
+> pin this transitive dep one day" to an issue is what keeps auto-merge usable.
 
 Be honest about what this buys: an agent reading a version table catches majors,
 production-dependency creep, and a renamed or newly-added package. It does **not**
@@ -727,6 +761,7 @@ gh api "repos/$OWNER_REPO/issues?labels=ai-ready&state=open" \
             | select([.labels[].name] | index("ai-wip") == null)
             | select([.labels[].name] | index("ai-blocked") == null)
             | select([.labels[].name] | index("holding") == null)
+            | select([.labels[].name] | index("ai-suggested") == null)
             | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
             | {number, title}'
 ```
@@ -740,6 +775,10 @@ excluded here as belt-and-braces: such an issue should not carry `ai-ready` in
 the first place, but then mislabelling it costs nothing. Unlike `ai-blocked` (an
 agent tried and got stuck), `holding` says *no agent should ever start*, and it
 shows up in the issue list so a human triaging does not re-litigate it either.
+
+`ai-suggested` is excluded for a harder reason: it is an agent's own suggestion,
+so picking one up would let the loop feed itself work — promoting one is a human
+act, which is what makes that label a triage queue rather than a backlog.
 
 **Declining an issue is a visible act — comment, never just skip.** Whenever an
 agent decides an issue should *not* go to the pipeline — triaging which issues to
