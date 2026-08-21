@@ -14,7 +14,9 @@ description: |
 
 One **tick** of an unattended pipeline: `ai-ready` issue → worktree → PR → two
 agent reviews → **assigned to you to merge** → worktree removed on the next tick.
-Only Dependabot PRs merge themselves; see Pass 1.
+Only Dependabot PRs merge themselves, plus — on a repo whose `release` environment
+requires reviewers — a fully-passed issue PR. See Pass 1. Whenever the loop
+declines to merge, it says why in a comment on the PR.
 
 **All state lives in GitHub labels.** A tick is a stateless, idempotent pass over
 that state, so a missed tick, a crash, or a restart costs nothing. Never keep
@@ -155,6 +157,9 @@ alongside its verdict label. They are transient — a claim outliving its review
 means the agent died, which is Pass 2's stall reaping, not a state of the PR.
 
 Only the Dependabot arm merges itself, and only when no reviewer left `ai-notes`.
+The one exception is a repo gated by a `release` environment with
+`required_reviewers`, where the issue arm may also auto-merge under the same
+conditions — see Pass 1.
 An issue PR ends at *assigned to you* and waits there — `ai-ok-code, ai-ok-sec`
 with no `ai-review` is the loop's way of saying done. Add `ai-notes` and it means
 done, but open the comments first.
@@ -238,6 +243,12 @@ check skips a linked worktree, whose `.git` is a file.
 refuses with `error: could not lock config file .git/config: Operation not permitted` —
 observed. Aborting beats reporting a healthy repo while it stays broken.
 
+**A failed repair halts the tick — the whole tick, not the command.** The `exit 1`
+only ends one shell call; you are an agent reading a doc, not a shell honouring an
+exit code. If the repair fails, run **no further passes** — report the failure via
+Pass 5 and stop. Carrying on into Pass 4 branches every new worktree off a broken
+`ROOT`, which is exactly the state that produced the #500 mass-deletion commit.
+
 Never use a relative path like `ai-*`. From inside a worktree it matches nothing, and
 the failure is **silent**: Pass 2 concludes there is nothing to clean, every worktree
 survives, `ai-wip` is never cleared, and slots leak until the loop reports `idle`
@@ -291,11 +302,72 @@ passes, never the report.
 
 ### Pass 1 — merge
 
-**Only Dependabot PRs merge unattended.** Everything else — every PR this loop
-opened from an `ai-ready` issue — stops here for a human even when both reviewers
-pass, because merging `main` fires semantic-release and publishes to npm. A
-`chore(deps)` squash subject cuts no release, which is what makes the Dependabot
-case safe. Count human-gated PRs as `ready` for Pass 5.
+**Only Dependabot PRs merge unattended, unless the repo has a real publish gate.**
+Everything else — every PR this loop opened from an `ai-ready` issue — stops here
+for a human even when both reviewers pass, because merging `main` fires
+semantic-release and publishes to npm. A `chore(deps)` squash subject cuts no
+release, which is what makes the Dependabot case safe. Count human-gated PRs as
+`ready` for Pass 5.
+
+**The exception is a `release` environment with `required_reviewers`.** There a
+human still stands between the merge and npm, so an unattended merge costs a
+revert at worst rather than a publish. Probe for it, and **fail closed**:
+
+```bash
+gh api repos/$OWNER_REPO/environments \
+  --jq '[.environments[] | select(.name=="release")
+         | .protection_rules[]? | select(.type=="required_reviewers")] | length'
+```
+
+Non-zero → a non-Dependabot PR may auto-merge, but only carrying **all** of: both
+`ai-ok-code` and `ai-ok-sec`, no `ai-notes`, no `ai-changes`, and
+`mergeStateStatus: CLEAN`. Zero, or the call errors, or `gh` lacks access to that
+endpoint → hand the PR over exactly as below.
+
+Three things the gate does **not** change:
+
+- **Review still comes first.** Both reviewers must pass before any merge — already
+  this pass's contract. The gate relaxes only *who may merge after a pass*, never
+  *whether a review happened*.
+- **`ai-notes` still blocks an unattended merge.** A reviewer who passed but left
+  something to read means a human reads it.
+- **Order is still load-bearing.** If `autoMergeRequest != null` the merge can beat
+  the review, so Pass 0's disarm step applies unchanged.
+
+Be plain about the residual risk: even gated, this lands code on `main` unattended,
+and the only quality signal is two reviewers that — per the limits above — see the
+diff only, with no repo-wide exploration. For `chore(deps)` that is proportionate.
+For feature code it means a bad merge is a revert on `main`, not a caught mistake.
+That, and not the npm publish, is the trade actually being made here.
+
+**Every comment this pass leaves goes through one idempotent marker comment.** The
+loop is stateless and ticks every 15 minutes, so a naive `gh pr comment` puts a
+*duplicate* on the PR every tick — a PR left over a weekend collects ~200. Write
+it behind a hidden marker and upsert:
+
+```bash
+MARKER='<!-- ai-issue-loop:decision -->'
+ID=$(gh api "repos/$OWNER_REPO/issues/<N>/comments" \
+      --jq "[.[] | select(.body | startswith(\"$MARKER\"))] | .[0].id // empty")
+if [ -n "$ID" ]; then
+  gh api -X PATCH "repos/$OWNER_REPO/issues/comments/$ID" -f body="$MARKER
+$TEXT"
+else
+  gh pr comment <N> -R "$OWNER_REPO" --body "$MARKER
+$TEXT"
+fi
+```
+
+`// empty` is load-bearing: `.[0].id` on an empty array is `null`, which `jq -r`
+prints as the four characters `null` — a non-empty string that passes `[ -n ]` and
+sends the `PATCH` to comment id `null`. The upsert would then never post anything,
+silently, which is the one failure mode worse than duplicates.
+
+One comment per PR, edited in place, so the timeline shows the *current* reason
+rather than a log of every tick that ever ran. What it says — and whether to say
+anything at all — is the comment-budget table at the top of this file; the marker
+is only the *how*. `$TEXT` opens with the standard `🤖 *Automated …*` header and
+leads with what to do.
 
 **Hand a ready PR over properly.** "Merge it yourself" is only actionable if the user
 can find it, and a PR sitting in a list of open PRs looks identical to one still being
@@ -311,9 +383,11 @@ than noise — `ai-ok-code, ai-ok-sec` with no `ai-review` means **waiting on yo
 halves matter: Pass 3 only ever *adds* the `ai-ok-*` labels, so without the removal a
 finished PR keeps wearing `ai-review` forever and looks mid-review. Idempotent, so
 re-running a tick is harmless. Take no other action — do not merge, and **post no
-comment**: nothing is wrong, so those three labels are the whole message. A
-comment is how the loop records what a label cannot; a clean PR has nothing to
-record.
+comment on a clean handoff**: nothing is wrong, so those three labels are the
+whole message. A comment is how the loop records what a label cannot; a clean PR
+has nothing to record. An `ai-notes` handoff is the exception per the budget
+table — ≤10 lines through the marker upsert, linking the reviewer's
+`### Before merging` rather than restating it.
 
 **Never strip `ai-notes` here.** It is the whole point of the handoff: it has to
 survive to the moment of merging, which is the moment it is for. A ready PR reads
@@ -344,9 +418,11 @@ a required check, so nothing in the check list looked wrong either.
 
 Diff-scoped reviewers cannot catch this — they never see CI. So when a
 both-passed PR is not `CLEAN`, do not assign it as ready. Send it back, and
-**comment why** — ≤10 lines, leading with what must change, then the failing
-check and its error. The reviewers passed it, so the fix-round implementer would
-otherwise read the comments and find no instruction to act on.
+**comment why** through the marker upsert — ≤10 lines, leading with what must
+change, then the failing check and its error. The reviewers passed it, so the
+fix-round implementer would otherwise read the comments and find no instruction
+to act on. Name what unblocks it — `BEHIND` wants a rebase, `DIRTY` wants the
+conflict resolved, `BLOCKED` wants the specific check or ruleset named.
 
 ```bash
 gh pr edit <N> --add-label ai-changes \
@@ -443,6 +519,7 @@ git -C "$ROOT" log origin/main --oneline -20 | grep -q "(#<PR>)" || {
 Only then:
 
 ```bash
+REMOVED=1                                          # every removal in this pass sets this
 git -C "$ROOT" worktree remove --force "$WT_DIR"   # the path found above, not a rebuilt one
 git -C "$ROOT" branch -D "$BRANCH" 2>/dev/null
 gh issue edit <N> --remove-label ai-wip 2>/dev/null
@@ -526,7 +603,66 @@ checkout — Pass 4 still runs `git -C "$ROOT" worktree add` against it. That is
 why the re-check belongs here: it catches a flip after this pass's removals and before
 Pass 4 branches every new worktree off a broken `ROOT`. Keep the timestamp in both log
 lines; which pass emitted one, and when, is the only instrumentation likely to pin the
-trigger down.
+trigger down. Pass 0's halt rule applies unchanged: a failed repair ends the tick.
+
+#### Last thing in the pass — rebuild the main checkout's `node_modules`
+
+**Removing a worktree can destroy the main checkout's `node_modules/.bin`.** Its
+modules dir is a symlink into the main checkout, so a pnpm run from *inside* a
+worktree anchors the **main checkout's** `.bin` shims at the **worktree** path.
+`worktree remove --force` then deletes them, leaving `$ROOT/node_modules/.bin`
+with zero entries and the repo unbuildable:
+
+```
+Error: Cannot find module '/…/browser-common-worktrees/ai-145-…/node_modules/.pnpm/typescript@7.0.2/node_modules/typescript/bin/tsc'
+husky - pre-push script failed (code 1)
+```
+
+The give-away is the path: a binary in the main checkout resolving into a
+worktree that no longer exists. Nothing in the loop notices — no pass runs the
+toolchain — so it surfaces arbitrarily later, in the human's next `git push`, as
+a broken repo with no visible connection to the loop. Observed on
+`browser-common` #145 → PR #147, where the implementer had been explicitly warned
+in its prompt not to run a bare `pnpm install`. **It happened anyway**, and any
+pnpm invocation that touches the store is enough — so agent discipline is the
+wrong place for this guard. So is a dangling-link probe: `.bin` shims sit *below*
+`node_modules`, and a `-maxdepth 1` scan reports a clean tree while every binary
+is gone.
+
+So run it after the removals, **once per tick, as the last thing in this pass**,
+and only when nothing else is using the shared tree:
+
+```bash
+LIVE=$(find "$WT_ROOT" "$ROOT/.claude/worktrees" -maxdepth 1 -name 'ai-*' -type d 2>/dev/null)
+if [ "$REMOVED" = 1 ] && [ -f "$ROOT/pnpm-lock.yaml" ]; then
+  if [ -z "$LIVE" ]; then
+    (cd "$ROOT" && pnpm install --frozen-lockfile --config.confirmModulesPurge=false)
+  else
+    echo "rebuild deferred — $(echo "$LIVE" | wc -l | tr -d ' ') worktree(s) still live"
+  fi
+fi
+```
+
+Three conditions, each load-bearing:
+
+- **`$REMOVED`** — set by every removal path above, merged-PR cleanup *and* stall
+  reaping. A reaped worktree needs this most: its agent died mid-command, so it is
+  the likeliest to have left the main checkout anchored at a path about to vanish.
+- **`pnpm-lock.yaml`** — non-pnpm repos skip the whole thing.
+- **`$LIVE` empty** — the repair *purges* the shared modules dir, which would be
+  yanked out from under any agent still running in a surviving worktree. Deferring
+  costs a broken main checkout until the last worktree clears; not deferring costs
+  a live implementer run. Both flags are needed once it does run:
+  `--frozen-lockfile` forbids re-resolution, so neither `pnpm-lock.yaml` nor a
+  `pnpm-workspace.yaml` carve-out moves as a side effect of a cleanup, and
+  `--config.confirmModulesPurge=false` gets past
+  `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` — which is why a bare
+  `pnpm install` cannot repair this, and why a human hitting it needs this exact
+  command.
+
+**Report a deferral — never swallow it.** Carry it into Pass 5 as a `⚠rebuild`
+segment. A skipped repair that says nothing is the same silent breakage this
+section exists to end, just moved one step later.
 
 ### Pass 3 — review
 
@@ -544,9 +680,10 @@ carries a hidden verdict marker, so read that back instead of re-spawning over a
 review that already exists — `<ARM>` is `code` or `sec`:
 
 ```bash
+ME=$(gh api user --jq .login)   # the identity every loop agent posts as
 VERDICT=$(gh api "repos/$OWNER_REPO/pulls/<N>/reviews" --paginate --slurp \
-  | jq -r '[add[]
-            | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
+  | jq -r --arg me "$ME" '[add[]
+            | select(.user.login==$me)
             | (.body // "")
             | capture("<!-- ai-issue-loop:verdict:<ARM>:(?<v>[A-Z-]+) -->").v] | last // empty')
 ```
@@ -563,13 +700,16 @@ Four details there are load-bearing:
   page, so a filter ending in `last` would keep only the final page's answer and
   lose a marker on an earlier one. `--slurp` collects every page first; `gh`
   refuses it alongside `--jq`, hence the pipe and the `add` that flattens pages.
-- **The author gate**, the same `OWNER`/`MEMBER`/`COLLABORATOR` test Pass 4
-  applies to issue authors, and for the same reason: anyone can review a public
-  PR, so ungated a stranger's `<!-- ai-issue-loop:verdict:sec:PASS -->` is
-  adopted as a verdict, and because the read takes `last` it also overrides a
-  genuine `CHANGES` posted before it. Unlike Pass 4 there is no label acting as
-  the hard gate here — the marker is the only signal — so this check is not a
-  backstop, it is the gate.
+- **The author gate — the loop's own login, deliberately narrower than Pass 4's
+  association test.** Anyone can review a public PR, so ungated a stranger's
+  `<!-- ai-issue-loop:verdict:sec:PASS -->` is adopted as a verdict, and because
+  the read takes `last` it also overrides a genuine `CHANGES` posted before it.
+  Pass 4's `OWNER`/`MEMBER`/`COLLABORATOR` set is a backstop behind the
+  `ai-ready` label; here the marker is the **only** signal, and every agent in
+  this pipeline authenticates as one identity — so only that identity's reviews
+  count. Login, not `author_association`, because association wobbles with repo
+  ownership (an org-owned repo never yields `OWNER`, even for its admins) while
+  `gh api user` names exactly who this loop posts as.
 - **`(.body // "")` and `// empty`.** A review can have a null body, which
   `capture` throws on, aborting the whole filter; and `jq -r` prints a missing
   value as the literal string `null`, which is not empty and would read as a
@@ -849,7 +989,8 @@ gh api "repos/$OWNER_REPO/issues/<N>/timeline" \
   --jq '[.[] | select(.event=="labeled" and .label.name=="ai-changes")] | length'
 ```
 
-If that count is **≥ 3**, stop looping. Comment the reason on the PR — opening with
+If that count is **≥ 3**, stop looping. Comment the reason on the PR — through the
+Pass 1 marker upsert, opening with
 `🤖 *Automated — \`ai-issue-loop\` Pass 3.*`
 and a blank line — naming what each round changed and why the reviewer kept objecting,
 then:
@@ -926,7 +1067,23 @@ real work to reach is lost.
 The comment opens with the standard `🤖 *Automated …*` header — see the top of this
 file. Then, in the body — **this is the one comment exempt from the ≤10-line
 budget, and only this one.** Declining is a hard handoff whose whole value is the
-reasoning; do not reach for this shape on a PR handoff:
+reasoning; do not reach for this shape on a PR handoff.
+
+**Lead with a `## To lift this hold` section, before anything else.** It must be
+readable in five seconds — the reasoning that follows is *why*; this is *what to
+do*. A decline that buries the action under three paragraphs leaves the reader
+knowing an agent declined but not what is now expected of them, which is the same
+dead end as not commenting at all. Make it executable without reading further:
+
+- **Enumerate the options as a table**, one row each, with what an agent would do
+  once that option is chosen. Two to four rows. Genuinely one path → one sentence.
+- **State the label move explicitly** — "say which in a comment, then swap
+  `holding` for `ai-ready`". The reader never works out the unblock themselves.
+- **Flag anything time-sensitive** with a ⏳ line — a decision cheap now and
+  expensive later is exactly what a skimming reader needs to see.
+
+The reasoning below that — in a `<details>` block so it never pushes the action
+off screen:
 
 - **Why an agent cannot finish it**, concretely. "Not suitable" is useless. Name
   the blocker: binary assets it cannot author, a force-push past branch
@@ -936,6 +1093,10 @@ reasoning; do not reach for this shape on a PR handoff:
   queued task.
 - **Whether it is terminal**, when the right answer is to do nothing at all — so
   the next triage pass does not reopen the question.
+
+The lead-with-the-action shape (not the length exemption) applies to every
+comment that hands a decision back — `ai-blocked` from a stall or a ping-pong
+stop included. What to do first; justification underneath.
 
 If the issue was already labelled, drop `ai-ready` in the same breath; leaving it
 means the next tick picks it straight back up. Do **not** use `ai-blocked` for
@@ -972,7 +1133,54 @@ kebab-case words from the title:
 SLUG="ai-<N>-<slug>"
 mkdir -p "$WT_ROOT"
 git -C "$ROOT" worktree add "$WT_ROOT/$SLUG" -b "$SLUG" origin/main
-ln -s "$ROOT/node_modules" "$WT_ROOT/$SLUG/node_modules"   # replaces worktree.symlinkDirectories
+```
+
+**Then give it dependencies — and the choice matters.** Symlinking is the cheap
+path, but it is only correct for an issue confined to an app:
+
+```bash
+# Only for app/docs-only issues — nothing under a workspace package.
+# Replaces worktree.symlinkDirectories. Link the workspace packages too, not just
+# the root — with only the root linked, `pnpm verify` ENOENTs at the treeshake step
+# because apps/*/node_modules is missing, and the agent cannot self-verify.
+ln -s "$ROOT/node_modules" "$WT_ROOT/$SLUG/node_modules"
+for app in "$ROOT"/apps/*/; do
+  [ -d "$app/node_modules" ] || continue
+  ln -s "$app/node_modules" "$WT_ROOT/$SLUG/apps/$(basename "$app")/node_modules"
+done
+```
+
+**For anything touching a workspace package, do not symlink — install for real:**
+
+```bash
+(cd "$WT_ROOT/$SLUG" && pnpm install)
+```
+
+Those symlinks share the **root** and `apps/*`. pnpm workspaces keep the
+resolution that matters in each `packages/<name>/node_modules`, which is not
+symlinked and does not exist in a fresh worktree. Measured on `api-common`
+2026-08-20: the main checkout had per-package `node_modules` in **37 of 37**
+packages, the worktree had **1**. So `pnpm --filter <pkg> typecheck` there fails
+with `Cannot find module` rather than the real error — the agent cannot reproduce
+the bug, and the environment looks like the issue's fault. Issue #201 was handed
+back `ai-blocked` this way, well-diagnosed and untouched.
+
+**Never force `pnpm install` against a symlinked tree.** It wants to purge and
+rebuild the modules dir (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`), which
+mutates the **main checkout's** `node_modules` — shared by every other worktree
+and yanked out from under any agent mid-typecheck. `CI=true` and
+`--config.confirm-modules-purge=false` both silence that prompt; neither makes it
+safe. A real install in an unsymlinked worktree costs a duplicate `node_modules`
+and is the price of isolation. Pass 2's rebuild is the one sanctioned exception,
+and only because it is gated on no worktree surviving.
+
+**Once per repo, exclude the symlink from git.** Repos ignore `node_modules/`
+*with a trailing slash*, which does not match a symlink — so the link shows as
+untracked in every worktree and a `git add -A` commits it. `.git/info/exclude`
+is shared by all worktrees and never committed:
+
+```bash
+grep -qxF 'node_modules' "$ROOT/.git/info/exclude" || echo 'node_modules' >> "$ROOT/.git/info/exclude"
 ```
 
 **No implementer ever calls `EnterWorktree` — in any form.** This is deliberate; do
@@ -1021,15 +1229,17 @@ Then spawn a background implementer agent:
 >    step or committed build output.
 > 4. Do the work. Conventional Commits within the branch.
 >
->    **Do not run `pnpm install`.** This worktree's `node_modules` is a symlink to
->    the main checkout, so pnpm sees a foreign directory it must purge first and
->    aborts with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`. Dependencies are
->    already present — run tests, lint and build directly. If the work *is* a
->    dependency change, `pnpm install --lockfile-only` updates `pnpm-lock.yaml`
->    without touching `node_modules`. When that leaves a verification step you
->    cannot run, say so in the PR body — name the command you could not run and
->    why — so the reviewer knows CI is the only check on it rather than assuming
->    you ran it.
+>    **Do not run `pnpm install`.** Dependencies are already present — the
+>    orchestrator either symlinked them or ran a real install; run tests, lint
+>    and build directly. If `node_modules` is a symlink, pnpm sees a foreign
+>    directory it must purge first and aborts with
+>    `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` — and forcing past that prompt
+>    rewrites the **main checkout's** modules, shared by every other worktree.
+>    If the work *is* a dependency change, `pnpm install --lockfile-only`
+>    updates `pnpm-lock.yaml` without touching `node_modules`. When that leaves
+>    a verification step you cannot run, say so in the PR body — name the
+>    command you could not run and why — so the reviewer knows CI is the only
+>    check on it rather than assuming you ran it.
 > 5. Push and open the PR. The title must be a Conventional Commit — it becomes
 >    the squash subject on `main` and, in repos using semantic-release, decides
 >    whether a release goes out at all. Body must contain `Closes #<N>`.
@@ -1047,9 +1257,13 @@ Then spawn a background implementer agent:
 > gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me
 > ```
 >
-> Then comment why, and `git worktree remove --force` your worktree. The comment
-> **must** open with this exact line, then a blank line — you authenticate as the
-> owner, so without it the issue reads as if they wrote it themselves:
+> Then comment why. **Leave your worktree in place — never run
+> `git worktree remove`.** Pass 2 of the next tick reaps it (the issue is no
+> longer `ai-wip` and has no open PR, so it matches the orphan rule) and rebuilds
+> the main checkout's `node_modules` in the same pass, which a bare removal here
+> would silently break. The comment **must** open with this exact line, then a
+> blank line — you authenticate as the owner, so without it the issue reads as if
+> they wrote it themselves:
 >
 > `🤖 *Automated — implementer via ai-issue-loop.*`
 >
@@ -1076,6 +1290,7 @@ Middle dot separated, zero segments omitted, stall counts first with a `⚠`:
 |---|---|
 | Work in flight | `2wip·1rev·1merge` |
 | Something stalled | `⚠1blocked·1ci-red·2wip` |
+| Pass 2 deferred a rebuild | `⚠rebuild·2wip` |
 | Nothing at all | `idle` |
 
 Then diff against last tick and decide whether to notify:
@@ -1103,7 +1318,7 @@ elsewhere the tick still completes and only loses the desktop toast. On Linux
 swap in `notify-send "ai-issue-loop" "$SUMMARY"` behind the same `|| true`. The
 statusline file below is plain text and works anywhere.
 
-When `SUMMARY` carries a `⚠` (anything `blocked` or `ci-red`), append
+When `SUMMARY` carries a `⚠` (anything `blocked`, `ci-red`, or `rebuild`), append
 `sound name "Basso"` so a stall is audibly different from routine progress.
 
 Write the file **last**, both lines:
@@ -1116,8 +1331,8 @@ The statusline segment reads line 1 and hides itself once the file is older than
 20 minutes, so a dead loop stops claiming work is in flight.
 
 `ai-notes` does **not** get a `SUMMARY` segment and must never borrow the `⚠` —
-that mark means `blocked` or `ci-red`, a stall the loop cannot resolve, and a PR
-that passed both reviews is not stalled.
+that mark means `blocked`, `ci-red`, or a deferred `rebuild`: a stall the loop
+cannot resolve this tick. A PR that passed both reviews is not stalled.
 
 Finally, print to the transcript: `SUMMARY` plus at most five lines — merged,
 cleaned up, sent to review, picked up, blocked. Nothing else; this repeats every
