@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import fs from 'fs-extra'
 import { getPackageRoot } from '../utils/copy-preset.js'
+import { shellQuote } from '../utils/shell.js'
 
 /** Skills this package owns the content of and keeps up to date. */
 export const SHIPPED_SKILL = 'ai-issue-loop'
@@ -200,16 +201,6 @@ export interface SkillInstallResult {
 	shippedFile: string
 	installedVersion: string | null
 	shippedVersion: string
-}
-
-/**
- * POSIX single-quote escaping — the only form correct for arbitrary bytes.
- * Inside single quotes every character is literal, so `'` is the sole one
- * needing care: end the quote, escape it, start a new one. Double quotes are
- * not a substitute; `$(...)`, backticks and `\` all still expand inside them.
- */
-function shellQuote(value: string): string {
-	return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 /**
