@@ -12,7 +12,13 @@ import fs from 'fs-extra'
 import { getPackageRoot } from '../utils/copy-preset.js'
 import { shellQuote } from '../utils/shell.js'
 
-/** Skills this package owns the content of and keeps up to date. */
+/**
+ * Skills this package owns the content of and keeps up to date. The loop first —
+ * it is the pipeline; the other three are its drivers (burst, on-ramp, status).
+ */
+export const SHIPPED_SKILLS = ['ai-issue-loop', 'ai-workflow', 'ai-issue', 'ai-loop-status']
+
+/** The primary skill — the default everywhere a single name is accepted. */
 export const SHIPPED_SKILL = 'ai-issue-loop'
 
 /**

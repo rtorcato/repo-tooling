@@ -8,7 +8,11 @@ import {
 	summarize,
 } from '../../../src/cli/commands/doctor.js'
 import { checkBuildApprovals, pnpmStoreDirToName } from '../../../src/languages/js/checks.js'
-import { installClaudeSkill, SHIPPED_SKILL } from '../../../src/cli/generators/claude-skills.js'
+import {
+	installClaudeSkill,
+	SHIPPED_SKILL,
+	SHIPPED_SKILLS,
+} from '../../../src/cli/generators/claude-skills.js'
 import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -1766,7 +1770,7 @@ describe('doctor --skills-dir', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		const skillsDir = join(dir, 'custom-skills')
-		await installClaudeSkill(skillsDir)
+		for (const name of SHIPPED_SKILLS) await installClaudeSkill(skillsDir, name)
 
 		const result = await claudeSkills(dir, skillsDir)
 		expect(result?.status).toBe('ok')
@@ -1795,6 +1799,7 @@ describe('doctor: a forked Claude skill', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		const skillsDir = join(dir, 'custom-skills')
+		for (const name of SHIPPED_SKILLS.slice(1)) await installClaudeSkill(skillsDir, name)
 		const { shippedFile } = await installClaudeSkill(skillsDir)
 		await fs.appendFile(skillFile(skillsDir), '\nlocal edit\n')
 
@@ -1811,6 +1816,7 @@ describe('doctor: a forked Claude skill', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		const skillsDir = join(dir, 'custom-skills')
+		for (const name of SHIPPED_SKILLS.slice(1)) await installClaudeSkill(skillsDir, name)
 		const dotfiles = join(dir, 'dotfiles', 'SKILL.md')
 		await fs.outputFile(dotfiles, `---\nname: ${SHIPPED_SKILL}\n---\n\nmy fork\n`)
 		await fs.ensureDir(join(skillsDir, SHIPPED_SKILL))

@@ -19,7 +19,7 @@ import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules
 import {
 	installClaudeSkill,
 	resolveSkillsDir,
-	SHIPPED_SKILL,
+	SHIPPED_SKILLS,
 	skillDiffCommand,
 	type SkillInstallResult,
 } from '../cli/generators/claude-skills.js'
@@ -157,7 +157,7 @@ function describeSkillFork(result: SkillInstallResult): string[] {
 			? `its content has diverged from the ${result.installedVersion} release it was installed from`
 			: 'it carries no content record, so a local fork and a stale copy are indistinguishable'
 	return [
-		`skipped — ${SHIPPED_SKILL} was not overwritten with ${result.shippedVersion}: ${why}`,
+		`skipped — ${result.name} was not overwritten with ${result.shippedVersion}: ${why}`,
 		`  ${target}`,
 		`  compare:  ${skillDiffCommand(result)}`,
 		'  overwrite anyway:  fix claude-skills --force-skills',
@@ -415,9 +415,9 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'claude-skills',
-		description: `Install the ${SHIPPED_SKILL} Claude Code skill into the user-level skills dir (~/.claude/skills, or --skills-dir). Writes outside the repo`,
+		description: `Install the ${SHIPPED_SKILLS.join(', ')} Claude Code skills into the user-level skills dir (~/.claude/skills, or --skills-dir). Writes outside the repo`,
 		appliesTo: ['Claude skills'],
-		outputs: [`~/.claude/skills/${SHIPPED_SKILL}/SKILL.md`],
+		outputs: SHIPPED_SKILLS.map((name) => `~/.claude/skills/${name}/SKILL.md`),
 		// safe-add is load-bearing for the same reason it is on github-settings:
 		// it exempts this fixer from the `--diff` shadow-run, which copies the repo
 		// to tmp and *executes* run() — here that would write to the real home dir
@@ -428,28 +428,32 @@ export const BASE_FIXERS: Fixer[] = [
 		async run({ skillsDir, forceSkills, assumeYes }) {
 			const dir = await resolveInstallDir(skillsDir, assumeYes)
 			if (!dir) return { filesWritten: [] }
-			const result = await installClaudeSkill(dir, SHIPPED_SKILL, { force: forceSkills })
-			if (result.status === 'declined-downgrade') {
-				console.error(
-					chalk.yellow(
-						`   skipped — ${result.file} is at ${result.installedVersion}, newer than the ${result.shippedVersion} this package ships`
+			const filesWritten: string[] = []
+			for (const name of SHIPPED_SKILLS) {
+				const result = await installClaudeSkill(dir, name, { force: forceSkills })
+				if (result.status === 'declined-downgrade') {
+					console.error(
+						chalk.yellow(
+							`   skipped — ${result.file} is at ${result.installedVersion}, newer than the ${result.shippedVersion} this package ships`
+						)
 					)
-				)
-				return { filesWritten: [] }
+					continue
+				}
+				if (result.status === 'declined-fork') {
+					// Name `realFile`: through a stow symlink the overwrite would land in a
+					// *second* repo's working tree, and that is the path to look at (#480).
+					for (const line of describeSkillFork(result)) console.error(chalk.yellow(`   ${line}`))
+					continue
+				}
+				if (result.status === 'up-to-date') continue
+				// Report the resolved real path when the skill is a stow symlink: the bytes
+				// landed in a dotfiles checkout, and that is where the user has to commit them.
+				if (result.viaSymlink) {
+					console.error(chalk.dim(`   wrote through a symlink — commit ${result.realFile}`))
+				}
+				filesWritten.push(result.realFile)
 			}
-			if (result.status === 'declined-fork') {
-				// Name `realFile`: through a stow symlink the overwrite would land in a
-				// *second* repo's working tree, and that is the path to look at (#480).
-				for (const line of describeSkillFork(result)) console.error(chalk.yellow(`   ${line}`))
-				return { filesWritten: [] }
-			}
-			if (result.status === 'up-to-date') return { filesWritten: [] }
-			// Report the resolved real path when the skill is a stow symlink: the bytes
-			// landed in a dotfiles checkout, and that is where the user has to commit them.
-			if (result.viaSymlink) {
-				console.error(chalk.dim(`   wrote through a symlink — commit ${result.realFile}`))
-			}
-			return { filesWritten: [result.realFile] }
+			return { filesWritten }
 		},
 	},
 	{
