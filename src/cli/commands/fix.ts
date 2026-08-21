@@ -447,7 +447,9 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 	const pkg = await readPackageJson(targetDir)
 	const lock = await readLockfile(targetDir)
 	const fixers = fixersForLanguage(await detectLanguage(targetDir))
-	const results = await runDoctor(targetDir)
+	// Same --skills-dir the claude-skills fixer writes to, so the diagnosis fix
+	// acts on and the install it performs agree on one directory (#485).
+	const results = await runDoctor(targetDir, options.skillsDir)
 	const actions: FixActionRecord[] = []
 
 	const noteLockConflict = (check: string): boolean => {

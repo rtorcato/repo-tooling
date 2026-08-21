@@ -342,6 +342,12 @@ program
 	.description('🩺 Diagnose project alignment with @rtorcato/repo-tooling presets')
 	.option('-d, --directory <path>', 'Target directory to diagnose', process.cwd())
 	.option('--json', 'Emit machine-readable JSON output')
+	// The read side of `fix --skills-dir` (#485). No --yes/--json requirement
+	// here: doctor never writes, so an unresolved directory is just reported.
+	.option(
+		'--skills-dir <path>',
+		'Where `fix claude-skills` installs user-global agent skills (default: ~/.claude/skills). Pass the same path `fix` was given, or the skill reports as not installed'
+	)
 	.action(doctorCommand)
 
 program

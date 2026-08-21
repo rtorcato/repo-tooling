@@ -8,6 +8,7 @@ import {
 	summarize,
 } from '../../../src/cli/commands/doctor.js'
 import { checkBuildApprovals, pnpmStoreDirToName } from '../../../src/languages/js/checks.js'
+import { installClaudeSkill } from '../../../src/cli/generators/claude-skills.js'
 import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -1750,6 +1751,35 @@ describe('checkBuildApprovals', () => {
 			expect(detail.match(/esbuild/g)).toHaveLength(1)
 			expect(detail).not.toContain('transitive')
 		})
+	})
+})
+
+// #485: `--skills-dir` used to be honoured only on the write path, so a repo
+// that installs anywhere but ~/.claude/skills got a permanent false
+// `optional-missing`. Both directions are asserted, so reverting the threading
+// fails one of them whichever way the real ~/.claude/skills happens to look.
+describe('doctor --skills-dir', () => {
+	const claudeSkills = async (dir: string, skillsDir: string) =>
+		(await runDoctor(dir, skillsDir)).find((r) => r.check === 'Claude skills')
+
+	it('reports the skill as installed from a custom skills dir', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const skillsDir = join(dir, 'custom-skills')
+		await installClaudeSkill(skillsDir)
+
+		const result = await claudeSkills(dir, skillsDir)
+		expect(result?.status).toBe('ok')
+		expect(result?.detail).toContain('installed')
+	})
+
+	it('reports it missing when the custom skills dir has not got it', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+
+		const result = await claudeSkills(dir, join(dir, 'empty-skills'))
+		expect(result?.status).toBe('optional-missing')
+		expect(result?.detail).toContain('not installed')
 	})
 })
 
