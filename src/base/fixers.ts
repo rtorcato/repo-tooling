@@ -38,7 +38,12 @@ import { copyPreset } from '../cli/utils/copy-preset.js'
 import { detectLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
 import { resolveLanguageModule } from '../languages/registry.js'
-import { applyGithubSettings } from './github-settings.js'
+import {
+	applyGithubSettings,
+	applyReleaseEnvironment,
+	RELEASE_ENV_CHECK,
+	RELEASE_GATE_CHECK,
+} from './github-settings.js'
 import { applyLoopLabels } from './labels.js'
 import { closeCompletedMilestones } from './milestones.js'
 import type { CheckResult } from './types.js'
@@ -287,6 +292,27 @@ export const BASE_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			return { filesWritten: await applyGithubSettings(targetDir) }
+		},
+	},
+	{
+		target: 'release-environment',
+		description:
+			'Create the `release` environment (authenticated user as required reviewer) and wire `environment: release` into the publishing job — the gate between merging and publishing (#429)',
+		appliesTo: [RELEASE_GATE_CHECK, RELEASE_ENV_CHECK],
+		outputs: [
+			'GitHub `release` environment (remote, via gh api)',
+			'.github/workflows/<the publishing workflow>',
+		],
+		// safe-add for the same shadow-run reason as github-settings, and
+		// explicitOnly because arming the gate changes what a merge *does*: the
+		// next release run sits `waiting` for an approval instead of publishing.
+		// That is the point, but it must be a chosen rollout per repo, not a side
+		// effect of a bare `fix`.
+		riskLevel: 'safe-add',
+		explicitOnly: true,
+		canFixDrift: true,
+		async run({ targetDir }) {
+			return { filesWritten: await applyReleaseEnvironment(targetDir) }
 		},
 	},
 	{

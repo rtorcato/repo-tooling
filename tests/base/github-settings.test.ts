@@ -2,7 +2,9 @@ import { join } from 'node:path'
 import fs from 'fs-extra'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+	addJobEnvironment,
 	applyGithubSettings,
+	applyReleaseEnvironment,
 	buildGhApplyCommands,
 	checkGitHubSettings,
 	type GhExec,
@@ -763,5 +765,154 @@ describe('applyGithubSettings', () => {
 		} finally {
 			warn.mockRestore()
 		}
+	})
+})
+
+describe('addJobEnvironment (#429)', () => {
+	const YAML = `name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm build
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - run: npx semantic-release
+`
+
+	it('inserts environment as the first key of the named job, matching its indent', () => {
+		const out = addJobEnvironment(YAML, 'release', 'release')
+		expect(out).toContain('  release:\n    environment: release\n    runs-on: ubuntu-latest')
+		// The other job is untouched.
+		expect(out).toContain('  build:\n    runs-on: ubuntu-latest')
+	})
+
+	it('returns null for a job that does not exist', () => {
+		expect(addJobEnvironment(YAML, 'publish', 'release')).toBeNull()
+	})
+
+	it('returns null when there is no jobs block', () => {
+		expect(addJobEnvironment('name: CI\n', 'release', 'release')).toBeNull()
+	})
+
+	it('never matches a nested key with the job name', () => {
+		const nested = `jobs:
+  build:
+    steps:
+      - run: echo hi
+    release:
+      inner: true
+`
+		// `release:` exists only nested inside `build` — not a job header.
+		expect(addJobEnvironment(nested, 'release', 'release')).toBeNull()
+	})
+})
+
+describe('applyReleaseEnvironment (#429)', () => {
+	function releaseWorkflow(env?: string): string {
+		return `name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+${env ? `    environment: ${env}\n` : ''}    steps:
+      - run: npx semantic-release
+`
+	}
+
+	function publishRepo(env?: string): string {
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows/release.yml'), releaseWorkflow(env))
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		return dir
+	}
+
+	/** Routes by inspecting the full args array — the PUT's path is not args[1]. */
+	function applyGh(overrides: { environments?: GhResult; put?: GhResult } = {}) {
+		const puts: Array<{ path: string; stdin?: string }> = []
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+			const path = args.find((a) => a.startsWith('repos/') || a === 'user') ?? ''
+			if (args.includes('PUT')) {
+				puts.push({ path, stdin })
+				return overrides.put ?? ok('{}')
+			}
+			if (path === 'repos/{owner}/{repo}') return ok(COMPLIANT_REPO)
+			if (path === 'user') return ok('12345\n')
+			if (path.endsWith('/environments')) return overrides.environments ?? ok(NO_ENVIRONMENTS)
+			return fail('unexpected call')
+		})
+		return { exec, puts }
+	}
+
+	it('creates the environment with the authenticated user and wires the job', async () => {
+		const dir = publishRepo()
+		const { exec, puts } = applyGh()
+
+		const applied = await applyReleaseEnvironment(dir, exec)
+		expect(puts).toHaveLength(1)
+		expect(puts[0]?.path).toMatch(/\/environments\/release$/)
+		expect(JSON.parse(puts[0]?.stdin ?? '')).toEqual({
+			reviewers: [{ type: 'User', id: 12345 }],
+		})
+		const yaml = fs.readFileSync(join(dir, '.github/workflows/release.yml'), 'utf-8')
+		expect(yaml).toContain('  release:\n    environment: release\n    runs-on:')
+		expect(applied).toHaveLength(2)
+	})
+
+	it('adds reviewers to an existing unprotected release environment', async () => {
+		const dir = publishRepo('release')
+		const { exec, puts } = applyGh({
+			environments: ok(
+				JSON.stringify({
+					total_count: 1,
+					environments: [{ name: 'release', protection_rules: [] }],
+				})
+			),
+		})
+
+		const applied = await applyReleaseEnvironment(dir, exec)
+		expect(puts).toHaveLength(1)
+		expect(applied).toHaveLength(1)
+	})
+
+	it('is a no-op when the gate is already complete', async () => {
+		const dir = publishRepo('release')
+		const { exec, puts } = applyGh({
+			environments: ok(
+				JSON.stringify({
+					total_count: 1,
+					environments: [{ name: 'release', protection_rules: [{ type: 'required_reviewers' }] }],
+				})
+			),
+		})
+
+		expect(await applyReleaseEnvironment(dir, exec)).toEqual([])
+		expect(puts).toHaveLength(0)
+	})
+
+	it('never renames a job already behind a different environment', async () => {
+		const dir = publishRepo('production')
+		const { exec, puts } = applyGh()
+
+		expect(await applyReleaseEnvironment(dir, exec)).toEqual([])
+		expect(puts).toHaveLength(0)
+	})
+
+	it('does nothing when nothing publishes', async () => {
+		const { exec, puts } = applyGh()
+		expect(await applyReleaseEnvironment(gitRepo(), exec)).toEqual([])
+		expect(puts).toHaveLength(0)
 	})
 })
