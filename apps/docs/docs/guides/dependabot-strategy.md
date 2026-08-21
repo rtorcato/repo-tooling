@@ -28,18 +28,20 @@ Dependabot opens roughly **3–4 PRs per cycle** instead of one per package:
 | `production-minor` | runtime `dependencies` | minor, patch | ❌ manual |
 | `dev-minor` | `devDependencies` | minor, patch | ✅ on green, if nothing in it ships |
 | `major-updates` | all packages | major | ❌ manual |
-| `github-actions` | workflow actions | all | ❌ manual |
+| `github-actions` | workflow actions | minor, patch | ✅ on green |
+| `github-actions` | workflow actions | major | ❌ manual |
 
-## 2. Auto-merge — dev dependencies only
+## 2. Auto-merge — dev dependencies and CI actions
 
-Patch and minor updates **of `devDependencies`** merge themselves once CI is
-green — no human in the loop. Implemented by
+Patch and minor updates **of `devDependencies`** and **of GitHub Actions** merge
+themselves once CI is green — no human in the loop. Implemented by
 `.github/workflows/dependabot-automerge.yml` using `dependabot/fetch-metadata` +
-`gh pr merge --auto --squash`, gated on **both** `dependency-group == 'dev-minor'`
-and `version-update:semver-patch` / `version-update:semver-minor`.
+`gh pr merge --auto --squash`, gated on the consumer-facing check below, **either**
+`dependency-group == 'dev-minor'` **or** `package-ecosystem == 'github-actions'`,
+**and** `version-update:semver-patch` / `version-update:semver-minor`.
 
-Everything else waits for a human, and the gate **fails closed**: a PR outside a
-group reports an empty `dependency-group` and so never matches.
+Everything else waits for a human, and the gate **fails closed**: an npm PR
+outside a group reports an empty `dependency-group` and so never matches.
 
 > **The group name is not the gate.** `dependency-type: development` is
 > Dependabot's classification, and it files a package listed in *both*
@@ -58,13 +60,30 @@ group reports an empty `dependency-group` and so never matches.
 > **Production bumps are deliberately excluded.** A minor bump to a runtime
 > dependency of a published package ships to every consumer on the next release.
 > Auto-merging those on green CI alone means the 7-day `cooldown` is the only
-> thing between a compromised upstream release and `main`. GitHub Actions bumps
-> are excluded for the same reason — a compromised action runs in CI holding
-> `GITHUB_TOKEN`.
+> thing between a compromised upstream release and `main`.
 >
 > The gate names the group that `dependabot.yml` declares, so the two files are
 > a paired unit: rename a group in one and auto-merge silently stops (which is
 > the safe direction, but still drift — `doctor` flags it).
+
+> **CI actions auto-merge; the counter-argument is real** (#452). Action bumps
+> are ungrouped, so they are matched on `package-ecosystem` rather than a group
+> name. They reach no consumer of the published package, and the scaffolded
+> `commit-message.prefix: ci` means the squash subject is `ci(deps): …`, which
+> cuts no release under semantic-release.
+>
+> Against that: a compromised action runs *in CI holding `GITHUB_TOKEN`*, which
+> is arguably a sharper surface than a dev dependency, not a softer one. The
+> mitigations relied on instead are the majors exclusion (an
+> `actions/checkout@v7 → v8` still waits for a human) and required status checks.
+> Note that `cooldown` is declared per `updates:` entry and the canonical
+> `github-actions` entry does not declare one, so it does **not** delay an action
+> bump the way it delays an npm bump.
+>
+> The alternative — leaving them to a human — was weighed and rejected: routine
+> `actions/checkout` bumps waiting on a human across every scaffolded repo is the
+> friction that ends in rubber-stamping, which weakens the gate for everything
+> else too.
 
 > **Requires branch protection.** `gh pr merge --auto` only gates correctly when
 > the repo has auto-merge enabled and `main` has required status checks
@@ -117,6 +136,10 @@ CI. Closing stale PRs is the normal, expected hygiene step — not a loss of wor
   **both** into new projects.
 - `repo-tooling doctor` flags drift from the canonical config; `repo-tooling fix`
   re-applies it. A strategy change propagates to every repo via `fix`.
+
+**Semver precedent** (#452): narrowing what auto-merges goes out as `fix` — the
+old behaviour was the bug, so removing it is a fix rather than a feature removal.
+That is how #447 shipped and how the next security narrowing should ship.
 
 ## 7. Repo-local `ignore:` rules
 

@@ -130,13 +130,20 @@ export function dependabotIgnoreRules(content: string): string[] {
 }
 
 /**
- * Auto-merges patch + minor Dependabot PRs **from the `dev-minor` group only**
- * once CI is green. Requires branch protection with required status checks on
- * the target branch — without it, \`gh pr merge --auto\` never fires.
+ * Auto-merges patch + minor Dependabot PRs from the \`dev-minor\` group **and the
+ * \`github-actions\` ecosystem** once CI is green. Requires branch protection with
+ * required status checks on the target branch — without it, \`gh pr merge --auto\`
+ * never fires.
  *
  * Everything else falls through to a human: production bumps ship to consumers
  * of a published package (#423), majors are breaking by definition, and an
- * ungrouped PR reports an empty \`dependency-group\`, so the gate fails closed.
+ * ungrouped npm PR reports an empty \`dependency-group\`, so the gate fails closed.
+ *
+ * CI action bumps are the one ungrouped case that is allowed through, matched on
+ * \`package-ecosystem\` (#452): they reach no consumer of the published package
+ * and land as \`ci(deps): …\`, which cuts no release. The counter-argument is real
+ * — a compromised action runs in CI holding \`GITHUB_TOKEN\` — so the majors
+ * exclusion and required status checks are doing the work here.
  *
  * The group name is the one \`dependabotConfig()\` writes — the two files are a
  * paired unit and have to move together.
@@ -208,10 +215,17 @@ jobs:
       # Belt and braces: the dev-minor group is already declared minor+patch in
       # dependabot.yml, but this workflow is the security gate and shouldn't
       # trust a config file a consumer repo can edit independently.
-      - name: Auto-merge dev-dependency patch and minor updates
+      #
+      # github-actions bumps are ungrouped, so they report an empty
+      # dependency-group and are matched by ecosystem instead (#452). They reach
+      # no consumer of the published package, and their squash subject is
+      # "ci(deps): …", which cuts no release. Majors still fall through to a
+      # human — the update-type clause below applies to them too.
+      - name: Auto-merge dev-dependency and CI action patch and minor updates
         if: |
           steps.gate.outputs.safe == 'true' &&
-          steps.metadata.outputs.dependency-group == 'dev-minor' &&
+          (steps.metadata.outputs.dependency-group == 'dev-minor' ||
+          steps.metadata.outputs.package-ecosystem == 'github-actions') &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor')
         run: gh pr merge --auto --squash "$PR_URL"

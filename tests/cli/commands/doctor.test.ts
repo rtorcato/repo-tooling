@@ -958,7 +958,7 @@ describe('doctor security checks', () => {
 		await fs.writeFile(
 			workflow,
 			(await fs.readFile(workflow, 'utf8')).replace(
-				/\s*steps\.metadata\.outputs\.dependency-group == 'dev-minor' &&/,
+				/\s*\(steps\.metadata\.outputs\.dependency-group == 'dev-minor' \|\|/,
 				''
 			)
 		)
@@ -988,6 +988,27 @@ describe('doctor security checks', () => {
 		const dep = results.find((r) => r.check === 'Dependabot')
 		expect(dep?.status).toBe('drift')
 		expect(dep?.detail).toMatch(/peerDependencies/)
+		expect(dep?.hint).toMatch(/fix dependabot/)
+	})
+
+	// #452: a repo that took the #423/#458 pair has CI action bumps waiting on a
+	// human for no benefit. Drift in the convenience direction — still drift.
+	it('reports Dependabot drift when the auto-merge workflow lacks the github-actions arm', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const workflow = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		await fs.writeFile(
+			workflow,
+			(await fs.readFile(workflow, 'utf8')).replace(
+				/\s*steps\.metadata\.outputs\.package-ecosystem == 'github-actions'\) &&/,
+				' &&'
+			)
+		)
+		const results = await runDoctor(dir)
+		const dep = results.find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('drift')
+		expect(dep?.detail).toMatch(/CI action bumps/)
 		expect(dep?.hint).toMatch(/fix dependabot/)
 	})
 
