@@ -358,6 +358,12 @@ program
 		'--skills-dir <path>',
 		'Where `fix claude-skills` installs user-global agent skills (default: ~/.claude/skills). Required with --yes/--json when that directory does not exist'
 	)
+	// Deliberately not folded into --yes: unattended runs pass --yes, and this is
+	// the one overwrite that destroys work living outside the repo (#480).
+	.option(
+		'--force-skills',
+		'Let `fix claude-skills` overwrite a locally modified skill instead of refusing'
+	)
 	.action((target: string | undefined, options) =>
 		fixCommand(target, {
 			directory: options.directory,
@@ -368,6 +374,7 @@ program
 			resync: options.resync,
 			diff: options.diff,
 			skillsDir: options.skillsDir,
+			forceSkills: options.forceSkills,
 		})
 	)
 

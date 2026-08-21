@@ -64,6 +64,8 @@ export interface FixOptions {
 	diff?: boolean
 	/** Destination for the user-global agent skills `fix claude-skills` writes. */
 	skillsDir?: string
+	/** Overwrite a locally forked skill instead of refusing (#480). */
+	forceSkills?: boolean
 }
 
 export type FixActionStatus = 'applied' | 'dry-run' | 'skipped' | 'already-ok' | 'unsupported'
@@ -275,7 +277,7 @@ async function applyFixer(
 	lock: Lockfile | null,
 	dryRun: boolean,
 	silent: boolean,
-	opts: { skillsDir?: string; assumeYes: boolean }
+	opts: { skillsDir?: string; forceSkills?: boolean; assumeYes: boolean }
 ): Promise<{ filesWritten: string[]; dryRun: boolean }> {
 	if (dryRun) {
 		if (!silent) {
@@ -543,6 +545,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		// branch and records a skip, since one refusal must not abandon the rest.
 		const outcome = await applyFixer(fixer, effectiveResult, targetDir, pkg, lock, dryRun, silent, {
 			skillsDir: options.skillsDir,
+			forceSkills: options.forceSkills,
 			assumeYes,
 		}).catch((err: unknown) => {
 			if (!(err instanceof FixerAbort)) throw err
@@ -630,6 +633,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		try {
 			outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent, {
 				skillsDir: options.skillsDir,
+				forceSkills: options.forceSkills,
 				assumeYes,
 			})
 		} catch (err) {

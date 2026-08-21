@@ -544,6 +544,21 @@ export async function checkClaudeSkills(): Promise<CheckResult> {
 			hint,
 		}
 	}
+	// A local fork is `ok` for the same reason a modified copied asset is (#448):
+	// it is somebody's deliberate work, so it is named once and never nagged as
+	// fixable — pointing at a `fix` that would refuse is worse than saying nothing.
+	if (status.contentState && status.contentState !== 'pristine') {
+		const why =
+			status.contentState === 'modified'
+				? `has local changes since ${status.installedVersion}`
+				: 'carries no content record, so a fork cannot be told from a stale copy'
+		return {
+			check,
+			status: 'ok',
+			detail: `${SHIPPED_SKILL} skill at ${status.file} ${why}; this package ships ${status.shippedVersion} and will not overwrite it`,
+			hint: `Diff it against the shipped copy, then run \`npx @rtorcato/repo-tooling fix claude-skills --force-skills\` to take the shipped version`,
+		}
+	}
 	return {
 		check,
 		status: 'ok',
