@@ -160,7 +160,7 @@ Only the Dependabot arm merges itself, and only when no reviewer left `ai-notes`
 The one exception is a repo gated by a `release` environment with
 `required_reviewers`, where the issue arm may also auto-merge under the same
 conditions — see Pass 1.
-An issue PR ends at *assigned to you* and waits there — `ai-ok-code, ai-ok-sec`
+On an ungated repo an issue PR ends at *assigned to you* and waits there — `ai-ok-code, ai-ok-sec`
 with no `ai-review` is the loop's way of saying done. Add `ai-notes` and it means
 done, but open the comments first.
 
@@ -324,6 +324,18 @@ Non-zero → a non-Dependabot PR may auto-merge, but only carrying **all** of: b
 `mergeStateStatus: CLEAN`. Zero, or the call errors, or `gh` lacks access to that
 endpoint → hand the PR over exactly as below.
 
+**The environment alone is not the gate — confirm the publish job references
+it.** An environment nothing declares gates nothing while reading as a gate in
+both this probe and the GitHub UI, and the arm would then auto-merge a PR that
+publishes unattended:
+
+```bash
+grep -rl 'environment: release' "$ROOT/.github/workflows" || echo "not wired — no auto-merge"
+```
+
+Empty → treat the repo as ungated, same as a zero probe. (`repo-tooling doctor`'s
+*Release environment* check reports this exact misconfiguration.)
+
 Three things the gate does **not** change:
 
 - **Review still comes first.** Both reviewers must pass before any merge — already
@@ -348,7 +360,7 @@ it behind a hidden marker and upsert:
 ```bash
 MARKER='<!-- ai-issue-loop:decision -->'
 ID=$(gh api "repos/$OWNER_REPO/issues/<N>/comments" \
-      --jq "[.[] | select(.body | startswith(\"$MARKER\"))] | .[0].id // empty")
+      --jq "[.[] | select((.body // \"\") | startswith(\"$MARKER\"))] | .[0].id // empty")
 if [ -n "$ID" ]; then
   gh api -X PATCH "repos/$OWNER_REPO/issues/comments/$ID" -f body="$MARKER
 $TEXT"
@@ -556,9 +568,9 @@ work must never be reaped out from under itself.
 
 | Stalled | Condition | Do |
 |---|---|---|
-| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me`, comment, remove the worktree |
+| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip --add-assignee @me`, comment, remove the worktree (and set `REMOVED=1`) |
 | Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label <the claim that stalled>` — drop **that** label, not a fixed one; a stalled `ai-reviewing-sec` cleared as `ai-reviewing-code` leaves the dead claim in place and the reviewer never re-spawns. Dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
-| Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch |
+| Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch (and set `REMOVED=1`) |
 
 The **no PR exists** condition on the first row is what makes reaping safe. An
 agent that got as far as opening a PR has handed off to the label state machine
@@ -1169,7 +1181,7 @@ back `ai-blocked` this way, well-diagnosed and untouched.
 rebuild the modules dir (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`), which
 mutates the **main checkout's** `node_modules` — shared by every other worktree
 and yanked out from under any agent mid-typecheck. `CI=true` and
-`--config.confirm-modules-purge=false` both silence that prompt; neither makes it
+`--config.confirmModulesPurge=false` both silence that prompt; neither makes it
 safe. A real install in an unsymlinked worktree costs a duplicate `node_modules`
 and is the price of isolation. Pass 2's rebuild is the one sanctioned exception,
 and only because it is gated on no worktree surviving.
