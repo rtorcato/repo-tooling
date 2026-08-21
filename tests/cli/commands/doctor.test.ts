@@ -8,7 +8,7 @@ import {
 	summarize,
 } from '../../../src/cli/commands/doctor.js'
 import { checkBuildApprovals, pnpmStoreDirToName } from '../../../src/languages/js/checks.js'
-import { installClaudeSkill } from '../../../src/cli/generators/claude-skills.js'
+import { installClaudeSkill, SHIPPED_SKILL } from '../../../src/cli/generators/claude-skills.js'
 import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -1780,6 +1780,43 @@ describe('doctor --skills-dir', () => {
 		const result = await claudeSkills(dir, join(dir, 'empty-skills'))
 		expect(result?.status).toBe('optional-missing')
 		expect(result?.detail).toContain('not installed')
+	})
+})
+
+// #484: the fork hint said "diff it against the shipped copy" and named neither
+// file, in the one case the reader most wants to look before deciding whether to
+// --force-skills. Both paths are asserted, so dropping either fails a test.
+describe('doctor: a forked Claude skill', () => {
+	const skillFile = (skillsDir: string) => join(skillsDir, SHIPPED_SKILL, 'SKILL.md')
+	const claudeSkills = async (dir: string, skillsDir: string) =>
+		(await runDoctor(dir, skillsDir)).find((r) => r.check === 'Claude skills')
+
+	it('names the installed and the shipped file in a runnable diff', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const skillsDir = join(dir, 'custom-skills')
+		const { shippedFile } = await installClaudeSkill(skillsDir)
+		await fs.appendFile(skillFile(skillsDir), '\nlocal edit\n')
+
+		const result = await claudeSkills(dir, skillsDir)
+		expect(result?.status).toBe('ok')
+		expect(result?.hint).toContain(`diff "${skillFile(skillsDir)}" "${shippedFile}"`)
+	})
+
+	// stow symlinks at file level, so the installed path is routinely a link into
+	// a dotfiles checkout. Diffing the link's own path sends the reader nowhere.
+	it('names the symlink target rather than the link', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const skillsDir = join(dir, 'custom-skills')
+		const dotfiles = join(dir, 'dotfiles', 'SKILL.md')
+		await fs.outputFile(dotfiles, `---\nname: ${SHIPPED_SKILL}\n---\n\nmy fork\n`)
+		await fs.ensureDir(join(skillsDir, SHIPPED_SKILL))
+		await fs.symlink(dotfiles, skillFile(skillsDir))
+
+		const result = await claudeSkills(dir, skillsDir)
+		expect(result?.hint).toContain(await fs.realpath(dotfiles))
+		expect(result?.hint).not.toContain(skillFile(skillsDir))
 	})
 })
 

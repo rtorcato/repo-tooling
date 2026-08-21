@@ -202,6 +202,17 @@ export interface SkillInstallResult {
 	shippedVersion: string
 }
 
+/**
+ * The command a human runs to see what their fork changed, before deciding
+ * whether to take the shipped copy. One builder, because `doctor` and `fix`
+ * both print it and two independently-built strings drift (#484). Always
+ * `realFile`: through a stow symlink the nominal path is the link, and the
+ * bytes worth reading are in the dotfiles checkout it points at.
+ */
+export function skillDiffCommand(paths: { realFile: string; shippedFile: string }): string {
+	return `diff "${paths.realFile}" "${paths.shippedFile}"`
+}
+
 /** Whether `file` is itself a symlink, as opposed to merely resolving through one. */
 async function isSymlink(file: string): Promise<boolean> {
 	return await fs
@@ -265,6 +276,14 @@ export async function installClaudeSkill(
 export interface SkillStatus {
 	/** Null when no skills directory could be resolved at all. */
 	file: string | null
+	/**
+	 * Where the bytes actually live — `file` resolved when it is a symlink into a
+	 * dotfiles checkout. Null when nothing is installed, so there is nothing to
+	 * resolve. See `SkillInstallResult.realFile`.
+	 */
+	realFile: string | null
+	/** The shipped source inside this package, so doctor can name a real `diff`. */
+	shippedFile: string
 	installed: boolean
 	/** Null when installed but unstamped — a copy that predates this feature. */
 	installedVersion: string | null
@@ -287,6 +306,8 @@ export async function claudeSkillStatus(
 	const shipped = await readShippedSkill(name)
 	const { dir } = await resolveSkillsDir(explicit)
 	const absent = {
+		realFile: null,
+		shippedFile: shipped.file,
 		installed: false,
 		installedVersion: null,
 		shippedVersion: shipped.version,
@@ -302,6 +323,8 @@ export async function claudeSkillStatus(
 	const behind = installedVersion === null || isNewerVersion(shipped.version, installedVersion)
 	return {
 		file,
+		realFile: (await isSymlink(file)) ? await fs.realpath(file) : file,
+		shippedFile: shipped.file,
 		installed: true,
 		installedVersion,
 		shippedVersion: shipped.version,
