@@ -268,14 +268,12 @@ describe('doctor', () => {
 		expect(results.find((r) => r.check === 'Biome')?.status).toBe('drift')
 	})
 
-	// #424: the config matched the preset, so doctor called it ok while every
-	// Biome run printed "The configuration schema version does not match the CLI
-	// version". The written `$schema` has to be re-checked against the installed
-	// binary, not just written once and trusted forever.
-	it('reports drift when the biome $schema names a different version than the installed CLI', async () => {
+	// #424/#468: a version in the `$schema` URL is only ever correct until the
+	// next @biomejs/biome bump, so any pin at all is drift — not just one that
+	// disagrees with what happens to be installed right now.
+	it('reports drift when the biome $schema still pins a version', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await seedInstalledBiome(dir, '2.5.5')
 		await fs.writeJson(join(dir, 'biome.json'), {
 			$schema: 'https://biomejs.dev/schemas/2.4.16/schema.json',
 			extends: ['@rtorcato/repo-tooling/biome'],
@@ -284,15 +282,28 @@ describe('doctor', () => {
 		const biome = (await runDoctor(dir)).find((r) => r.check === 'Biome')
 		expect(biome?.status).toBe('drift')
 		expect(biome?.detail).toContain('2.4.16')
-		expect(biome?.detail).toContain('2.5.5')
 	})
 
-	it('reports ok when the biome $schema matches the installed CLI', async () => {
+	// The pin that matches today's CLI is the one that breaks tomorrow, so it
+	// has to be reported too — that is the whole point of #468.
+	it('reports drift for a pinned $schema even when it matches the installed CLI', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await seedInstalledBiome(dir, '2.5.5')
 		await fs.writeJson(join(dir, 'biome.json'), {
 			$schema: 'https://biomejs.dev/schemas/2.5.5/schema.json',
+			extends: ['@rtorcato/repo-tooling/biome'],
+		})
+
+		expect((await runDoctor(dir)).find((r) => r.check === 'Biome')?.status).toBe('drift')
+	})
+
+	it('reports ok for the unpinned $schema `fix biome` writes', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await seedInstalledBiome(dir, '2.5.5')
+		await fs.writeJson(join(dir, 'biome.json'), {
+			$schema: 'https://biomejs.dev/schemas/latest/schema.json',
 			extends: ['@rtorcato/repo-tooling/biome'],
 		})
 

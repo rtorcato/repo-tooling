@@ -7,7 +7,6 @@ import {
 	BIOME_CONFIG,
 	generateBiomeConfig,
 	generateLintingConfigs,
-	resolveBiomeSchemaVersion,
 } from '../../../src/cli/generators/linting.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -38,7 +37,7 @@ describe('generateLintingConfigs', () => {
 		expect(biome.extends).toEqual(['@rtorcato/repo-tooling/biome'])
 		// Biome 2.x schema + shape — no 1.x `files.include`/`ignore` that would
 		// force consumers to run `biome migrate` before `biome check` runs.
-		expect(biome.$schema).toContain('biomejs.dev/schemas/2.')
+		expect(biome.$schema).toBe('https://biomejs.dev/schemas/latest/schema.json')
 		expect(biome.files?.include).toBeUndefined()
 		expect(await fs.pathExists(join(dir, 'eslint.config.mjs'))).toBe(false)
 		expect(await fs.pathExists(join(dir, 'prettier.config.mjs'))).toBe(false)
@@ -122,9 +121,10 @@ describe('generateLintingConfigs', () => {
 		expect(preset.vcs).toMatchObject({ enabled: true, clientKind: 'git', useIgnoreFile: true })
 	})
 
-	// #363: a hardcoded 2.5.0 made Biome print a schema-version warning on every
-	// single run once the consumer's CLI moved past it.
-	it('derives $schema from the installed Biome, not a hardcoded version', async () => {
+	// #363/#468: any version in the URL — hardcoded, or derived from whatever is
+	// installed at scaffold time — makes Biome print a schema-version warning on
+	// every run the moment the consumer's CLI moves past it. `latest` never does.
+	it('writes an unpinned $schema, whatever Biome happens to be installed', async () => {
 		const dir = newTmpDir()
 		const biomePkg = join(dir, 'node_modules', '@biomejs', 'biome')
 		await fs.ensureDir(biomePkg)
@@ -137,19 +137,14 @@ describe('generateLintingConfigs', () => {
 		await generateBiomeConfig(dir)
 
 		const biome = await fs.readJson(join(dir, BIOME_CONFIG))
-		expect(biome.$schema).toBe('https://biomejs.dev/schemas/2.9.3/schema.json')
+		expect(biome.$schema).toBe('https://biomejs.dev/schemas/latest/schema.json')
 	})
 
-	it('falls back to the declared range, then to the preset version', async () => {
-		const withRange = newTmpDir()
-		await fs.writeJson(join(withRange, 'package.json'), {
-			name: 'demo',
-			devDependencies: { '@biomejs/biome': '^2.7.1' },
-		})
-		expect(await resolveBiomeSchemaVersion(withRange)).toBe('2.7.1')
-
-		// Bare directory mid-setup — nothing installed, nothing declared.
-		expect(await resolveBiomeSchemaVersion(newTmpDir())).toBe('2.5.0')
+	// The shipped preset is parsed by whichever Biome the consumer installed, so
+	// it must not pin either — it carried its own separate stale 2.5.0 (#468).
+	it('ships a preset whose $schema is unpinned too', async () => {
+		const preset = await fs.readJson(join(import.meta.dirname, '../../../tooling/biome/biome.json'))
+		expect(preset.$schema).toBe('https://biomejs.dev/schemas/latest/schema.json')
 	})
 
 	it('skips .oxlintrc.json when oxlint flag is unset', async () => {
