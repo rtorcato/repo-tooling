@@ -13,10 +13,16 @@ npx @rtorcato/repo-tooling setup -d ./my-app  # specific directory
 npx @rtorcato/repo-tooling setup --skip-install  # skip npm/pnpm install
 ```
 
-Add `--preset <name>` to skip the prompts entirely: `library`, `web-app`,
-`node-api`, `nextjs-app`, `react-app`, or `swift-library`. The Swift preset
-scaffolds a SwiftPM package rather than an npm one — see the
-[Swift guide](./swift.md).
+Add `--preset <name>` to skip the wizard: `minimal`, `library`, `web-app`,
+`node-api`, `nextjs-app`, `react-app`, or `swift-library`. `minimal` is tsconfig
++ Biome + Vitest and nothing else. The Swift preset scaffolds a SwiftPM package
+rather than an npm one — see the [Swift guide](./swift.md).
+
+In a terminal, `--preset` prints the file list it resolved and lets you uncheck
+the extras (git hooks, commitlint, releases, Dependabot/CodeQL, badges, AI agent
+rules) before anything is written. Pass `--yes` to write it all in one shot. When
+stdin or stdout is piped or redirected — CI — the review is skipped
+automatically.
 
 ## copy \<name\>
 

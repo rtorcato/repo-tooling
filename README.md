@@ -35,9 +35,15 @@ npx @rtorcato/repo-tooling setup
 Non-interactive — scaffold from a named preset in one shot (CI-friendly):
 
 ```bash
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install
-# presets: library | web-app | node-api | nextjs-app | react-app | swift-library
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+# presets: minimal | library | web-app | node-api | nextjs-app | react-app | swift-library
 ```
+
+Run without `--yes` in a terminal and the preset first prints every file it would
+write and lets you uncheck the parts you don't want (git hooks, commitlint,
+releases, Dependabot/CodeQL, badges, AI agent rules). Piped or redirected — CI —
+it writes everything in one shot, exactly as before. `minimal` is tsconfig +
+Biome + Vitest and nothing else.
 
 `swift-library` scaffolds a SwiftPM package (manifest, sources, tests, SwiftLint,
 Periphery, macOS CI) instead of an npm one — see the

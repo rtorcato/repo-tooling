@@ -14,10 +14,10 @@ All commands take `-d <path>` for the target directory (defaults to `process.cwd
 ### `setup` — scaffold a new project
 
 ```bash
-# Sane defaults per project type (no prompts)
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install
-npx @rtorcato/repo-tooling setup --preset react-app -d ./my-app --skip-install
-npx @rtorcato/repo-tooling setup --preset nextjs-app -d ./my-site --skip-install
+# Sane defaults per project type. --yes guarantees no prompts even from a terminal.
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+npx @rtorcato/repo-tooling setup --preset react-app -d ./my-app --skip-install --yes
+npx @rtorcato/repo-tooling setup --preset nextjs-app -d ./my-site --skip-install --yes
 
 # Full control via a JSON config file
 npx @rtorcato/repo-tooling setup --config ./project.json --skip-install
@@ -29,7 +29,12 @@ npx @rtorcato/repo-tooling setup --config-schema > project-config.schema.json
 npx @rtorcato/repo-tooling setup --preset library --dry-run
 ```
 
-Available presets: `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.
+Available presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.
+
+`minimal` is tsconfig + Biome + Vitest and nothing else. Pass `--yes` whenever a
+human might be at the terminal: without it, `--preset` prints its file list and
+opens a deselection prompt. A piped or redirected stream is treated as CI and
+never prompts.
 
 `swift-library` scaffolds a SwiftPM package — no `package.json`, no install step, and the file list is entirely different. See the [Swift guide](./swift.md).
 
@@ -150,13 +155,13 @@ Use this to discover what's available and to map between named tools and the `fi
 
 ```bash
 # 1. Decide the project type (or read from existing pkg deps)
-PRESET=library  # or web-app, node-api, nextjs-app, react-app, swift-library
+PRESET=library  # or minimal, web-app, node-api, nextjs-app, react-app, swift-library
 
 # 2. Preview
 npx @rtorcato/repo-tooling setup --preset $PRESET --dry-run
 
 # 3. Scaffold
-npx @rtorcato/repo-tooling setup --preset $PRESET -d . --skip-install
+npx @rtorcato/repo-tooling setup --preset $PRESET -d . --skip-install --yes
 
 # 4. Install deps yourself (the CLI skips install when --skip-install is set)
 pnpm install
