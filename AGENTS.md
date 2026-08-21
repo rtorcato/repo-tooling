@@ -110,7 +110,7 @@ A fixer may also **refuse** — the target file holds something the generator ca
 ## Conventions in this repo
 
 - Conventional commits enforced via commitlint; header max 100 chars, body/footer line length unenforced
-- Biome for lint + format (run via `pnpm exec biome check --config-path=tooling/biome/biome.json src scripts`)
+- Biome for lint + format (run via `pnpm run check`, i.e. `biome check .` over the whole repo — the same script this package emits to consumers)
 - Tests live alongside source in `tests/`; vitest with no separate config
 - semantic-release runs on push to `main`; `fix:` → patch, `feat:` → minor, `chore:` / `docs:` → no release
 
