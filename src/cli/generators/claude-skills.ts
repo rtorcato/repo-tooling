@@ -203,14 +203,31 @@ export interface SkillInstallResult {
 }
 
 /**
+ * POSIX single-quote escaping — the only form correct for arbitrary bytes.
+ * Inside single quotes every character is literal, so `'` is the sole one
+ * needing care: end the quote, escape it, start a new one. Double quotes are
+ * not a substitute; `$(...)`, backticks and `\` all still expand inside them.
+ */
+function shellQuote(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+/**
  * The command a human runs to see what their fork changed, before deciding
  * whether to take the shipped copy. One builder, because `doctor` and `fix`
  * both print it and two independently-built strings drift (#484). Always
  * `realFile`: through a stow symlink the nominal path is the link, and the
  * bytes worth reading are in the dotfiles checkout it points at.
+ *
+ * Both paths are user-influenced — `--skills-dir` is an argument (#490) and
+ * `realFile` is wherever a symlink happens to point — and this line exists to
+ * be pasted into a shell, so it is quoted rather than merely interpolated
+ * (#493). Quoting beats refusing to emit a command: single quotes make an odd
+ * path *more* visible, not less, and keep the hint usable in the odd case
+ * instead of only the ordinary one.
  */
 export function skillDiffCommand(paths: { realFile: string; shippedFile: string }): string {
-	return `diff "${paths.realFile}" "${paths.shippedFile}"`
+	return `diff ${shellQuote(paths.realFile)} ${shellQuote(paths.shippedFile)}`
 }
 
 /** Whether `file` is itself a symlink, as opposed to merely resolving through one. */

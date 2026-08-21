@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
@@ -10,6 +11,7 @@ import {
 	readSkillVersion,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
+	skillDiffCommand,
 	stampSkill,
 	stampSkillVersion,
 	stripSkillStamps,
@@ -207,6 +209,59 @@ describe('installClaudeSkill', () => {
 		expect((await fs.lstat(skillFile(skillsDir))).isSymbolicLink()).toBe(true)
 		expect(await fs.realpath(result.realFile)).toBe(await fs.realpath(dotfiles))
 		expect(await fs.readFile(dotfiles, 'utf8')).toContain('# ai-issue-loop')
+	})
+})
+
+// #493: the hint is built to be pasted into a shell, and both paths are
+// user-influenced — `--skills-dir` is an argument (#490) and `realFile` is
+// wherever a symlink points. Unquoted, a path carrying `"` or `$(...)` yields a
+// line that does something other than a diff.
+describe('skillDiffCommand', () => {
+	const SHIPPED = '/pkg/skills/ai-issue-loop/SKILL.md'
+
+	/**
+	 * Run the emitted command through a real shell with `diff` swapped for a
+	 * printf that echoes its argv, and return what `diff` would have received.
+	 * A path the shell splits, expands or executes fails to come back intact.
+	 */
+	function shellArgv(command: string): string[] {
+		const out = execFileSync('sh', ['-c', command.replace(/^diff /, "printf '%s\\n' ")], {
+			encoding: 'utf8',
+		})
+		return out.split('\n').slice(0, -1)
+	}
+
+	it('is a pasteable diff for ordinary paths', () => {
+		const realFile = '/home/me/.claude/skills/ai-issue-loop/SKILL.md'
+		expect(skillDiffCommand({ realFile, shippedFile: SHIPPED })).toBe(
+			`diff '${realFile}' '${SHIPPED}'`
+		)
+		expect(shellArgv(skillDiffCommand({ realFile, shippedFile: SHIPPED }))).toEqual([
+			realFile,
+			SHIPPED,
+		])
+	})
+
+	it.each([
+		['a space', '/tmp/my skills/ai-issue-loop/SKILL.md'],
+		['a double quote', '/tmp/we"rd/SKILL.md'],
+		['a single quote', "/tmp/it's/SKILL.md"],
+		['a command substitution', '/tmp/$(echo pwned)/SKILL.md'],
+		['backticks and a variable', '/tmp/`echo pwned`$HOME/SKILL.md'],
+		['a command separator', '/tmp/x; echo pwned/SKILL.md'],
+	])('hands %s to diff untouched', (_what, realFile) => {
+		expect(shellArgv(skillDiffCommand({ realFile, shippedFile: SHIPPED }))).toEqual([
+			realFile,
+			SHIPPED,
+		])
+	})
+
+	it('escapes the shipped path too', () => {
+		const shippedFile = "/pkg/o'dd/SKILL.md"
+		expect(shellArgv(skillDiffCommand({ realFile: '/tmp/a/SKILL.md', shippedFile }))).toEqual([
+			'/tmp/a/SKILL.md',
+			shippedFile,
+		])
 	})
 })
 
