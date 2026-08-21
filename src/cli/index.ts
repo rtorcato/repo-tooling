@@ -34,6 +34,10 @@ program
 	.option('--skip-install', 'Skip installing dependencies')
 	.option('--preset <name>', 'Skip prompts; use defaults for a project type')
 	.option(
+		'-y, --yes',
+		'With --preset in a terminal, skip the file-list review and write everything'
+	)
+	.option(
 		'--config <path>',
 		'Skip prompts; read a ProjectConfig or .repo-tooling.json lockfile from <path>'
 	)

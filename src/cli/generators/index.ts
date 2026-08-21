@@ -69,10 +69,11 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 		await generateTestingConfigs(config, targetDir)
 	}
 
-	// Generate git configurations
-	if (config.gitHooks || config.commitLint) {
-		await generateGitConfigs(config, targetDir)
-	}
+	// Unconditional: generateGitConfigs already gates husky and commitlint on
+	// their own flags, and the .gitignore it also writes has nothing to do with
+	// either. Gating the whole call meant any scaffold that declined git hooks —
+	// which is every `minimal` run (#461) — got no .gitignore at all.
+	await generateGitConfigs(config, targetDir)
 
 	// Generate GitHub Actions workflow
 	await generateGitHubActions(config, targetDir)

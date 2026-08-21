@@ -96,10 +96,14 @@ Python and Perl write nothing and point you at `doctor`. For **Python** that's n
 Skip the prompts entirely by scaffolding from a named preset:
 
 ```bash
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
 ```
 
-Presets: `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.
+Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.
+
+`minimal` is tsconfig + Biome + Vitest and nothing else — no git hooks, no commitlint, no release pipeline, no Dependabot/CodeQL, no AI agent files.
+
+When stdin and stdout are both a terminal, `--preset` first prints every file it would write and lets you uncheck the parts you don't want. Piped or redirected — CI — it writes everything in one shot. `--yes` forces the one-shot path in a terminal too.
 
 `swift-library` scaffolds a SwiftPM package instead of an npm one — no `package.json`, no install step. See the [Swift guide](./swift.md) for the full file list.
 

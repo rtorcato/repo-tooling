@@ -3,6 +3,7 @@ import { BIOME_CONFIG } from '../generators/linting.js'
 import type { ProjectConfig } from './setup.js'
 
 export type PresetName =
+	| 'minimal'
 	| 'library'
 	| 'web-app'
 	| 'node-api'
@@ -11,6 +12,7 @@ export type PresetName =
 	| 'swift-library'
 
 export const PRESET_NAMES: readonly PresetName[] = [
+	'minimal',
 	'library',
 	'web-app',
 	'node-api',
@@ -34,6 +36,33 @@ const BASE: Omit<ProjectConfig, 'projectName' | 'projectType' | 'typescript' | '
 
 export function buildPresetConfig(name: PresetName, projectName: string): ProjectConfig {
 	switch (name) {
+		// tsconfig + biome + vitest, nothing else (#461). Deliberately not spread
+		// from BASE: BASE hardcodes git hooks, commitlint, security automation,
+		// badges and the AI agent files, and every other case only ever adds to
+		// it — so no preset built on BASE can produce a small repo.
+		//
+		// `node-api` is the only projectType that adds nothing of its own:
+		// `library` would pull in publint, attw, a size-limit budget and a
+		// dist/-rooted exports map that `bundler: 'none'` never builds, and the
+		// three app types each seed a framework. It says "plain Node package",
+		// which is what this preset scaffolds.
+		case 'minimal':
+			return {
+				projectName,
+				language: 'js',
+				projectType: 'node-api',
+				typescript: { enabled: true, config: 'base' },
+				linting: { tool: 'biome' },
+				formatting: { tool: 'biome' },
+				testing: { framework: 'vitest', environment: 'node' },
+				gitHooks: false,
+				commitLint: false,
+				semanticRelease: false,
+				securityAutomation: false,
+				bundler: 'none',
+				badges: false,
+				aiSetup: false,
+			}
 		case 'library':
 			return {
 				...BASE,
@@ -227,7 +256,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 	if (config.language === 'swift') return swiftFileList(config)
 
 	const files: string[] = ['package.json', '.repo-tooling.json']
-	files.push('.editorconfig', '.nvmrc', 'knip.json', '.vscode/extensions.json')
+	files.push('.editorconfig', '.nvmrc', '.gitignore', 'knip.json', '.vscode/extensions.json')
 	if (config.typescript.enabled) {
 		files.push('tsconfig.json', 'reset.d.ts')
 	}
@@ -261,7 +290,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 		)
 	}
 	if (config.gitHooks) {
-		files.push('.husky/pre-commit', '.gitignore')
+		files.push('.husky/pre-commit')
 	}
 	if (config.commitLint) {
 		files.push('.husky/commit-msg', 'commitlint.config.mjs')

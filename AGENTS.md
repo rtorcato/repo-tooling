@@ -14,7 +14,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 
 | Command | Non-interactive | JSON output | Use case |
 |---|---|---|---|
-| `setup --preset <name>` | ✅ | `--dry-run` only | Scaffold a new project. Presets: `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`. |
+| `setup --preset <name>` | ✅ (non-TTY, or with `--yes`) | `--dry-run` only | Scaffold a new project. Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`. In an interactive terminal it first prints the file list and lets you deselect; pass `--yes` for the one-shot behaviour. |
 | `setup --config <path>` | ✅ | `--dry-run` only | Scaffold with a full `ProjectConfig` JSON file. See `setup --config-schema`. |
 | `setup --config-schema` | ✅ | ✅ (JSON Schema) | Print the JSON Schema for `ProjectConfig`. Use to validate configs before scaffolding. |
 | `setup --dry-run` | ✅ | ✅ | Print resolved config + file list without writing. Pair with `--preset` or `--config`. |

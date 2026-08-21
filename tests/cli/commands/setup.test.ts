@@ -294,6 +294,230 @@ describe('setup --preset', () => {
 	})
 })
 
+// #461: BASE hardcoded git hooks, commitlint, security automation, badges and
+// the AI agent files, and every preset only ever added to it — so no preset
+// could produce a small repo. `minimal` is built without spreading BASE.
+describe('setup --preset minimal', () => {
+	it('turns off every opinionated extra', () => {
+		const config = buildPresetConfig('minimal', 'demo')
+		expect(config.gitHooks).toBe(false)
+		expect(config.commitLint).toBe(false)
+		expect(config.semanticRelease).toBe(false)
+		expect(config.securityAutomation).toBe(false)
+		expect(config.badges).toBe(false)
+		expect(config.aiSetup).toBe(false)
+		expect(config.bundler).toBe('none')
+		expect(validateProjectConfig(config).valid).toBe(true)
+	})
+
+	it('lists tsconfig + biome + vitest and nothing else', () => {
+		const files = computeFileList(buildPresetConfig('minimal', 'demo'))
+		expect(files).toContain('tsconfig.json')
+		expect(files).toContain('biome.json')
+		expect(files).toContain('vitest.config.ts')
+		for (const unwanted of [
+			'.husky/pre-commit',
+			'.husky/commit-msg',
+			'commitlint.config.mjs',
+			'release.config.mjs',
+			'.github/dependabot.yml',
+			'.github/workflows/codeql.yml',
+			'AGENTS.md',
+			'CLAUDE.md',
+			'tsup.config.ts',
+			'.size-limit.json',
+		]) {
+			expect(files, unwanted).not.toContain(unwanted)
+		}
+	})
+
+	it('scaffolds only those files', async () => {
+		const dir = newTmpDir()
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'minimal', skipInstall: true })
+		} finally {
+			logSpy.mockRestore()
+		}
+		expect(await fs.pathExists(join(dir, 'tsconfig.json'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'vitest.config.ts'))).toBe(true)
+		// A scaffold with no .gitignore commits node_modules on the first push.
+		expect(await fs.pathExists(join(dir, '.gitignore'))).toBe(true)
+		expect(await fs.pathExists(join(dir, '.husky'))).toBe(false)
+		expect(await fs.pathExists(join(dir, 'AGENTS.md'))).toBe(false)
+		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
+
+		// The library shape would add publint/attw/size-limit scripts plus a
+		// dist/-rooted exports map that `bundler: 'none'` never builds.
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(Object.keys(pkg.scripts)).not.toContain('publint')
+		expect(Object.keys(pkg.scripts)).not.toContain('attw')
+		expect(Object.keys(pkg.scripts)).not.toContain('size-limit')
+		expect(Object.keys(pkg.scripts)).not.toContain('release')
+		expect(Object.keys(pkg.scripts)).not.toContain('prepare')
+		expect(pkg.exports).toBeUndefined()
+		for (const dep of [
+			'husky',
+			'lint-staged',
+			'@commitlint/cli',
+			'semantic-release',
+			'size-limit',
+			'@arethetypeswrong/cli',
+		]) {
+			expect(Object.keys(pkg.devDependencies ?? {}), dep).not.toContain(dep)
+		}
+	})
+})
+
+// #461: in a terminal a preset now shows its file list and lets the user
+// deselect. Non-TTY is CI — the case --preset was added for — and must keep the
+// exact one-shot behaviour.
+describe('setup --preset review prompt', () => {
+	/** Pretend both ends of the pipe are a terminal; returns the undo. */
+	function fakeTTY(): () => void {
+		const saved = [process.stdin, process.stdout].map(
+			(stream) => [stream, Object.getOwnPropertyDescriptor(stream, 'isTTY')] as const
+		)
+		for (const [stream] of saved) {
+			Object.defineProperty(stream, 'isTTY', { value: true, configurable: true })
+		}
+		return () => {
+			for (const [stream, descriptor] of saved) {
+				if (descriptor) Object.defineProperty(stream, 'isTTY', descriptor)
+				else delete (stream as unknown as { isTTY?: boolean }).isTTY
+			}
+		}
+	}
+
+	beforeEach(() => {
+		vi.restoreAllMocks()
+	})
+
+	it('does not prompt when stdin/stdout are not a terminal', async () => {
+		const dir = newTmpDir()
+		const spy = vi.spyOn(inquirer, 'prompt')
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true })
+		} finally {
+			logSpy.mockRestore()
+		}
+		expect(spy).not.toHaveBeenCalled()
+		// The one-shot scaffold is unchanged: everything BASE turns on still lands.
+		expect(await fs.pathExists(join(dir, '.husky', 'pre-commit'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'AGENTS.md'))).toBe(true)
+		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(true)
+	})
+
+	it('offers a checkbox of the preset extras, all pre-checked', async () => {
+		const dir = newTmpDir()
+		const restoreTTY = fakeTTY()
+		const spy = vi
+			.spyOn(inquirer, 'prompt')
+			.mockImplementation((async () => ({ features: [] })) as never)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true })
+		} finally {
+			logSpy.mockRestore()
+			restoreTTY()
+		}
+
+		expect(spy).toHaveBeenCalledTimes(1)
+		const [questions] = spy.mock.calls[0] as [Array<Record<string, unknown>>]
+		expect(questions).toHaveLength(1)
+		const question = questions[0]
+		// inquirer v14 has no `list`; a multi-select is `checkbox` (#463).
+		expect(Object.keys(inquirer.createPromptModule().prompts)).toContain(question.type)
+		expect(question.type).toBe('checkbox')
+		const choices = question.choices as Array<{ value: string; checked: boolean }>
+		expect(choices.map((c) => c.value)).toEqual([
+			'gitHooks',
+			'commitLint',
+			'semanticRelease',
+			'securityAutomation',
+			'badges',
+			'aiSetup',
+		])
+		expect(choices.every((c) => c.checked)).toBe(true)
+	})
+
+	it('writes nothing for the features the user unchecks', async () => {
+		const dir = newTmpDir()
+		const restoreTTY = fakeTTY()
+		vi.spyOn(inquirer, 'prompt').mockImplementation((async () => ({
+			features: ['semanticRelease', 'badges'],
+		})) as never)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true })
+		} finally {
+			logSpy.mockRestore()
+			restoreTTY()
+		}
+		expect(await fs.pathExists(join(dir, '.husky'))).toBe(false)
+		expect(await fs.pathExists(join(dir, 'commitlint.config.mjs'))).toBe(false)
+		expect(await fs.pathExists(join(dir, 'AGENTS.md'))).toBe(false)
+		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
+		// Kept, so still written.
+		expect(await fs.pathExists(join(dir, 'release.config.mjs'))).toBe(true)
+
+		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
+		expect(lock.config.gitHooks).toBe(false)
+		expect(lock.config.aiSetup).toBe(false)
+		expect(lock.config.semanticRelease).toBe(true)
+	})
+
+	it('prints the resolved file list before asking', async () => {
+		const dir = newTmpDir()
+		const restoreTTY = fakeTTY()
+		vi.spyOn(inquirer, 'prompt').mockImplementation((async () => ({ features: [] })) as never)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		let output = ''
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true })
+			output = logSpy.mock.calls.map((c) => String(c[0])).join('\n')
+		} finally {
+			logSpy.mockRestore()
+			restoreTTY()
+		}
+		for (const file of computeFileList(buildPresetConfig('library', 'demo'))) {
+			expect(output, file).toContain(file)
+		}
+	})
+
+	it('skips the review with --yes even in a terminal', async () => {
+		const dir = newTmpDir()
+		const restoreTTY = fakeTTY()
+		const spy = vi.spyOn(inquirer, 'prompt')
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true, yes: true })
+		} finally {
+			logSpy.mockRestore()
+			restoreTTY()
+		}
+		expect(spy).not.toHaveBeenCalled()
+		expect(await fs.pathExists(join(dir, 'AGENTS.md'))).toBe(true)
+	})
+
+	it('skips the review with --dry-run even in a terminal', async () => {
+		const dir = newTmpDir()
+		const restoreTTY = fakeTTY()
+		const spy = vi.spyOn(inquirer, 'prompt')
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true, dryRun: true })
+		} finally {
+			logSpy.mockRestore()
+			restoreTTY()
+		}
+		expect(spy).not.toHaveBeenCalled()
+		expect(await fs.readdir(dir)).toEqual([])
+	})
+})
+
 describe('setup --config', () => {
 	it('reads a JSON ProjectConfig and uses it instead of prompts', async () => {
 		const dir = newTmpDir()

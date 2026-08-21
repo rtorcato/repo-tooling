@@ -79,6 +79,65 @@ export interface SetupOptions {
 	preset?: string
 	dryRun?: boolean
 	configSchema?: boolean
+	/** Accept a `--preset` as-is instead of reviewing it in an interactive terminal. */
+	yes?: boolean
+}
+
+/**
+ * The opinionated extras a preset turns on, in the order they're offered for
+ * review. Each one writes files (or a README block) the user never asked for by
+ * name, which is the complaint in #461.
+ */
+const REVIEWABLE_FEATURES = [
+	{ key: 'gitHooks', label: 'Git hooks (Husky + lint-staged)' },
+	{ key: 'commitLint', label: 'Conventional commit linting (commitlint)' },
+	{ key: 'semanticRelease', label: 'Automated releases (semantic-release)' },
+	{ key: 'securityAutomation', label: 'Security automation (Dependabot + CodeQL)' },
+	{ key: 'badges', label: 'README status badges' },
+	{ key: 'aiSetup', label: 'AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot)' },
+] as const satisfies ReadonlyArray<{ key: keyof ProjectConfig; label: string }>
+
+/**
+ * A preset run may only ask questions when a human is on both ends of the pipe.
+ * Redirect either direction and this is CI — the case `--preset` exists for —
+ * where the one-shot behaviour has to stay exactly as it was.
+ */
+function isInteractiveTerminal(): boolean {
+	return process.stdin.isTTY === true && process.stdout.isTTY === true
+}
+
+/**
+ * Show what the preset resolved to and let the user drop parts of it before a
+ * single file is written (#461).
+ */
+async function reviewPresetConfig(config: ProjectConfig): Promise<ProjectConfig> {
+	const files = computeFileList(config)
+	console.log(chalk.cyan(`\n📄 This preset writes ${files.length} files:\n`))
+	for (const file of files) console.log(chalk.gray(`   ${file}`))
+	console.log()
+
+	const enabled = REVIEWABLE_FEATURES.filter((feature) => config[feature.key] === true)
+	if (enabled.length === 0) return config
+
+	const { features } = await inquirer.prompt([
+		{
+			type: 'checkbox',
+			name: 'features',
+			message: '🧹 Uncheck anything you do not want:',
+			choices: enabled.map((feature) => ({
+				name: feature.label,
+				value: feature.key,
+				checked: true,
+			})),
+		},
+	])
+
+	const kept = new Set(features as string[])
+	const reviewed = { ...config }
+	for (const feature of enabled) {
+		if (!kept.has(feature.key)) reviewed[feature.key] = false
+	}
+	return reviewed
 }
 
 /** `null` means the run was declined, not that it failed — see promptForConfig. */
@@ -111,7 +170,9 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 			throw new Error(`Unknown preset: ${options.preset}. Available: ${PRESET_NAMES.join(', ')}`)
 		}
 		const projectName = path.basename(path.resolve(options.directory))
-		return buildPresetConfig(options.preset as PresetName, projectName)
+		const config = buildPresetConfig(options.preset as PresetName, projectName)
+		if (options.dryRun || options.yes || !isInteractiveTerminal()) return config
+		return reviewPresetConfig(config)
 	}
 	return promptForConfig(path.resolve(options.directory))
 }
