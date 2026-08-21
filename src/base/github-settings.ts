@@ -76,8 +76,8 @@ export const GITHUB_STANDARD = {
 } as const
 
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
-const RELEASE_GATE_CHECK = 'Release gate'
-const RELEASE_ENV_CHECK = 'Release environment'
+export const RELEASE_GATE_CHECK = 'Release gate'
+export const RELEASE_ENV_CHECK = 'Release environment'
 const CHECK_NAMES = [
 	'Branch protection',
 	'Merge settings',
@@ -489,7 +489,7 @@ const RELEASE_ENVIRONMENT = 'release'
 const PUBLISH_COMMAND = /semantic-release|changesets\/action|(?:npm|pnpm|yarn)\s+publish/
 
 const GATE_HINT =
-	'Create a `release` environment with required reviewers (Settings → Environments) and add `environment: release` to the publishing job — a merge to the default branch then leaves the run `waiting` instead of publishing'
+	'Run `npx @rtorcato/repo-tooling fix release-environment` to create the `release` environment with required reviewers (you) and add `environment: release` to the publishing job — a merge to the default branch then leaves the run `waiting` instead of publishing'
 
 const ENV_HINT =
 	'Add `environment: release` to the publishing job, or delete the environment — whichever was meant. An environment nothing references still lists under Settings → Environments as though it gates something'
@@ -668,9 +668,9 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
  * environment" is the gate check's; "no `environment:` but a `release`
  * environment exists" is the environment check's, and the gate check defers.
  *
- * A repo that publishes nothing is `ok` — not applicable, not drift. There is
- * no fixer: creating the environment needs a `required_reviewers` list only a
- * human can supply, so both hints describe the manual step.
+ * A repo that publishes nothing is `ok` — not applicable, not drift. The fixer
+ * is `fix release-environment` (`applyReleaseEnvironment` below), which uses
+ * the authenticated user as the required reviewer.
  */
 async function checkReleaseGate(
 	gh: GhExec,
@@ -932,6 +932,150 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 					`   ${GIT_PLUGIN_REMEDY}.`
 			)
 		)
+	}
+
+	if (applied.length === 0) console.error(chalk.gray('   already configured — nothing to apply'))
+	return applied
+}
+
+// --- Release environment scaffolding (#429) --------------------------------
+
+/**
+ * Insert `environment: <env>` as the first key of job `jobId`. Line-based, same
+ * reasoning as `workflowJobs`: this package ships no YAML dependency, and jobs
+ * sit one indent level under `jobs:` with their keys one level below. Returns
+ * null when the job cannot be found. The caller only reaches this when
+ * `jobEnvironment()` was null, so it never doubles an existing key.
+ */
+export function addJobEnvironment(yaml: string, jobId: string, env: string): string | null {
+	const lines = yaml.split('\n')
+	const start = lines.findIndex((l) => /^jobs:\s*$/.test(l))
+	if (start === -1) return null
+	const indentOf = (l: string) => l.length - l.trimStart().length
+
+	// The job headers' indent — from the first real line after `jobs:`, exactly
+	// as workflowJobs derives it, so the two agree on what counts as a header.
+	let jobIndent = -1
+	for (let i = start + 1; i < lines.length; i++) {
+		const line = lines[i] ?? ''
+		if (line.trim() === '' || line.trimStart().startsWith('#')) continue
+		if (indentOf(line) === 0) return null
+		jobIndent = indentOf(line)
+		break
+	}
+	if (jobIndent === -1) return null
+
+	for (let i = start + 1; i < lines.length; i++) {
+		const line = lines[i] ?? ''
+		if (line.trim() === '' || line.trimStart().startsWith('#')) continue
+		if (indentOf(line) === 0) return null // left the jobs block
+		if (indentOf(line) !== jobIndent || !line.trim().startsWith(`${jobId}:`)) continue
+		// Key indent = the job's first real line, so the insert matches whatever
+		// indentation the file already uses.
+		for (let j = i + 1; j < lines.length; j++) {
+			const next = lines[j] ?? ''
+			if (next.trim() === '' || next.trimStart().startsWith('#')) continue
+			lines.splice(j, 0, `${' '.repeat(indentOf(next))}environment: ${env}`)
+			return lines.join('\n')
+		}
+		return null
+	}
+	return null
+}
+
+/**
+ * Scaffold the release environment gate — the fixer half of #429 (the checks
+ * shipped with #449). Two writes, each skipped when already in place:
+ *
+ * 1. `PUT /repos/{nwo}/environments/release` with the **authenticated user** as
+ *    the required reviewer. On a solo-maintained repo they are the only human
+ *    there is; add or swap reviewers afterwards under Settings → Environments.
+ *    An environment that already carries a `required_reviewers` rule is never
+ *    touched — whoever set it up made a richer decision than this default.
+ * 2. `environment: release` on the publishing job, so the merge leaves the run
+ *    `waiting` instead of publishing.
+ *
+ * A job already behind some *other* environment is a warning, not a rename —
+ * this fixer scaffolds the standard, it does not migrate a custom setup.
+ */
+export async function applyReleaseEnvironment(dir: string, exec?: GhExec): Promise<string[]> {
+	if (!(await fs.pathExists(path.join(dir, '.git')))) {
+		console.error(chalk.gray('   skipped — not a git repository'))
+		return []
+	}
+	const gh: GhExec = exec ?? ((args, stdin) => realGhExec(args, stdin, dir))
+	const probe = await probeRepo(gh)
+	if ('skip' in probe) {
+		console.error(chalk.gray(`   skipped — ${probe.skip}`))
+		return []
+	}
+	const nwo = probe.info.nwo
+
+	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
+	if (publish === 'skip') {
+		console.error(chalk.yellow('   skipped — could not read .github/workflows'))
+		return []
+	}
+	if (!publish) {
+		console.error(chalk.gray('   skipped — no workflow job publishes to a registry'))
+		return []
+	}
+	if (publish.environment !== null && publish.environment !== RELEASE_ENVIRONMENT) {
+		console.error(
+			chalk.yellow(
+				`   skipped — ${publish.file} \`${publish.job}\` already runs behind \`${publish.environment}\`; not renaming it`
+			)
+		)
+		return []
+	}
+
+	const envs = await readEnvironments(gh, nwo)
+	if (envs === 'skip') {
+		console.error(chalk.yellow('   skipped — could not read environments'))
+		return []
+	}
+
+	const applied: string[] = []
+	if (envs.get(RELEASE_ENVIRONMENT) !== true) {
+		const user = await gh(['api', 'user', '--jq', '.id'])
+		const id = user.ok ? Number.parseInt(user.stdout.trim(), 10) : Number.NaN
+		if (Number.isNaN(id)) {
+			console.error(
+				chalk.yellow(
+					`   could not resolve the authenticated user for required_reviewers: ${user.stderr.trim() || 'gh error'}`
+				)
+			)
+			return applied
+		}
+		const label = `\`${RELEASE_ENVIRONMENT}\` environment with the authenticated user as required reviewer`
+		const r = await gh(
+			['api', '-X', 'PUT', `repos/${nwo}/environments/${RELEASE_ENVIRONMENT}`, '--input', '-'],
+			JSON.stringify({ reviewers: [{ type: 'User', id }] })
+		)
+		if (r.ok) applied.push(label)
+		else {
+			console.error(chalk.yellow(`   could not apply ${label}: ${r.stderr.trim() || 'gh error'}`))
+			return applied
+		}
+	}
+
+	if (publish.environment === null) {
+		const file = path.join(dir, '.github', 'workflows', publish.file)
+		const updated = addJobEnvironment(
+			await fs.readFile(file, 'utf-8'),
+			publish.job,
+			RELEASE_ENVIRONMENT
+		)
+		if (updated === null) {
+			console.error(
+				chalk.yellow(
+					`   could not add \`environment:\` to ${publish.file} \`${publish.job}\` — add it by hand`
+				)
+			)
+		} else {
+			await fs.writeFile(file, updated)
+			applied.push(`environment: ${RELEASE_ENVIRONMENT} on ${publish.file} \`${publish.job}\``)
+		}
 	}
 
 	if (applied.length === 0) console.error(chalk.gray('   already configured — nothing to apply'))
