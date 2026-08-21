@@ -521,11 +521,16 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
  * is not a defect in this repo, and either of those statuses would fail its CI
  * over a file CI has never seen. `optional-missing` is the honest verdict — an
  * opt-in workflow tool that isn't configured — and it leaves the exit code alone.
+ *
+ * `skillsDir` is doctor's `--skills-dir`. Without it this reported against
+ * `~/.claude/skills` whatever directory the repo actually installs into, so a
+ * consumer who passes the flag to `fix` saw a permanent false `optional-missing`
+ * for a skill they have (#485).
  */
-export async function checkClaudeSkills(): Promise<CheckResult> {
+export async function checkClaudeSkills(skillsDir?: string): Promise<CheckResult> {
 	const check = 'Claude skills'
 	const hint = `Run \`npx @rtorcato/repo-tooling fix claude-skills\` to install the ${SHIPPED_SKILL} skill (writes outside the repo; opt-in, so \`fix\` alone skips it)`
-	const status = await claudeSkillStatus()
+	const status = await claudeSkillStatus(SHIPPED_SKILL, skillsDir)
 	if (!status.installed) {
 		return {
 			check,

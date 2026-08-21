@@ -82,6 +82,8 @@ export { evaluateNodeVersion }
 export interface DoctorOptions {
 	directory?: string
 	json?: boolean
+	/** `--skills-dir`, mirroring `fix` — the read side of the same flag (#485). */
+	skillsDir?: string
 }
 
 const PACKAGE = '@rtorcato/repo-tooling'
@@ -222,6 +224,13 @@ interface BaseCheckOptions {
 	language: DetectedLanguage
 	/** The module's `codeqlLanguages`; empty means CodeQL can't analyse it (#289). */
 	codeqlLanguages: readonly string[]
+	/**
+	 * The run's `--skills-dir` — the one field here that isn't language-shaped.
+	 * It rides along because it is the only way the user-global skills check
+	 * hears about the flag, and threading it as a separate parameter reformats
+	 * every call site for no gain (#485).
+	 */
+	skillsDir?: string
 }
 
 // The language-agnostic checks (src/base): repo hygiene, git hooks, CI,
@@ -262,13 +271,13 @@ async function runBaseChecks(
 	results.push(await checkBrand(dir))
 	results.push(await checkAiSetup(dir))
 	// User-global, not repo state — see checkClaudeSkills on why it never returns drift.
-	results.push(await checkClaudeSkills())
+	results.push(await checkClaudeSkills(opts.skillsDir))
 	results.push(await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget))
 	results.push(await checkCoverageUpload(dir))
 	return results
 }
 
-export async function runDoctor(dir: string): Promise<CheckResult[]> {
+export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckResult[]> {
 	const targetDir = path.resolve(dir)
 
 	const lock = await readLockfile(targetDir)
@@ -298,6 +307,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				presetWorkflow: null,
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
+				skillsDir,
 			})),
 		]
 		return demoteDeclined(results, lock)
@@ -321,6 +331,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				presetWorkflow: renderSwiftWorkflow(await readSwiftPackage(targetDir)),
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
+				skillsDir,
 			})),
 			...(await runSwiftChecks(targetDir)),
 		]
@@ -345,6 +356,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				presetWorkflow: renderPythonWorkflow(await readPyproject(targetDir)),
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
+				skillsDir,
 			})),
 			...(await runPythonChecks(targetDir)),
 		]
@@ -371,6 +383,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				presetWorkflow: renderPerlWorkflow(await readPerlProject(targetDir)),
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
+				skillsDir,
 			})),
 			...(await runPerlChecks(targetDir)),
 		]
@@ -439,6 +452,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 			),
 			language,
 			codeqlLanguages: languageModule.codeqlLanguages,
+			skillsDir,
 		}))
 	)
 
@@ -509,7 +523,7 @@ export function summarize(results: CheckResult[]): {
 
 export async function doctorCommand(options: DoctorOptions = {}) {
 	const dir = options.directory ?? process.cwd()
-	const results = await runDoctor(dir)
+	const results = await runDoctor(dir, options.skillsDir)
 
 	if (options.json) {
 		console.log(JSON.stringify({ directory: path.resolve(dir), results }, null, 2))
