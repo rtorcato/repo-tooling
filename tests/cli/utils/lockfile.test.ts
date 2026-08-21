@@ -170,3 +170,27 @@ describe('recordAssetHash', () => {
 		expect(await fs.pathExists(join(dir, LOCKFILE_NAME))).toBe(false)
 	})
 })
+
+// #524: writeLockfile rebuilds the object from scratch, so any key it does not
+// name is silently dropped — the same trap the `assets` carry-forward exists for.
+describe('aiLoop settings survive a rewrite', () => {
+	it('carries aiLoop forward when only config is rewritten', async () => {
+		const dir = newTmpDir()
+		await writeLockfile(dir, baseConfig())
+		const file = join(dir, '.repo-tooling.json')
+		const lock = await fs.readJson(file)
+		await fs.writeJson(file, { ...lock, aiLoop: { agentUser: 'some-bot' } }, { spaces: 2 })
+
+		await writeLockfile(dir, { ...baseConfig(), projectName: 'renamed' })
+
+		const after = await fs.readJson(file)
+		expect(after.aiLoop).toEqual({ agentUser: 'some-bot' })
+		expect(after.config.projectName).toBe('renamed')
+	})
+
+	it('omits the key entirely when nothing set it', async () => {
+		const dir = newTmpDir()
+		await writeLockfile(dir, baseConfig())
+		expect(await fs.readJson(join(dir, '.repo-tooling.json'))).not.toHaveProperty('aiLoop')
+	})
+})

@@ -47,6 +47,12 @@ ROOT=$(git rev-parse --path-format=absolute --git-common-dir)/..; ROOT=$(cd "$RO
 WT_ROOT="$(dirname "$ROOT")/$(basename "$ROOT")-worktrees"
 R=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 git -C "$ROOT" fetch --prune
+
+# Optional: the account in-flight work is assigned to, so `assignee` says whose
+# turn it is. Unset → nothing below assigns, exactly as before. See the
+# ai-issue-loop skill's Pass 0 for why this is repo config rather than an env var.
+AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
+[ -n "$AGENT_USER" ] && { gh api "repos/$R/assignees/$AGENT_USER" --silent 2>/dev/null || AGENT_USER=""; }
 ```
 
 `R` comes from the working directory's remote and is the only repo touched —
@@ -112,7 +118,8 @@ carrying both re-enters the queue the instant `ai-wip` clears):
 
 ```bash
 for n in <numbers>; do
-  gh issue edit -R "$R" $n --add-label ai-wip --remove-label ai-ready
+  gh issue edit -R "$R" $n --add-label ai-wip --remove-label ai-ready \
+    ${AGENT_USER:+--add-assignee "$AGENT_USER"}
   SLUG="ai-$n-<3-4 kebab words from the title>"
   mkdir -p "$WT_ROOT"
   git -C "$ROOT" worktree add "$WT_ROOT/$SLUG" -b "$SLUG" origin/main
@@ -133,8 +140,11 @@ and why.
 Call `Workflow` with the script below, passing the selected issues as `args`:
 
 ```
-Workflow({args: {repo: R, issues: [{number, title, slug, worktree}, …]}, script: …})
+Workflow({args: {repo: R, agentUser: AGENT_USER, issues: [{number, title, slug, worktree}, …]}, script: …})
 ```
+
+Pass `agentUser` as the empty string when `AGENT_USER` is unset — the script
+tests it, so an empty value simply drops every assign.
 
 ```js
 export const meta = {
@@ -205,8 +215,9 @@ leave the worktree in place, and return pr: null.`,
 
 	(r, i) => !r?.pr ? [] : parallel(REVIEWERS.map((v) => () => agent(
 		`Review GitHub PR #${r.pr} in ${args.repo}. First claim your arm:
-\`gh pr edit ${r.pr} --add-label ${v.claim}\` — it stops a concurrent
-ai-issue-loop tick spawning a duplicate of you.
+\`gh pr edit ${r.pr} --add-label ${v.claim}${args.agentUser ? ` --add-assignee ${args.agentUser}` : ''}\` — the label
+stops a concurrent ai-issue-loop tick spawning a duplicate of you, and the
+assignee says the PR is the machine's turn until Pass 1 hands it back.
 
 Read exactly three things and nothing else: \`gh pr view ${r.pr}\`,
 \`gh pr diff ${r.pr}\`, and \`gh issue view ${i.number}\`. Do not explore the

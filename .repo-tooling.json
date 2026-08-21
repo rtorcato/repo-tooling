@@ -26,6 +26,9 @@
     "bundler": "none",
     "language": "js"
   },
+  "aiLoop": {
+    "agentUser": "rtorcato-bot"
+  },
   "writtenBy": "@rtorcato/repo-tooling@3.11.0",
   "writtenAt": "2026-08-20T17:32:17.649Z"
 }
