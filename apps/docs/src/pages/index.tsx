@@ -183,9 +183,23 @@ type Example = {
 }
 
 // Hand-transcribed from the real CLI. When you change what these commands
-// print, update the matching entry here — the source of truth for each tab is
-// src/cli/commands/{setup,doctor,fix}.ts. Lines marked `…` are truncated on
+// print, update the matching entry here. Lines marked `…` are truncated on
 // purpose (a real run prints the full list); nothing else here is invented.
+//
+// Each command file renders the framing, but most of the per-item text does
+// not live there — to check a tab against the code, start at the command and
+// follow it out:
+//   setup  — src/cli/commands/setup.ts (file-count banner, feature
+//            checkboxes, phase lines); the file list itself is
+//            computeFileList() in src/cli/commands/setup-presets.ts.
+//   doctor — src/cli/commands/doctor.ts (heading, status lines, Summary,
+//            Next steps) also owns the Release token check; every other check
+//            name/detail/hint comes from src/base/checks.ts and
+//            src/languages/js/checks.ts.
+//   fix    — src/cli/commands/fix.ts (counts, wrote/skipped lines, Summary);
+//            the `check → target` arrows come from
+//            src/cli/commands/fix-targets.ts, and which checks have a fixer
+//            or are skipped unless named explicitly from src/base/fixers.ts.
 const EXAMPLES: Example[] = [
 	{
 		label: 'setup',
