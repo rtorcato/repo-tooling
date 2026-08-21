@@ -182,22 +182,58 @@ type Example = {
 	code: string
 }
 
+// Hand-transcribed from the real CLI. When you change what these commands
+// print, update the matching entry here. Lines marked `…` are truncated on
+// purpose (a real run prints the full list); nothing else here is invented.
+//
+// Each command file renders the framing, but most of the per-item text does
+// not live there — to check a tab against the code, start at the command and
+// follow it out:
+//   setup  — src/cli/commands/setup.ts (file-count banner, feature
+//            checkboxes, phase lines); the file list itself is
+//            computeFileList() in src/cli/commands/setup-presets.ts.
+//   doctor — src/cli/commands/doctor.ts (heading, status lines, Summary,
+//            Next steps) also owns the Release token check; every other check
+//            name/detail/hint comes from src/base/checks.ts and
+//            src/languages/js/checks.ts.
+//   fix    — src/cli/commands/fix.ts (counts, wrote/skipped lines, Summary);
+//            the `check → target` arrows come from
+//            src/cli/commands/fix-targets.ts, and which checks have a fixer
+//            or are skipped unless named explicitly from src/base/fixers.ts.
 const EXAMPLES: Example[] = [
 	{
 		label: 'setup',
-		file: 'npx @rtorcato/repo-tooling setup',
+		file: 'npx @rtorcato/repo-tooling setup --preset library',
 		language: 'bash',
-		code: `$ npx @rtorcato/repo-tooling setup
+		code: `$ npx @rtorcato/repo-tooling setup --preset library
 
-🛠️  Welcome to repo-tooling setup!
-? Project type:    📚 Library/Package
-? TypeScript:      ✅ Yes
-? Linter:          ⚡ Biome
-? Test framework:  ⚡ Vitest
-? Git hooks:       ✅ Husky + lint-staged
-? Releases:        🚀 semantic-release
+📄 This preset writes 32 files:
 
-✅ Setup complete.`,
+   package.json
+   .repo-tooling.json
+   .editorconfig
+   .nvmrc
+   .gitignore
+   knip.json
+   .vscode/extensions.json
+   tsconfig.json
+   … and 24 more
+
+? 🧹 Uncheck anything you do not want:
+❯◉ Git hooks (Husky + lint-staged)
+ ◉ Conventional commit linting (commitlint)
+ ◉ Automated releases (semantic-release)
+ ◉ Security automation (Dependabot + CodeQL)
+ ◯ README status badges
+ ◯ AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot)
+
+🛠️  Scaffolding library in ~/my-lib
+
+📝 Generating configuration files...
+
+📦 Installing dependencies...
+
+✅ Setup completed successfully!`,
 	},
 	{
 		label: 'doctor',
@@ -205,14 +241,26 @@ const EXAMPLES: Example[] = [
 		language: 'bash',
 		code: `$ npx @rtorcato/repo-tooling doctor
 
-⚕️  Checking project health…
-✔ TypeScript      base config extends @rtorcato/repo-tooling
-✔ Biome           config present
-⚠ Vitest          coverage thresholds drifted
-⚠ Dependabot      not configured
-✖ CI workflow     missing typecheck job
+🩺 Diagnosing ~/my-lib against @rtorcato/repo-tooling presets...
 
-2 warnings, 1 missing → run \`fix\` to resolve.`,
+  ❌ TypeScript — missing
+     no tsconfig.json found
+  ⚠️  Release token — drift
+     release.yml runs semantic-release with bare GITHUB_TOKEN
+  ✅ EditorConfig — ok
+     .editorconfig found
+  ✅ GitHub Actions — ok
+     2 workflows in .github/workflows/
+  ➖ Dependabot — not configured
+     no Dependabot or Renovate config
+  … 47 more checks
+
+  Summary: 48 ok, 1 drift, 1 missing, 2 not configured
+
+  Next steps:
+    - Run \`npx @rtorcato/repo-tooling fix tsconfig\` to scaffold TypeScript
+    - Run \`npx @rtorcato/repo-tooling fix dependabot\` to scaffold Dependabot
+    - Run \`npx @rtorcato/repo-tooling fix\` to walk all findings interactively`,
 	},
 	{
 		label: 'fix',
@@ -220,12 +268,19 @@ const EXAMPLES: Example[] = [
 		language: 'bash',
 		code: `$ npx @rtorcato/repo-tooling fix --yes
 
-🔧 Applying fixes…
-✔ vitest          reset coverage thresholds
-✔ dependabot      scaffolded .github/dependabot.yml
-✔ ci              added typecheck job to ci.yml
+🔧 4 item(s) to address
 
-3 fixes applied. Re-run \`doctor\` to verify.`,
+  TypeScript (missing) → tsconfig
+  ✅ wrote tsconfig.json, package.json
+     ↻ .repo-tooling.json updated to reflect the new choice
+  — Release token: no fixer registered
+  Dependabot (optional-missing) → dependabot
+  ✅ wrote .github/dependabot.yml, .github/workflows/dependabot-automerge.yml
+     ↻ .repo-tooling.json updated to reflect the new choice
+  Claude skills (optional-missing) → claude-skills
+    skipped — run \`fix claude-skills\` explicitly
+
+  Summary: 2 applied, 1 skipped, 1 unsupported`,
 	},
 ]
 
