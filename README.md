@@ -234,8 +234,8 @@ MIT — see [LICENSE](LICENSE).
 Any agent that supports the [`skills`](https://www.npmjs.com/package/skills) CLI can install this repo's skills straight from GitHub — no clone, no package install:
 
 ```bash
-npx skills add https://github.com/rtorcato/repo-tooling --skill ai-issue-loop
-npx skills add https://github.com/rtorcato/repo-tooling --skill npm-publish
-npx skills add https://github.com/rtorcato/repo-tooling --skill repo-tooling
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-issue-loop'
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'npm-publish'
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'repo-tooling'
 ```
 <!-- js-tooling:skills:end -->

@@ -4,6 +4,7 @@
 
 import path from 'node:path'
 import fs from 'fs-extra'
+import { shellQuote } from '../utils/shell.js'
 import { upsertBlock } from './agent-rules.js'
 import { parseRepository } from './badges.js'
 
@@ -26,11 +27,17 @@ export async function findSkills(targetDir: string): Promise<string[]> {
 /**
  * Build the README section body (inner content, no delimiters) listing one
  * `npx skills add` command per skill. Returns '' when there are no skills.
+ *
+ * The skill name is a directory basename — `findSkills` takes whatever is under
+ * `skills/`, and nothing constrains it — so it is quoted (#498). `owner`/`repo`
+ * are not: `parseRepository` already matches them against `[\w.-]+`. Unlike the
+ * doctor hint of #493 this line is committed to a README and rendered on GitHub
+ * and npm, where it gets pasted by people who did not create the directory.
  */
 export function buildSkillsInstallBody(owner: string, repo: string, skills: string[]): string {
 	if (skills.length === 0) return ''
 	const commands = skills
-		.map((s) => `npx skills add https://github.com/${owner}/${repo} --skill ${s}`)
+		.map((s) => `npx skills add https://github.com/${owner}/${repo} --skill ${shellQuote(s)}`)
 		.join('\n')
 	const plural = skills.length > 1 ? 's' : ''
 	return [
@@ -38,10 +45,21 @@ export function buildSkillsInstallBody(owner: string, repo: string, skills: stri
 		'',
 		`Any agent that supports the [\`skills\`](https://www.npmjs.com/package/skills) CLI can install this repo's skill${plural} straight from GitHub — no clone, no package install:`,
 		'',
-		'```bash',
+		`${fenceFor(commands)}bash`,
 		commands,
-		'```',
+		fenceFor(commands),
 	].join('\n')
+}
+
+/**
+ * A fence longer than any backtick run in the content, per CommonMark. Quoting
+ * cannot help here: a name may contain backticks *and* a newline, which puts
+ * arbitrary text at the start of a line inside the block and would otherwise
+ * close it early, mangling the rendered README.
+ */
+function fenceFor(content: string): string {
+	const longestRun = Math.max(0, ...[...content.matchAll(/`+/g)].map((m) => m[0].length))
+	return '`'.repeat(Math.max(3, longestRun + 1))
 }
 
 /**
