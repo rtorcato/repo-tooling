@@ -498,4 +498,37 @@ describe('setup language prompt', () => {
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
 		expect(lock.config.language).toBe('js')
 	})
+
+	// #463: every test above spies on `inquirer.prompt`, which replaces the
+	// dispatcher wholesale — so they all passed against a wizard that could not
+	// ask a single question. inquirer v10 renamed `list` to `select`, v14 shipped
+	// in this repo, and `npx repo-tooling setup` died on its first prompt with
+	// `UnknownPromptTypeError` while this suite stayed green.
+	//
+	// The fix is to check the questions against the *installed* inquirer's own
+	// registry rather than a list written down here, so the next rename fails at
+	// the dependency bump instead of in a user's terminal.
+	it('only uses prompt types the installed inquirer registers', async () => {
+		const registered = new Set(Object.keys(inquirer.createPromptModule().prompts))
+		// Guard the oracle itself: an empty registry would pass everything.
+		expect(registered.has('select')).toBe(true)
+
+		const dir = newTmpDir()
+		const spy = mockPrompt({ language: 'js' }, JS_ANSWERS)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, skipInstall: true })
+		} finally {
+			logSpy.mockRestore()
+		}
+
+		const asked = spy.mock.calls.flatMap(
+			([questions]) => questions as Array<{ type?: string; name?: string }>
+		)
+		// Without this the assertion below passes vacuously on zero questions.
+		expect(asked.length).toBeGreaterThan(5)
+		expect(
+			asked.filter((q) => q.type && !registered.has(q.type)).map((q) => `${q.name}: ${q.type}`)
+		).toEqual([])
+	})
 })

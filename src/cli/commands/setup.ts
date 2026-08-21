@@ -192,7 +192,7 @@ async function promptForLanguage(targetDir: string): Promise<LanguageModule> {
 	const detected = await detectLanguage(targetDir)
 	const { language } = await inquirer.prompt([
 		{
-			type: 'list',
+			type: 'select',
 			name: 'language',
 			message: '🗣️  What is the primary language of this repo?',
 			choices: Object.values(LANGUAGES).map((module) => ({
@@ -273,7 +273,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			validate: (input: string) => input.trim().length > 0 || 'Project name is required',
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'projectType',
 			message: '🏗️  What type of project are you building?',
 			choices: [
@@ -291,7 +291,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			default: true,
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'tsConfig',
 			message: '⚙️  Which TypeScript configuration?',
 			choices: (answers: any) => {
@@ -318,7 +318,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			when: (answers: any) => answers.useTypeScript,
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'lintingTool',
 			message: '🔍 Which linting/formatting tool?',
 			choices: [
@@ -330,7 +330,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			default: 'biome',
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'eslintConfig',
 			message: '🔧 Which ESLint configuration?',
 			choices: (answers: any) => {
@@ -350,7 +350,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			when: (answers: any) => answers.lintingTool !== 'none',
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'testingFramework',
 			message: '🧪 Which testing framework?',
 			choices: [
@@ -363,7 +363,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			default: 'vitest',
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'testEnvironment',
 			message: '🌍 Test environment?',
 			choices: [
@@ -388,7 +388,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			when: (answers: any) => answers.gitHooks,
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'releaseTool',
 			message: '🚀 Automated release tool?',
 			choices: [
@@ -433,7 +433,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			default: true,
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'orchestrator',
 			message: '🚀 Monorepo task orchestrator?',
 			choices: [
@@ -456,7 +456,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				answers.projectType === 'nextjs-app',
 		},
 		{
-			type: 'list',
+			type: 'select',
 			name: 'bundler',
 			message: '📦 Which bundler/build tool?',
 			choices: (answers: any) => {
