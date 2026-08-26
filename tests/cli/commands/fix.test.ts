@@ -14,6 +14,7 @@ import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
 	DEPENDABOT_CONFIG,
 } from '../../../src/cli/generators/security.js'
+import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -1161,6 +1162,23 @@ describe('fix + lockfile', () => {
 		expect(lock.version).toBe(LOCKFILE_VERSION)
 		expect(lock.config.projectName).toBe('demo')
 		expect(lock.config.linting.tool).toBe('biome')
+	})
+
+	it('fix lockfile --yes migrates an older lockfile in place, keeping its config (#531)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		// An unmodified copy of the shipped biome preset — identifiable, so the
+		// migration records its hash even though the v1 file tracked no assets.
+		await copyPreset('biome', dir)
+		await writeLock(dir, { testing: { framework: 'jest', environment: 'node' } })
+
+		await fixCommand('lockfile', { directory: dir, yes: true })
+
+		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
+		expect(lock.version).toBe(LOCKFILE_VERSION)
+		// Recorded choices survive — no re-inference over an existing lockfile.
+		expect(lock.config.testing.framework).toBe('jest')
+		expect(lock.assets.biome).toMatch(/^[0-9a-f]{64}$/)
 	})
 
 	it('fix vitest --yes regenerates the config but keeps an existing vitest.setup.ts', async () => {

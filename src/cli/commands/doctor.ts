@@ -184,6 +184,16 @@ function checkLockfile(lock: Lockfile | null): CheckResult {
 			hint: 'Upgrade @rtorcato/repo-tooling to a release that supports this lockfile version',
 		}
 	}
+	// Not drift: nothing is wrong, a newer capability (e.g. v3 asset-drift
+	// tracking) is just dormant until the file is rewritten (#531).
+	if (lock.version < LOCKFILE_VERSION) {
+		return {
+			check: 'lockfile',
+			status: 'optional-missing',
+			detail: `.repo-tooling.json is v${lock.version}; this CLI writes v${LOCKFILE_VERSION} — newer doctor capabilities stay dormant until it's migrated`,
+			hint: 'Run `npx @rtorcato/repo-tooling fix lockfile` to migrate it in place',
+		}
+	}
 	return {
 		check: 'lockfile',
 		status: 'ok',

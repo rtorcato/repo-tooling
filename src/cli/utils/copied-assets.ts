@@ -63,6 +63,26 @@ export async function classifyCopiedAssets(dir: string): Promise<CopiedAssetStat
 	return statuses
 }
 
+/**
+ * Preset hashes `fix lockfile` can record with confidence (#531): the target
+ * file exists and matches the shipped asset byte-for-byte, so it is provably an
+ * unmodified copy of what this package ships. A file that differs could be a
+ * local fork or a stale copy of an older release — indistinguishable without a
+ * recorded hash, so those stay untracked, which is the honest answer.
+ */
+export async function identifiablePresetHashes(dir: string): Promise<Record<string, string>> {
+	const packageRoot = getPackageRoot()
+	const hashes: Record<string, string> = {}
+	for (const name of Object.keys(PRESETS) as PresetName[]) {
+		const preset = PRESETS[name]
+		const current = await hashFile(path.join(dir, preset.target))
+		if (current === null) continue
+		const shipped = await hashFile(path.join(packageRoot, preset.source))
+		if (shipped !== null && shipped === current) hashes[name] = current
+	}
+	return hashes
+}
+
 const listOf = (s: CopiedAssetStatus[]) => s.map((a) => a.preset).join(', ')
 
 export async function checkCopiedAssets(dir: string): Promise<CheckResult> {

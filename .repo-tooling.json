@@ -1,7 +1,8 @@
 {
   "$schema": "https://rtorcato.github.io/repo-tooling/schemas/lockfile.json",
-  "version": 2,
+  "version": 3,
   "config": {
+    "language": "js",
     "projectName": "@rtorcato/repo-tooling",
     "projectType": "library",
     "typescript": {
@@ -23,12 +24,15 @@
     "commitLint": true,
     "semanticRelease": true,
     "securityAutomation": true,
-    "bundler": "none",
-    "language": "js"
+    "bundler": "none"
+  },
+  "assets": {
+    "docusaurus-sync-changelog": "de05aecb200657c2023dc3540dbdd2f9f2f17f1027e67a06266119d12cc05fea",
+    "docusaurus-theme": "3ead9ab407c2676bc404f7df552977a0fb0412b0f0d0bcde223c271a51860005"
   },
   "aiLoop": {
     "agentUser": "rtorcato-bot"
   },
   "writtenBy": "@rtorcato/repo-tooling@3.11.0",
-  "writtenAt": "2026-08-20T17:32:17.649Z"
+  "writtenAt": "2026-08-26T14:58:22.032Z"
 }
