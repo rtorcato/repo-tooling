@@ -80,11 +80,11 @@ drift with a second copy to maintain.
 | `ai-review` | PR | Awaiting agent review. |
 | `ai-reviewing-code` | PR | `code-reviewer` claimed and running. Cleared with its verdict. |
 | `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
-| `ai-ok-code` | PR | `code-reviewer` passed. |
-| `ai-ok-sec` | PR | `security-expert` passed. |
-| `ai-changes` | PR | A reviewer requested changes. Reviewers never apply it to a Dependabot PR. |
+| `ai-ok-code` | PR | `code-reviewer` passed. In-flight only — Pass 1 strips it at handoff. |
+| `ai-ok-sec` | PR | `security-expert` passed. In-flight only — Pass 1 strips it at handoff. |
+| `ai-changes` | PR | A reviewer requested changes, **or** Pass 1 sent the PR back over CI. Reviewers never apply it to a Dependabot PR. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
-| `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. Derived state; Pass 1 applies and strips it. |
+| `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. Derived state; Pass 1 applies and strips it, and it **supersedes** the `ai-ok-*` pair rather than joining it. |
 | `ai-suggested` | issue | Follow-up a reviewer filed. A triage queue, never auto-picked. Pass 2 closes it after 30 days untouched. |
 | `holding` | issue | A gate — closes on human judgement, never picked up. |
 
@@ -150,12 +150,13 @@ grep -qxF '.claude/ai-loop-status' .gitignore || echo '.claude/ai-loop-status' >
 
 ```
 issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
-PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> merge-ready, assigned to you, ai-review dropped
+PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> merge-ready, assigned to you (ai-review + both ai-ok-* dropped)
                                  │        (± ai-notes)       │              ─> YOU merge ─> worktree removed
                                  │                           └─ dependabot ─┬─ no ai-notes ─> auto-merge ─> worktree removed
                                  │                                          └─ ai-notes ───> merge-ready, assigned to you
                                  └─> ai-changes (issue PRs only) ─> fix round (max 2) ─> ai-review
-                                                                               └─ round 3 ─> ai-blocked
+                                     ▲                                         └─ round 3 ─> ai-blocked
+                                     └─ Pass 1 sends back: not CLEAN, or a required check FAILED
 ```
 
 `ai-reviewing-code` / `ai-reviewing-sec` are the *claim* step: Pass 3 applies one
@@ -428,7 +429,8 @@ gh api repos/$OWNER_REPO/environments \
 ```
 
 Non-zero → a non-Dependabot PR may auto-merge, but only carrying **all** of: both
-`ai-ok-code` and `ai-ok-sec`, no `ai-notes`, no `ai-changes`, and
+`ai-ok-code` and `ai-ok-sec` — or `merge-ready`, which subsumes them once an
+earlier tick handed the PR over — no `ai-notes`, no `ai-changes`, and
 `mergeStateStatus: CLEAN`. Zero, or the call errors, or `gh` lacks access to that
 endpoint → hand the PR over exactly as below.
 
@@ -508,38 +510,59 @@ leads with what to do.
 
 **Hand a ready PR over properly.** "Merge it yourself" is only actionable if the user
 can find it, and a PR sitting in a list of open PRs looks identical to one still being
-worked. So for every non-Dependabot PR carrying both `ai-ok-code` and `ai-ok-sec` and
-not `ai-changes`, assign it, label it, and clear the stale review flag — **but only
+worked. So for every non-Dependabot PR carrying both `ai-ok-code` and `ai-ok-sec` —
+or `merge-ready` already, from an earlier tick — and not `ai-changes`, assign it,
+label it, and clear the labels the handoff supersedes — **but only
 after the `mergeStateStatus` probe below reports `CLEAN`**. That ordering is what
 makes `merge-ready` assert more than the `ai-ok-*` pair ever did: reviews passed
 *and* GitHub will accept the merge.
 
 ```bash
-gh pr edit <N> --add-assignee @me --add-label merge-ready --remove-label ai-review \
+gh pr edit <N> --add-assignee @me --add-label merge-ready \
+  --remove-label ai-review --remove-label ai-ok-code --remove-label ai-ok-sec \
   ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
 ```
+
+**`merge-ready` replaces the pass pair — it does not join it.** A handed-off PR
+wearing `ai-ok-code`, `ai-ok-sec` *and* `merge-ready` says one thing three times,
+and the reader has to know which of the three is the strongest before they can
+act on any of them. `merge-ready` asserts strictly more than the pair (both
+reviews passed **and** `CLEAN`), so the pair carries no information once it is
+applied — a ready PR's whole vocabulary is the two-row table below.
+
+Consequently **`merge-ready` satisfies every later test for the `ai-ok-*` pair** —
+the gated-repo auto-merge arm above, the Dependabot arm below, and this pass's own
+selector on the next tick. The pair stays the in-flight signal Pass 3 writes and
+reads; it is only at the handoff that it stops being the thing anyone looks at.
 
 Dropping `AGENT_USER` is half the signal: leaving the agent assigned alongside
 you says you both owe it something, which is the one thing never true here.
 
 It lands in the user's *Assigned to you* view, and the labels then read as state rather
 than noise — `merge-ready` means **waiting on you**, filterable at a glance where an
-absence never was. Both
-halves matter: Pass 3 only ever *adds* the `ai-ok-*` labels, so without the removal a
-finished PR keeps wearing `ai-review` forever and looks mid-review. Idempotent, so
-re-running a tick is harmless.
+absence never was. Every removal
+matters: Pass 3 only ever *adds* its labels, so without them a finished PR keeps
+wearing `ai-review` forever and looks mid-review while three green-ish labels
+argue about who passed what. Idempotent, so re-running a tick is harmless.
 
-**`merge-ready` is derived state — reconcile it every tick.** The `ai-ok-*` pair
-plus `CLEAN` stays the source the loop computes from; the label only mirrors it.
-A PR carrying `merge-ready` while no longer `CLEAN`, or missing either pass
-label, gets it stripped (`gh pr edit <N> --remove-label merge-ready`). That is
+**`merge-ready` is derived state — reconcile it every tick.** `CLEAN` stays the
+source the loop computes from; the label only mirrors it. A PR carrying
+`merge-ready` while no longer `CLEAN`, or carrying `ai-changes`, gets it stripped
+(`gh pr edit <N> --remove-label merge-ready`) — and the two send-back blocks
+below strip it as part of the same edit. That is
 what keeps a stateless 15-minute loop from letting the label lie after `main`
 moves. Take no other action — do not merge, and **post no
-comment on a clean handoff**: nothing is wrong, so those three labels are the
+comment on a clean handoff**: nothing is wrong, so that one label is the
 whole message. A comment is how the loop records what a label cannot; a clean PR
 has nothing to record. An `ai-notes` handoff is the exception per the budget
 table — ≤10 lines through the marker upsert, linking the reviewer's
 `### Before merging` rather than restating it.
+
+**Reconcile on `CLEAN` only — never on a missing `ai-ok-*`.** The handoff strips
+that pair itself, so a rule that stripped `merge-ready` whenever a pass label was
+absent would undo the tick before it on every handed-off PR, leaving it with no
+labels at all, matching no selector in any pass, and assigned to a human with
+nothing saying why it is theirs.
 
 **Never strip `ai-notes` here.** It is the whole point of the handoff: it has to
 survive to the moment of merging, which is the moment it is for. A ready PR reads
@@ -547,8 +570,8 @@ one of two ways, and the difference must be legible without opening anything:
 
 | Labels | Means |
 |---|---|
-| `merge-ready` | Clean — merge freely. |
-| `merge-ready, ai-notes` | Passed, but open the comments first. |
+| `merge-ready` | Merge freely. |
+| `merge-ready`, `ai-notes` | Passed, but open the comments first. |
 
 **Check it can actually merge before calling it ready.** The `ai-ok-*` labels
 report the *agent review* verdict and nothing more — they say nothing about
@@ -595,8 +618,8 @@ gh pr edit <N> --add-assignee @me ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
 Count it as `rev`. Idempotent, so it also picks up ones an earlier tick stranded.
 
 So: every open PR **authored by `dependabot[bot]`**, labelled both `ai-ok-code`
-and `ai-ok-sec`, **not** `ai-changes`, **not** `ai-notes`, that has no
-`autoMergeRequest` yet:
+and `ai-ok-sec` (or `merge-ready`), **not** `ai-changes`, **not** `ai-notes`, that
+has no `autoMergeRequest` yet:
 
 ```bash
 gh pr merge <N> --auto --squash --delete-branch
@@ -612,10 +635,78 @@ no human picks it up. Merging
 unattended when a reviewer flagged something for a human writes the note into the
 void, which is the one way this label can be worse than useless.
 
-**Also flag CI red here** — it is the one stall the loop cannot resolve itself.
-Any PR that already has `autoMergeRequest != null` and a `FAILURE` in its
-`statusCheckRollup` will sit queued forever. Count these as `ci-red` for Pass 5;
-take no other action (a human decides whether to fix or close).
+**CI red on an issue PR is a send-back, not a wait.** Reviewers are diff-scoped
+and never see CI, so both arms happily pass a PR whose `build` failed two minutes
+after it opened — and nothing else in the pipeline was ever going to dispatch a
+fix. Observed on #543 (2026-08-26): the human found it via the red ✗ on the PR
+page, which is precisely the noticing this loop exists to do. `ai-changes` **is**
+the send-back label; Pass 3 dispatches the fix-round implementer off it, under
+the same 2-round budget.
+
+So for every open **non-Dependabot** PR carrying any `ai-*` label, with a
+completed `FAILURE` on a **required** check:
+
+```bash
+gh pr checks <N> --required --json name,state,link 2>/dev/null \
+  | jq -r '.[] | select(.state == "FAILURE") | "\(.name)\t\(.link)"'
+```
+
+1. `gh pr edit <N> --add-label ai-changes --remove-label ai-review --remove-label ai-ok-code --remove-label ai-ok-sec --remove-label ai-notes --remove-label merge-ready`
+2. **Comment through the marker upsert** — ≤10 lines, naming the failing check
+   and pasting the relevant excerpt from `gh run view <run-id> --log-failed`
+   (the run id is in that check's `link`). This step is not optional: the
+   fix-round prompt reads the PR's comments *as its instructions*, so without it
+   the implementer arrives at a PR marked `ai-changes` with nothing telling it
+   what changed or why.
+
+   **Write that excerpt to a file and pass `--body-file`; never interpolate the
+   log into the command.** A failing job prints whatever the branch told it to,
+   and on a public repo the branch is a stranger's — so the excerpt is untrusted
+   bytes that a contributor chooses. Inline `--body "$(gh run view …)"` puts
+   megabytes of it, control characters and all, through the shell and past
+   GitHub's comment size cap. The same rule already governs reviewer verdicts
+   further down; this is the one other place a body is assembled from output
+   nobody in this pipeline wrote. Trim to the failing lines before writing.
+3. Count it as `ci-red` for Pass 5, which carries the `⚠`.
+
+**Say in the comment that the fix may not be code.** #543's failure was the
+dogfood check finding a *bootstrap* gap — a label present in the canonical table
+and not yet on the repo — where the fix was `gh label create` / `fix labels`, or
+an `ACCEPTED` entry in `scripts/dogfood.mjs`, and never a branch edit. The
+implementer has repo-write, so leave that path open; a comment that assumes the
+branch is at fault steers it into editing code that is not wrong.
+
+Two carve-outs, both so the loop does not fight itself:
+
+- **An `ai-reviewing-code` / `ai-reviewing-sec` claim is active** — leave the PR
+  alone this tick. A reviewer is mid-run, and the fix round relabels `ai-review`
+  and re-spawns both arms anyway, so sending back now only throws away a review
+  in flight.
+- **`ai-changes` is already on the PR** — leave it. Re-applying is not free:
+  Pass 3 counts `ai-changes` applications off the timeline and stops at three, so
+  a stateless 15-minute loop re-adding it while CI stays red would exhaust the
+  round budget within the hour and mark the issue `ai-blocked` before any agent
+  had done anything.
+
+**`--required`, not the whole rollup.** `statusCheckRollup` also carries optional
+and third-party contexts, and an advisory check going red is not a broken PR —
+sending one back spends a fix round to change nothing. The required set is the
+actual merge gate, and `gh` already resolves which checks are in it. Dropping
+`ai-review` in step 1 is the mirror of what a `CHANGES` verdict does: leaving it
+on would have Pass 3 spawn reviewers *and* a fix round against one PR, reviewing
+a diff that is being rewritten underneath them. The implementer re-adds it when
+it pushes.
+
+No new label. `ai-changes` plus that comment already say "sent back, and why";
+if telling a review-rejected PR from a CI-rejected one in the list view ever
+matters, add a `ci-failing` rider on top of `ai-changes` then, not speculatively
+now.
+
+**A Dependabot PR is the exception — flag it, never send it back.** There is no
+fix round for one (Pass 3 treats `ai-changes` on a bot PR as terminal), so a red
+one that already armed auto-merge will sit queued forever and only a human can
+choose between a fix and a close. Count these as `ci-red` too; take no other
+action:
 
 ```bash
 gh pr list --state open --json number,autoMergeRequest,statusCheckRollup \
@@ -1347,49 +1438,73 @@ mkdir -p "$WT_ROOT"
 git -C "$ROOT" worktree add "$WT_ROOT/$SLUG" -b "$SLUG" origin/main
 ```
 
-**Then give it dependencies — and the choice matters.** Symlinking is the cheap
-path, but it is only correct for an issue confined to an app:
+**Then give it dependencies — from the repo's own symlink list.** `fix ai` writes
+`worktree.symlinkDirectories` into `.claude/settings.json`: the root
+`node_modules`, plus one entry per workspace package that has one, globbed from
+the repo's *own* `pnpm-workspace.yaml` / `package.json` `workspaces` (#406). That
+list is the single source of truth for what a worktree needs linked. Read it and
+do the linking here:
 
 ```bash
-# Only for app/docs-only issues — nothing under a workspace package.
-# Replaces worktree.symlinkDirectories. Link the workspace packages too, not just
-# the root — with only the root linked, `pnpm verify` ENOENTs at the treeshake step
-# because apps/*/node_modules is missing, and the agent cannot self-verify.
-ln -s "$ROOT/node_modules" "$WT_ROOT/$SLUG/node_modules"
-for app in "$ROOT"/apps/*/; do
-  [ -d "$app/node_modules" ] || continue
-  ln -s "$app/node_modules" "$WT_ROOT/$SLUG/apps/$(basename "$app")/node_modules"
+DIRS=$(jq -r '.worktree.symlinkDirectories[]? // empty' "$ROOT/.claude/settings.json" 2>/dev/null)
+for d in $DIRS; do
+  [ -d "$ROOT/$d" ] || continue          # an entry pointing at nothing links nothing
+  mkdir -p "$(dirname "$WT_ROOT/$SLUG/$d")"
+  ln -s "$ROOT/$d" "$WT_ROOT/$SLUG/$d"
 done
 ```
 
-**For anything touching a workspace package, do not symlink — install for real:**
+**Read the setting, do not rely on it.** `worktree.symlinkDirectories` is a
+**Claude Code** setting, honoured by `EnterWorktree` — which this pipeline
+forbids outright (see below) and replaces with a raw `git worktree add`. So the
+setting is *inert for exactly the worktrees this loop creates*: `doctor` can
+report `Claude worktree settings: ok` while every agent worktree gets its
+dependencies by some other path, which is how #511/PR #526 ended up hand-installed.
+Taking the list as data and doing the `ln -s` here is what makes that check mean
+something for loop worktrees too, without either subsystem owning the other.
+
+**No list, or no `.claude/settings.json` → install for real instead:**
 
 ```bash
-(cd "$WT_ROOT/$SLUG" && pnpm install)
+[ -z "$DIRS" ] && (cd "$WT_ROOT/$SLUG" && pnpm install)
 ```
 
-Those symlinks share the **root** and `apps/*`. pnpm workspaces keep the
-resolution that matters in each `packages/<name>/node_modules`, which is not
-symlinked and does not exist in a fresh worktree. Measured on `api-common`
-2026-08-20: the main checkout had per-package `node_modules` in **37 of 37**
-packages, the worktree had **1**. So `pnpm --filter <pkg> typecheck` there fails
-with `Cannot find module` rather than the real error — the agent cannot reproduce
-the bug, and the environment looks like the issue's fault. Issue #201 was handed
-back `ai-blocked` this way, well-diagnosed and untouched.
+That fallback is safe precisely because nothing was symlinked — the hazard below
+is `pnpm install` against a *symlinked* tree, not a real install in an isolated
+one. It costs a duplicate `node_modules` and about ten seconds, since pnpm
+hardlinks from the store. Run `npx @rtorcato/repo-tooling fix ai` in the repo to
+get the faster path back.
+
+Why the list has to come from that file rather than a hand-rolled glob: pnpm
+workspaces keep the resolution that matters in each
+`packages/<name>/node_modules`, and an earlier version of this pass linked the
+root and `apps/*` only — so it reproduced that gap on every repo that nests its
+packages anywhere else. Measured on `api-common` 2026-08-20: the main checkout
+had per-package `node_modules` in **37 of 37** packages, the worktree had **1**.
+So `pnpm --filter <pkg> typecheck` there fails with `Cannot find module` rather
+than the real error — the agent cannot reproduce the bug, and the environment
+looks like the issue's fault. Issue #201 was handed back `ai-blocked` this way,
+well-diagnosed and untouched. `workspaceSymlinkDirs` already globs the consuming
+repo's own layout, so deriving the list is both shorter here and correct on repos
+this file has never seen.
 
 **Never force `pnpm install` against a symlinked tree.** It wants to purge and
 rebuild the modules dir (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`), which
 mutates the **main checkout's** `node_modules` — shared by every other worktree
 and yanked out from under any agent mid-typecheck. `CI=true` and
 `--config.confirmModulesPurge=false` both silence that prompt; neither makes it
-safe. A real install in an unsymlinked worktree costs a duplicate `node_modules`
-and is the price of isolation. Pass 2's rebuild is the one sanctioned exception,
-and only because it is gated on no worktree surviving.
+safe. Now that the default path symlinks, this rule is **load-bearing rather than
+advisory** — the implementer prompt below states it, and `browser-common` #145 →
+PR #147 is what an implementer doing it anyway costs: the main checkout's `.bin`
+emptied, surfacing arbitrarily later in a human's `git push`. Pass 2's rebuild is
+the one sanctioned exception, and only because it is gated on no worktree
+surviving.
 
-**Once per repo, exclude the symlink from git.** Repos ignore `node_modules/`
-*with a trailing slash*, which does not match a symlink — so the link shows as
-untracked in every worktree and a `git add -A` commits it. `.git/info/exclude`
-is shared by all worktrees and never committed:
+**Once per repo, exclude the symlinks from git.** Repos ignore `node_modules/`
+*with a trailing slash*, which does not match a symlink — so every link shows as
+untracked in every worktree and a `git add -A` commits it. The pattern below has
+no slash, so it matches at any depth and covers the nested workspace links too.
+`.git/info/exclude` is shared by all worktrees and never committed:
 
 ```bash
 grep -qxF 'node_modules' "$ROOT/.git/info/exclude" || echo 'node_modules' >> "$ROOT/.git/info/exclude"
@@ -1403,9 +1518,9 @@ directory — the two rules are incompatible, so the call can only ever be refus
 five-plus times in one tick, each producing *"this session is isolated in the worktree
 …"* refusals on unrelated orchestrator commands. Implementers work via
 `git -C <absolute worktree path>` instead, which is what the prompt below says.
-Creating the worktree here also fixes the `worktree-` branch-prefix drift, and lets the
-`node_modules` symlink be explicit rather than depending on
-`worktree.symlinkDirectories` being configured.
+Creating the worktree here also fixes the `worktree-` branch-prefix drift, and it is
+why the symlinks above are created explicitly *from* `worktree.symlinkDirectories`
+rather than by `EnterWorktree` honouring it.
 
 **Spawn implementers one at a time — never two in the same message.** The worktree pin
 is a property of the session, not of an agent, so concurrent spawns cross-pin: the
