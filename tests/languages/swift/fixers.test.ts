@@ -70,10 +70,13 @@ describe('swift fixers', () => {
 		// edit (#311). `Monorepo` states the audit's own root-only scope (#317) —
 		// there is no drift for a fixer to close. `Release gate` and `Release
 		// environment` (#429) are covered by the base `release-environment` fixer.
+		// `AI loop agent` (#530) is unfixable by design — inviting a collaborator
+		// is the operator's call.
 		expect(uncovered).toEqual([
 			'language',
 			'Monorepo',
 			'Git identity',
+			'AI loop agent',
 			'README badges',
 			'Coverage upload',
 			'Package.swift',

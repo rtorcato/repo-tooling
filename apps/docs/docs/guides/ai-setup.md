@@ -71,6 +71,33 @@ auto-writes this same install section into your `README.md` — one
 `package.json`'s `repository`. It's a merge-safe delimited block, so your own
 README content is never touched, and repos without a `skills/` dir get nothing.
 
+## `aiLoop`: the agent account for the issue loop
+
+If you run the `ai-issue-loop` / `ai-workflow` skills, `.repo-tooling.json` can
+name the account that in-flight work is assigned to, so `assignee` says whose
+turn it is:
+
+```json
+{
+  "aiLoop": {
+    "agentUser": "your-bot-account"
+  }
+}
+```
+
+It's repo-scoped on purpose: the agent account is a collaborator on *this*
+repo, so committed config travels with the repo and survives a new laptop,
+where an env var would not. The field is optional — leave it out and the
+single-identity model (everything under your own account) is the default.
+
+The account must be an **assignable collaborator**. The skills verify that at
+runtime and silently assign nothing when it isn't — so a deleted bot, a typo,
+or a bot never invited to a new repo has no visible symptom in the loop
+itself. `doctor` closes that gap: the `AI loop agent` check verifies the login
+against your repo's own remote (`gh api repos/{owner}/{repo}/assignees/<user>`)
+and reports drift when it isn't assignable. Absent field ⇒ `ok`, not
+applicable.
+
 ## Worktrees: symlink `node_modules` instead of reinstalling it
 
 A Claude Code worktree starts empty, so an agent working one pays a full
