@@ -195,4 +195,25 @@ describe('aiLoop settings survive a rewrite', () => {
 		await writeLockfile(dir, baseConfig())
 		expect(await fs.readJson(join(dir, '.repo-tooling.json'))).not.toHaveProperty('aiLoop')
 	})
+
+	// #533 / #534: same trap, two more hand-edited-only keys.
+	it('carries requiredSkills and mcp forward, and omits them when unset', async () => {
+		const dir = newTmpDir()
+		await writeLockfile(dir, baseConfig())
+		const file = join(dir, '.repo-tooling.json')
+		expect(await fs.readJson(file)).not.toHaveProperty('requiredSkills')
+		expect(await fs.readJson(file)).not.toHaveProperty('mcp')
+
+		const mcp = { recommended: [{ name: 's', importance: 'critical', why: 'because' }] }
+		await fs.writeJson(
+			file,
+			{ ...(await fs.readJson(file)), requiredSkills: ['ai-issue-loop'], mcp },
+			{ spaces: 2 }
+		)
+		await writeLockfile(dir, { ...baseConfig(), projectName: 'renamed' })
+
+		const after = await fs.readJson(file)
+		expect(after.requiredSkills).toEqual(['ai-issue-loop'])
+		expect(after.mcp).toEqual(mcp)
+	})
 })

@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import packageJson from '../../../package.json' with { type: 'json' }
 import { CONFIG_SCHEMA, validateProjectConfig } from '../commands/setup-presets.js'
 import type { ProjectConfig } from '../commands/setup.js'
+import { SHIPPED_SKILLS } from '../generators/claude-skills.js'
 
 export const LOCKFILE_NAME = '.repo-tooling.json'
 // Package and bin name used before the js-tooling→repo-tooling rename (#272).
@@ -19,6 +20,28 @@ export const LEGACY_LOCKFILE_NAME = `.${LEGACY_TOOL_NAME}.json`
 // files carry no hashes, which reads as "not tracked", never as drift.
 export const LOCKFILE_VERSION = 3
 const LOCKFILE_SCHEMA_URL = 'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json'
+
+/**
+ * How much of the repo's workflow assumes a recommended MCP server (#534).
+ * Signals priority to a human reading the file, and nothing more — no code
+ * branches on it beyond printing it.
+ */
+export const MCP_IMPORTANCE = ['nice-to-have', 'important', 'critical'] as const
+export type McpImportance = (typeof MCP_IMPORTANCE)[number]
+
+/**
+ * One advisory MCP entry. Deliberately has no `command`, `args` or `env`: the
+ * lockfile says *what and why*, the native `.mcp.json` says *how*, and the human
+ * says *whether*. Executable server config committed here would be an install
+ * directive, and MCP servers run code.
+ */
+export interface McpRecommendation {
+	/** The server name as it would appear in `.mcp.json`. */
+	name: string
+	importance: McpImportance
+	/** One line of free text — the thing `.mcp.json` structurally cannot say. */
+	why: string
+}
 
 export interface Lockfile {
 	$schema?: string
@@ -46,6 +69,24 @@ export interface Lockfile {
 		 */
 		agentUser?: string
 	}
+	/**
+	 * Agent skills this repo's workflows depend on (#533), from `SHIPPED_SKILLS`.
+	 * Absence of a skill fails loudly; a stale installed copy fails silently, and
+	 * staleness is the one that hurts — so `doctor` compares each listed skill's
+	 * stamped hash against what this package ships.
+	 *
+	 * Check and hint only. A committed file that directs writes into `~/` is the
+	 * shape of a supply-chain attack even when the content is benign, so nothing
+	 * here ever runs `fix claude-skills`; doctor says stale, the human runs it.
+	 */
+	requiredSkills?: string[]
+	/**
+	 * Advisory MCP metadata (#534) — never an install directive. See
+	 * `McpRecommendation`.
+	 */
+	mcp?: {
+		recommended?: McpRecommendation[]
+	}
 	writtenBy: string
 	writtenAt: string
 }
@@ -59,8 +100,9 @@ export interface Lockfile {
  * `pnpm schema:generate` and gated by tests/cli/utils/lockfile-schema.test.ts.
  *
  * A function, not a const: lockfile.ts sits in an import cycle with
- * setup-presets.ts (via the swift scaffolder), so CONFIG_SCHEMA is in its TDZ
- * while this module evaluates.
+ * setup-presets.ts (via the swift scaffolder) and with claude-skills.ts (via
+ * copy-preset.ts), so CONFIG_SCHEMA and SHIPPED_SKILLS are both in their TDZ
+ * while this module evaluates. Reading them here, at call time, is safe.
  */
 // ponytail: key sets are compiler-checked against the type; a changed field
 // *type* (string → number) still needs both lines edited by hand.
@@ -108,6 +150,46 @@ export function lockfileSchema() {
 							'Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime.',
 					},
 				} satisfies Record<keyof NonNullable<Lockfile['aiLoop']>, object>,
+			},
+			requiredSkills: {
+				type: 'array',
+				items: { type: 'string', enum: SHIPPED_SKILLS },
+				description:
+					'Agent skills this repo\'s workflows depend on. doctor compares each installed copy\'s stamped hash against the shipped one and reports a missing or stale skill — always as "not configured", never drift, because it probes the machine rather than the repo. It never runs the fixer for you.',
+			},
+			mcp: {
+				type: 'object',
+				additionalProperties: false,
+				description:
+					"Advisory MCP metadata: names, importance and reasons only, never an install directive. Executable server config belongs in the native .mcp.json, which carries Claude Code's own first-use consent prompt.",
+				properties: {
+					recommended: {
+						type: 'array',
+						description:
+							"MCP servers this repo's workflow assumes. doctor reports which of them .mcp.json does not declare, informationally — it never installs or enables one.",
+						items: {
+							type: 'object',
+							additionalProperties: false,
+							required: ['name', 'importance', 'why'],
+							properties: {
+								name: {
+									type: 'string',
+									description: 'The server name as it would appear in .mcp.json.',
+								},
+								importance: {
+									type: 'string',
+									enum: MCP_IMPORTANCE,
+									description: "How much of the repo's workflow assumes the server.",
+								},
+								why: {
+									type: 'string',
+									description:
+										'One line on what the server is for — the thing .mcp.json structurally cannot say.',
+								},
+							} satisfies Record<keyof McpRecommendation, object>,
+						},
+					},
+				} satisfies Record<keyof NonNullable<Lockfile['mcp']>, object>,
 			},
 			writtenBy: {
 				type: 'string',
@@ -184,6 +266,8 @@ export async function writeLockfile(
 		config,
 		...(carried && Object.keys(carried).length > 0 ? { assets: carried } : {}),
 		...(existing?.aiLoop ? { aiLoop: existing.aiLoop } : {}),
+		...(existing?.requiredSkills ? { requiredSkills: existing.requiredSkills } : {}),
+		...(existing?.mcp ? { mcp: existing.mcp } : {}),
 		writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
 		writtenAt: new Date().toISOString(),
 	}

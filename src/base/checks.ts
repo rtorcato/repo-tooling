@@ -10,6 +10,7 @@ import {
 } from '../cli/generators/claude-skills.js'
 import { DEPENDABOT_CONFIG_PATHS, dependabotIgnoreRules } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
+import type { McpRecommendation } from '../cli/utils/lockfile.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -598,6 +599,118 @@ export async function checkClaudeSkills(skillsDir?: string): Promise<CheckResult
 		check,
 		status: 'ok',
 		detail: `${SHIPPED_SKILLS.length} skills installed at ${[...versions].join(', ')}`,
+	}
+}
+
+/**
+ * The skills *this repo* declares it depends on — `requiredSkills` in
+ * `.repo-tooling.json` (#533). Where `checkClaudeSkills` above reports on the
+ * package's whole skill set as a machine-level nicety, this one is the repo
+ * asserting a dependency, so it names the skills the repo actually runs on and
+ * reports a stale installed copy against them.
+ *
+ * Staleness is the failure mode it exists for. Absence fails loudly the moment
+ * something reaches for the skill; a copy three releases behind runs to
+ * completion without complaint — observed 2026-08-26, an `ai-issue-loop` missing
+ * both its decision-comment security gate and its decay rule.
+ *
+ * Same severity rule as `checkClaudeSkills`, for the same reason: it probes the
+ * machine, not the repo, so it never returns `drift` or `missing`. A contributor
+ * with no Claude installed must not fail this repo's `doctor`.
+ *
+ * **Check and hint only.** The fixer writes into `~/`, and repo config that
+ * triggers writes outside the repo is the shape of a supply-chain attack even
+ * when the content is benign. doctor says stale; the human runs the fixer.
+ */
+export async function checkRequiredSkills(
+	names: string[],
+	skillsDir?: string
+): Promise<CheckResult> {
+	const check = 'Required skills'
+	const hint =
+		'Run `npx @rtorcato/repo-tooling fix claude-skills` yourself to install or refresh them — add `--force-skills` to overwrite a locally modified copy. It writes to `~/.claude`, outside this repo, so nothing runs it for you.'
+	// A name outside SHIPPED_SKILLS has no shipped asset to hash against, and
+	// reading one would throw rather than report. The published schema rejects it
+	// in an editor; this is the runtime half of the same validation.
+	const unknown = names.filter((name) => !SHIPPED_SKILLS.includes(name))
+	if (unknown.length > 0) {
+		return {
+			check,
+			status: 'optional-missing',
+			detail: `.repo-tooling.json lists ${unknown.join(', ')}, which this package does not ship`,
+			hint: `requiredSkills accepts ${SHIPPED_SKILLS.join(', ')}`,
+		}
+	}
+
+	const statuses: [string, SkillStatus][] = []
+	for (const name of names) statuses.push([name, await claudeSkillStatus(name, skillsDir)])
+
+	const missing = statuses.filter(([, s]) => !s.installed).map(([name]) => name)
+	// `needsInstall` is `behind && pristine`, so these two partitions are disjoint:
+	// a copy matching no shipped version is a fork, not something to update.
+	const stale = statuses.filter(([, s]) => s.installed && s.needsInstall)
+	const modified = statuses.filter(([, s]) => s.contentState && s.contentState !== 'pristine')
+
+	const parts = [
+		missing.length > 0 ? `not installed: ${missing.join(', ')}` : null,
+		...stale.map(
+			([name, s]) =>
+				`${name} is stale — installed ${s.installedVersion ?? 'unstamped'}, this package ships ${s.shippedVersion}`
+		),
+		...modified.map(
+			([name, s]) => `${name} at ${s.file} matches no version this package has shipped`
+		),
+	].filter((part) => part !== null)
+
+	if (parts.length === 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `${names.length} required skill(s) installed and current: ${names.join(', ')}`,
+		}
+	}
+	return { check, status: 'optional-missing', detail: parts.join('; '), hint }
+}
+
+/**
+ * The MCP servers this repo's workflow assumes — `mcp.recommended` in
+ * `.repo-tooling.json` (#534). Informational in the strongest sense: it reports
+ * which recommended names the repo-scoped `.mcp.json` does not declare, and
+ * stops there.
+ *
+ * Never `drift`, never a CI failure, and deliberately no fixer — MCP servers
+ * execute code, so installing one from committed repo config would be an install
+ * directive rather than a recommendation. `.mcp.json` carries Claude Code's own
+ * first-use consent prompt; that is where the decision belongs.
+ *
+ * User-scoped MCP config is not probed at all. It is machine-private, and a
+ * server configured there is none of this repo's business.
+ */
+export async function checkRecommendedMcp(
+	dir: string,
+	recommended: McpRecommendation[]
+): Promise<CheckResult> {
+	const check = 'Recommended MCP'
+	// Absent, malformed or unreadable all mean the same thing here — nothing is
+	// declared — and none of them is worth its own finding on an advisory check.
+	const declared = await fs
+		.readJson(path.join(dir, '.mcp.json'))
+		.then((raw: { mcpServers?: Record<string, unknown> }) => Object.keys(raw?.mcpServers ?? {}))
+		.catch(() => [] as string[])
+
+	const absent = recommended.filter((entry) => !declared.includes(entry.name))
+	if (absent.length === 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `.mcp.json declares all ${recommended.length} recommended server(s): ${recommended.map((e) => e.name).join(', ')}`,
+		}
+	}
+	return {
+		check,
+		status: 'optional-missing',
+		detail: absent.map((e) => `${e.name} (${e.importance}) — ${e.why}`).join('; '),
+		hint: 'Advisory only. Add what you want to `.mcp.json` by hand; nothing here installs or enables an MCP server.',
 	}
 }
 

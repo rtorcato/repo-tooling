@@ -98,6 +98,58 @@ against your repo's own remote (`gh api repos/{owner}/{repo}/assignees/<user>`)
 and reports drift when it isn't assignable. Absent field ⇒ `ok`, not
 applicable.
 
+## `requiredSkills`: catching a *stale* skill, not just a missing one
+
+A repo whose workflows depend on the shipped skills can say so:
+
+```json
+{
+  "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
+}
+```
+
+Absence isn't the interesting failure — a skill that isn't installed fails loudly
+the moment something reaches for it. Staleness is. An installed copy several
+releases behind runs happily to completion while missing whatever the newer
+releases added, and nothing complains. So `doctor` compares each listed skill's
+installed `SKILL.md` — its stamped `repo-tooling-hash`, under `~/.claude/skills`
+or wherever `--skills-dir` points — against the copy this package ships, and
+reports anything missing, stale, or matching no shipped version at all.
+
+Two rules keep the field safe to commit:
+
+- **It never fails your build.** The check probes your machine, not the repo, so
+  it reports "not configured" and never `drift` or `missing` — a contributor
+  without Claude installed doesn't fail this repo's `doctor`. It's also skipped
+  entirely unless the file has an `aiLoop` key.
+- **It only ever hints.** `doctor` names `fix claude-skills`; running it is
+  yours. Committed repo config that directs writes into your home directory is
+  the shape of a supply-chain attack even when the content is benign.
+
+## `mcp.recommended`: names and reasons, never an install directive
+
+The same file can name the MCP servers a repo's workflow assumes — and only
+name them:
+
+```json
+{
+  "mcp": {
+    "recommended": [
+      { "name": "some-server", "importance": "important", "why": "edits the design files under design/" }
+    ]
+  }
+}
+```
+
+`importance` is `nice-to-have`, `important` or `critical`; `why` is the one line
+`.mcp.json` structurally cannot carry. `doctor` reports which of these names
+`.mcp.json` doesn't declare, informationally, and stops there.
+
+There's deliberately no `command`, `args` or `env`, and no fixer. MCP servers
+execute code, so real config belongs in `.mcp.json` — the file below, which
+carries Claude Code's own first-use consent prompt. The lockfile says *what and
+why*, `.mcp.json` says *how*, and you say *whether*.
+
 ## Worktrees: symlink `node_modules` instead of reinstalling it
 
 A Claude Code worktree starts empty, so an agent working one pays a full

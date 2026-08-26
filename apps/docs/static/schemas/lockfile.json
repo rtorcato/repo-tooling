@@ -230,6 +230,58 @@
 				}
 			}
 		},
+		"requiredSkills": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"enum": [
+					"ai-issue-loop",
+					"ai-workflow",
+					"ai-issue",
+					"ai-loop-status"
+				]
+			},
+			"description": "Agent skills this repo's workflows depend on. doctor compares each installed copy's stamped hash against the shipped one and reports a missing or stale skill — always as \"not configured\", never drift, because it probes the machine rather than the repo. It never runs the fixer for you."
+		},
+		"mcp": {
+			"type": "object",
+			"additionalProperties": false,
+			"description": "Advisory MCP metadata: names, importance and reasons only, never an install directive. Executable server config belongs in the native .mcp.json, which carries Claude Code's own first-use consent prompt.",
+			"properties": {
+				"recommended": {
+					"type": "array",
+					"description": "MCP servers this repo's workflow assumes. doctor reports which of them .mcp.json does not declare, informationally — it never installs or enables one.",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"name",
+							"importance",
+							"why"
+						],
+						"properties": {
+							"name": {
+								"type": "string",
+								"description": "The server name as it would appear in .mcp.json."
+							},
+							"importance": {
+								"type": "string",
+								"enum": [
+									"nice-to-have",
+									"important",
+									"critical"
+								],
+								"description": "How much of the repo's workflow assumes the server."
+							},
+							"why": {
+								"type": "string",
+								"description": "One line on what the server is for — the thing .mcp.json structurally cannot say."
+							}
+						}
+					}
+				}
+			}
+		},
 		"writtenBy": {
 			"type": "string",
 			"description": "Package name and version that last wrote this file."
