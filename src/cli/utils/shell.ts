@@ -1,4 +1,12 @@
 /**
+ * Quote a value as one literal argument **for a POSIX `sh` command line, and
+ * nothing else**. The result is wrong in `cmd.exe`, which does not treat `'` as
+ * a quote at all, and wrong in PowerShell, which does — but escapes an embedded
+ * `'` by doubling it rather than POSIX's `'\''`, so this output still mangles
+ * any value containing one. It is also wrong anywhere the value lands inside
+ * double quotes or an existing quoted string — it is a whole argument, not a
+ * fragment.
+ *
  * POSIX single-quote escaping — the only form correct for arbitrary bytes.
  * Inside single quotes every character is literal, so `'` is the sole one
  * needing care: end the quote, escape it, start a new one. Double quotes are
