@@ -202,7 +202,7 @@ Passes run cheapest first, so a quiet repo exits fast.
 
 | Pass | Does |
 |---|---|
-| **0 — orient** | Resolve the main checkout, fetch, list open PRs and `ai-wip` issues. Adopt unlabelled Dependabot PRs. Bail to Pass 5 with `idle` if there is nothing at all. |
+| **0 — orient** | Resolve the main checkout, fetch, list open PRs and `ai-wip` issues. Adopt unlabelled PRs — Dependabot's, and any the loop's own identity opened with the `🤖` header. Bail to Pass 5 with `idle` only if there is nothing at all: no labelled PR, no eligible issue, and no leftover worktree. |
 | **1 — merge** | Auto-merge only *Dependabot* PRs that passed both reviews. Assign every other ready PR to you and drop `ai-review`. Send back anything GitHub reports as not `CLEAN`. |
 | **2 — clean up** | Remove worktrees whose PR merged (confirming the squash is on `main` first), then reap stalls. |
 | **3 — review** | Spawn the missing reviewers for `ai-review` PRs; dispatch a fix round for `ai-changes`. |
