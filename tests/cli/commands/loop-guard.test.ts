@@ -133,6 +133,27 @@ describe('runLoopGuard — bare detection and repair', () => {
 		expect(result.exitCode).toBe(2)
 	})
 
+	it('ignores an ambient GIT_DIR — the verdict is about --root, nothing else', async () => {
+		const parent = newTmpDir()
+		const root = healthyCheckout(parent)
+		const elsewhere = join(parent, 'other.git')
+		fs.ensureDirSync(elsewhere)
+		git(elsewhere, 'init', '-q', '--bare')
+		const saved = process.env.GIT_DIR
+		// Set by git for everything a hook runs, and it outranks `-C`. Unscrubbed,
+		// the probe answers `false` about *that* repo and the guard flips
+		// core.bare on a checkout that was fine.
+		process.env.GIT_DIR = elsewhere
+		try {
+			const result = await runLoopGuard({ root })
+			expect(result.state).toBe('work-tree')
+			expect(result.bare).toBe('healthy')
+		} finally {
+			if (saved === undefined) delete process.env.GIT_DIR
+			else process.env.GIT_DIR = saved
+		}
+	})
+
 	it('exits 1 when the repair fails, so the tick halts', async () => {
 		// The observed failure: a sandbox refusing to lock .git/config. Injected
 		// rather than staged, because the real one needs a sandbox to reproduce.
