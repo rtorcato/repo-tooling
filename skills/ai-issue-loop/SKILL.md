@@ -409,8 +409,11 @@ it behind a hidden marker and upsert:
 
 ```bash
 MARKER='<!-- ai-issue-loop:decision -->'
+ME=$(gh api user --jq .login)   # the identity every loop agent posts as
 ID=$(gh api "repos/$OWNER_REPO/issues/<N>/comments" \
-      --jq "[.[] | select((.body // \"\") | startswith(\"$MARKER\"))] | .[0].id // empty")
+  | jq -r --arg me "$ME" --arg marker "$MARKER" \
+      '[.[] | select(.user.login == $me and ((.body // "") | startswith($marker)))]
+       | .[0].id // empty')
 if [ -n "$ID" ]; then
   gh api -X PATCH "repos/$OWNER_REPO/issues/comments/$ID" -f body="$MARKER
 $TEXT"
@@ -420,10 +423,24 @@ $TEXT"
 fi
 ```
 
+**The author gate is the same one Pass 3's verdict read uses, and for the same
+reason.** Anyone can comment on a public PR, so selecting by marker prefix alone
+lets a stranger who posts `<!-- ai-issue-loop:decision -->` first own the slot
+forever: `.[0]` takes the *oldest* match, the token has repo-write so the `PATCH`
+succeeds, and every decision this loop ever reaches lands inside a
+stranger-authored comment while the loop never posts one of its own. `.user.login`
+against `gh api user`, not `author_association`, for the reason spelled out in
+Pass 3.
+
 `// empty` is load-bearing: `.[0].id` on an empty array is `null`, which `jq -r`
 prints as the four characters `null` — a non-empty string that passes `[ -n ]` and
 sends the `PATCH` to comment id `null`. The upsert would then never post anything,
-silently, which is the one failure mode worse than duplicates.
+silently, which is the one failure mode worse than duplicates. `(.body // "")` is
+load-bearing for the mirror-image reason: a null body throws, aborting the filter
+and emptying `ID`, which re-enters the duplicate-comment branch this whole section
+exists to prevent. Both values come in through `--arg` rather than shell
+interpolation, so the marker and login are jq *data* and cannot be parsed as
+filter syntax.
 
 One comment per PR, edited in place, so the timeline shows the *current* reason
 rather than a log of every tick that ever ran. What it says — and whether to say
@@ -1185,8 +1202,18 @@ does not stack duplicates:
 
 ```bash
 gh issue view <N> --json comments \
-  --jq '[.comments[] | select(.body | startswith("🤖 *Automated — triage"))] | length'
+  | jq -r --arg me "$(gh api user --jq .login)" \
+      '[.comments[]
+        | select(.author.login == $me and ((.body // "") | startswith("🤖 *Automated — triage")))]
+       | length'
 ```
+
+Gated on the loop's own login for the same reason as the decision upsert above,
+inverted: anyone can comment on a public issue, so ungated a stranger who opens
+with that header *suppresses* the decline comment and the issue is left labelled
+with nothing on the timeline saying why. `.author.login` here, not `.user.login`
+— `gh issue view --json` is GraphQL and names the field differently from the REST
+payload the upsert reads.
 
 Take the first `slots` issues. For each, **claim it first** so a concurrent tick
 can't double-pick:
