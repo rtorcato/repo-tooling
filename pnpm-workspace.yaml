@@ -24,6 +24,16 @@ minimumReleaseAgeExclude:
   - '@rtorcato/*'
   - tinyglobby
 
+# Force patched versions past parent pins (#536). Scoped to the vulnerable
+# ranges so they self-retire once parents catch up. serialize-javascript and
+# uuid sit in the private apps/docs webpack chain; esbuild is vite's dev-only
+# pin (GHSA-g7r4-m6w7-qqqr, Windows dev server). image-size (GHSA high) has
+# no published patch — 2.x ends at 2.0.2 — so it stays open until upstream ships.
+overrides:
+  'serialize-javascript@<7.0.5': '>=7.0.5'
+  'uuid@<11.1.1': '>=11.1.1'
+  'esbuild@>=0.27.3 <0.28.1': '>=0.28.1'
+
 # Don't re-verify node_modules on every script run — the check costs a
 # second per invocation and CI installs with --frozen-lockfile anyway.
 verifyDepsBeforeRun: false
