@@ -65,11 +65,14 @@ describe('python fixers', () => {
 		// (see the note atop src/languages/python/fixers.ts). `pyproject.toml` and
 		// `Python tests` are content only the project can write. `Release gate` and
 		// `Release environment` (#429) are covered by the base `release-environment` fixer.
+		// `AI loop agent` (#530) is unfixable by design — inviting a collaborator
+		// is the operator's call.
 		expect(uncovered).toEqual([
 			'language',
 			'lockfile',
 			'Monorepo',
 			'Git identity',
+			'AI loop agent',
 			'README badges',
 			'Coverage upload',
 			'pyproject.toml',
