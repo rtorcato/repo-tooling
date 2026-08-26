@@ -67,7 +67,7 @@ below.
 Two consequences, and both are load-bearing:
 
 1. **Approval is a label**, not a review. `ai-ok-code` / `ai-ok-sec` record that
-   an agent passed the diff.
+   an agent passed the diff, until the handoff replaces them with `merge-ready`.
 2. **Required status checks stay the real merge gate.** Never set
    `required_pull_request_reviews` on the protected branch — required review
    deadlocks every PR the loop opens.
@@ -129,11 +129,23 @@ that state, so a missed tick, a crash, or a restart costs nothing.
 | `ai-review` | PR | Awaiting agent review. |
 | `ai-reviewing-code` | PR | `code-reviewer` claimed and running. Cleared with its verdict. |
 | `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
-| `ai-ok-code` | PR | `code-reviewer` passed. |
-| `ai-ok-sec` | PR | `security-expert` passed. |
-| `ai-changes` | PR | A reviewer requested changes. |
+| `ai-ok-code` | PR | `code-reviewer` passed. In-flight only — the handoff strips it. |
+| `ai-ok-sec` | PR | `security-expert` passed. In-flight only — the handoff strips it. |
+| `ai-changes` | PR | A reviewer requested changes, or Pass 1 sent the PR back over red CI. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
-| `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. |
+| `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. Supersedes the `ai-ok-*` pair rather than joining it. |
+
+A PR handed over for you to merge therefore carries exactly one of two label
+sets, and the difference is legible without opening anything:
+
+| Labels | Means |
+|---|---|
+| `merge-ready` | Merge freely. |
+| `merge-ready`, `ai-notes` | Passed, but open the comments first. |
+
+`merge-ready` asserts strictly more than `ai-ok-code` + `ai-ok-sec` — both
+reviews passed *and* GitHub reports the PR mergeable — so the handoff drops the
+pair rather than stacking three labels that all say "passed".
 
 Colours carry meaning here — `ai-ready` is green and `ai-blocked` red precisely
 so the two states a maintainer must tell apart are legible at a glance. `doctor`
@@ -151,7 +163,8 @@ PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ is
                                  │        (± ai-notes)       │              ─> YOU merge
                                  │                           └─ dependabot ─> auto-merge
                                  └─> ai-changes ─> fix round (max 2) ─> ai-review
-                                                             └─ round 3 ─> ai-blocked
+                                     ▲                       └─ round 3 ─> ai-blocked
+                                     └─ Pass 1 sends back: not CLEAN, or a required check FAILED
 ```
 
 `ai-reviewing-code` / `ai-reviewing-sec` are the claim step. Pass 3 applies one
@@ -193,8 +206,11 @@ gh api repos/$OWNER_REPO/branches/main/protection \
 ```
 
 Worktrees also want `node_modules` symlinked in, so an agent can typecheck
-without a full install per issue. `fix ai` writes that into
-`.claude/settings.json`.
+without a full install per issue. `fix ai` writes that list — the root plus every
+workspace package — into `.claude/settings.json` as
+`worktree.symlinkDirectories`, and Pass 4 reads it and creates the links itself.
+Without it the loop still works: each worktree gets a real `pnpm install`
+instead, which costs a duplicate `node_modules` per issue.
 
 ## The tick
 
@@ -203,7 +219,7 @@ Passes run cheapest first, so a quiet repo exits fast.
 | Pass | Does |
 |---|---|
 | **0 — orient** | Resolve the main checkout, fetch, list open PRs and `ai-wip` issues. Adopt unlabelled PRs — Dependabot's, and any the loop's own identity opened with the `🤖` header. Bail to Pass 5 with `idle` only if there is nothing at all: no labelled PR, no eligible issue, and no leftover worktree. |
-| **1 — merge** | Auto-merge only *Dependabot* PRs that passed both reviews. Assign every other ready PR to you and drop `ai-review`. Send back anything GitHub reports as not `CLEAN`. |
+| **1 — merge** | Auto-merge only *Dependabot* PRs that passed both reviews. Hand every other ready PR to you as `merge-ready`, dropping `ai-review` and both `ai-ok-*`. Send back anything GitHub reports as not `CLEAN`, or with a required check red. |
 | **2 — clean up** | Remove worktrees whose PR merged (confirming the squash is on `main` first), then reap stalls. |
 | **3 — review** | Spawn the missing reviewers for `ai-review` PRs; dispatch a fix round for `ai-changes`. |
 | **4 — pick up** | Claim eligible `ai-ready` issues, create the worktree, spawn an implementer. |

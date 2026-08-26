@@ -129,10 +129,11 @@ done
 ```
 
 **Then give each worktree dependencies** — the loop skill's Pass 4 rules apply
-verbatim: symlink `node_modules` (root *and* `apps/*`) only for an issue confined
-to an app; run a real `pnpm install` in the worktree for anything touching a
-workspace package; never force an install against a symlinked tree; and add
-`node_modules` to `$ROOT/.git/info/exclude` once per repo.
+verbatim: symlink every entry of `worktree.symlinkDirectories` from
+`$ROOT/.claude/settings.json` (the root `node_modules` plus each workspace
+package's, written by `fix ai`); run a real `pnpm install` in the worktree only
+when that list is missing or empty; never force an install against a symlinked
+tree; and add `node_modules` to `$ROOT/.git/info/exclude` once per repo.
 
 Stop here on `--label-only`. Report the picks and — briefly — what you skipped
 and why.
@@ -280,8 +281,8 @@ and still wearing a stale `ai-review`. Close that window here: once per PR
 whose two review arms both completed, apply the `ai-issue-loop` skill's Pass 1
 **by reference — execute what its text currently says, never a copy of it
 here**. A second copy of the handoff logic is drift with two files to keep
-honest; deferring means changes to Pass 1 (e.g. a future `merge-ready` label)
-take effect here without touching this file.
+honest; deferring means changes to Pass 1 (its `merge-ready` handoff, its CI-red
+send-back) take effect here without touching this file.
 
 - **Both arms passed** → run ai-issue-loop's Pass 1 handoff/send-back logic
   on this PR, per its current text — with one carve-out: `mergeStateStatus`

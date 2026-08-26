@@ -132,6 +132,18 @@ Only the `worktree.symlinkDirectories` key is touched — your `hooks`,
 yourself are kept. A file that doesn't parse is left alone rather than
 clobbered; `doctor` reports it as drift for you to repair by hand.
 
+### Two things honour that list
+
+`worktree.symlinkDirectories` is a **Claude Code** setting, and Claude Code
+honours it when *it* creates the worktree — i.e. via `EnterWorktree`. The `ai-*`
+skills never call that (they create worktrees with a plain `git worktree add`, in
+a sibling directory Claude Code would refuse), so the setting would otherwise be
+inert for exactly the worktrees the issue loop creates. Instead the loop **reads
+the same list and makes the symlinks itself**, which keeps one source of truth
+for *what* to link across two mechanisms for *how*. A repo with no list gets a
+real `pnpm install` per worktree — correct, just slower and a duplicate
+`node_modules` each time.
+
 :::warning Never run `pnpm install` inside a worktree
 The worktree's `node_modules` is a symlink, so pnpm writes *through* it and
 re-points the shared root `.bin` shims at that worktree's virtual store —

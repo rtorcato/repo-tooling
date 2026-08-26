@@ -1105,6 +1105,12 @@ export async function checkTreeshakeSetup(dir: string, pkg: Pkg | null): Promise
  * one pays a full install before it can typecheck, lint or test — unless
  * `.claude/settings.json` tells Claude to symlink the directory from the main
  * checkout (#396). JS-only: the other language modules have nothing to symlink.
+ *
+ * Two consumers, one list (#527). Claude Code honours the setting only for
+ * worktrees it creates itself (`EnterWorktree`); the shipped `ai-issue-loop`
+ * skill creates its own with `git worktree add`, so it reads this same list and
+ * makes the symlinks itself. That is why the check is worth passing on a repo
+ * running the loop, where the setting alone would govern nothing.
  */
 export async function checkClaudeWorktreeSettings(dir: string): Promise<CheckResult> {
 	const check = 'Claude worktree settings'
