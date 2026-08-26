@@ -183,3 +183,79 @@ export async function checkGitIdentity(dir: string, exec?: GitExec): Promise<Che
 		hint: HINT,
 	}
 }
+
+const HISTORY_CHECK = 'Git author history'
+
+/**
+ * Bounded so doctor stays cheap on every invocation; the output always names
+ * how many commits were actually examined so "0 found" is never read as "all
+ * history is clean".
+ */
+export const HISTORY_SCAN_LIMIT = 200
+
+/** How many offending commits to name; the count carries the rest. */
+const HISTORY_SAMPLE = 3
+
+const HISTORY_HINT =
+	'These commits are already made: the address can never be verified as a secondary email, so they cannot be re-linked to a forge account without a history rewrite (#327). Fix the identity going forward (see the Git identity check) and treat the history as recorded loss.'
+
+/**
+ * The retrospective half of `checkGitIdentity` (#557): that check reads the
+ * identity the *next* commit will use, this one scans recent history for
+ * commits already made with a bad one. Same classifier — `classifyGitEmail` —
+ * so the two can never drift. Same STATUS reasoning too: history is not
+ * something the repo's author can fix by editing the repo, so a finding is
+ * `optional-missing`, never `drift`/`missing`, and the exit code is untouched.
+ * Detection only — there is deliberately no fixer, because the only "fix" is a
+ * history rewrite no tool should offer unprompted.
+ */
+export async function checkGitIdentityHistory(dir: string, exec?: GitExec): Promise<CheckResult> {
+	if (!(await fs.pathExists(path.join(dir, '.git')))) {
+		return { check: HISTORY_CHECK, status: 'ok', detail: 'not a git repository' }
+	}
+	if (process.env.CI) {
+		return { check: HISTORY_CHECK, status: 'ok', detail: 'skipped on CI' }
+	}
+
+	const git: GitExec = exec ?? ((args) => realGitExec(args, dir))
+	// A shallow clone has almost no history; scanning its stub and reporting
+	// "0 found" would be a false all-clear.
+	if ((await git(['rev-parse', '--is-shallow-repository'])) === 'true') {
+		return {
+			check: HISTORY_CHECK,
+			status: 'ok',
+			detail: 'shallow clone — commit history is not available to scan',
+		}
+	}
+	// %h %ae: abbreviated hash + author email, one commit per line.
+	const log = await git(['log', `-${HISTORY_SCAN_LIMIT}`, '--format=%h %ae'])
+	if (log === null || log === '') {
+		return { check: HISTORY_CHECK, status: 'ok', detail: 'no commits to scan' }
+	}
+	const commits = log.split('\n').map((line) => {
+		const sp = line.indexOf(' ')
+		return { hash: line.slice(0, sp), email: line.slice(sp + 1) }
+	})
+	const bad = commits.filter(({ email }) => {
+		const verdict = classifyGitEmail(email)
+		return verdict === 'placeholder' || verdict === 'generated'
+	})
+	const scanned = `the last ${commits.length} commit${commits.length === 1 ? '' : 's'}`
+	if (bad.length === 0) {
+		return {
+			check: HISTORY_CHECK,
+			status: 'ok',
+			detail: `no placeholder or machine-derived author emails in ${scanned}`,
+		}
+	}
+	const sample = bad
+		.slice(0, HISTORY_SAMPLE)
+		.map(({ hash, email }) => `${hash} (${email})`)
+		.join(', ')
+	return {
+		check: HISTORY_CHECK,
+		status: 'optional-missing',
+		detail: `${bad.length} of ${scanned} carry a placeholder or machine-derived author email — e.g. ${sample}`,
+		hint: HISTORY_HINT,
+	}
+}
