@@ -1,0 +1,91 @@
+---
+title: .repo-tooling.json
+description: The lockfile the CLI writes — every field, rendered from the published JSON Schema.
+---
+
+import lockfileSchema from '@site/static/schemas/lockfile.json'
+
+export const typeOf = (prop) =>
+	prop.enum ? prop.enum.map(String).join(' | ') : prop.format ? `${prop.type} (${prop.format})` : prop.type
+
+export const Fields = ({ schema }) => (
+	<table>
+		<thead>
+			<tr>
+				<th>Field</th>
+				<th>Type</th>
+				<th>Required</th>
+				<th>Description</th>
+			</tr>
+		</thead>
+		<tbody>
+			{Object.entries(schema.properties).map(([name, prop]) => (
+				<tr key={name}>
+					<td>
+						<code>{name}</code>
+					</td>
+					<td>
+						<code>{typeOf(prop)}</code>
+					</td>
+					<td>{(schema.required ?? []).includes(name) ? 'yes' : 'no'}</td>
+					<td>{prop.description ?? ''}</td>
+				</tr>
+			))}
+		</tbody>
+	</table>
+)
+
+<p>{lockfileSchema.description}</p>
+
+`setup` creates it, `fix` keeps it current, and `doctor` reads it to know what the repo opted into.
+Commit it — it is the repo's memory of its own tooling choices.
+
+## Editor validation
+
+Every written file carries a `$schema` pointer, so editors that understand JSON Schema
+(VS Code out of the box) validate, autocomplete, and show these descriptions inline:
+
+<pre>
+<code>{JSON.stringify({ $schema: lockfileSchema.$id, version: 3 }, null, 2).replace('\n}', ',\n  ...\n}')}</code>
+</pre>
+
+The schema itself is published at <a href={lockfileSchema.$id}>{lockfileSchema.$id}</a>. It is
+generated from the `Lockfile` TypeScript interface (`pnpm schema:generate`), and CI fails when the
+published copy drifts from the type — this page renders from the same file, so what you read here
+is what your editor enforces.
+
+## Top-level fields
+
+<Fields schema={lockfileSchema} />
+
+Unknown fields are rejected (`additionalProperties: false`): the CLI rewrites the file from
+scratch on every save, so any key it doesn't know is a key it would silently drop.
+
+## `config` — the ProjectConfig
+
+The full setup configuration, identical to what `setup --config` accepts
+(its standalone schema is published at
+<a href="https://rtorcato.github.io/repo-tooling/schemas/project-config.json">/schemas/project-config.json</a>,
+printable with `setup --config-schema`):
+
+<Fields schema={lockfileSchema.properties.config} />
+
+The `object`-typed fields above (`typescript`, `linting`, `formatting`, `testing`) are small
+enum-valued records — see the schema for their exact shapes.
+
+## `aiLoop` — ai-issue-loop settings
+
+<Fields schema={lockfileSchema.properties.aiLoop} />
+
+See the [AI issue loop guide](../guides/ai-issue-loop.md) for how this is used.
+
+## Version history
+
+| Version | Change |
+| --- | --- |
+| 1 | Initial format. |
+| 2 | Added `config.language` (multi-language seam). Older files migrate to `js` on read. |
+| 3 | Added `assets` — pristine hashes of copied presets, so `doctor` can tell a local fork from a stale copy. |
+
+Older files are migrated in memory on read and rewritten at the current version on the next save.
+The pre-rename `.js-tooling.json` is still read as a fallback and replaced on the next write.

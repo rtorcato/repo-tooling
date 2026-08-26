@@ -20,6 +20,7 @@
 - [Semantic Release](https://rtorcato.github.io/repo-tooling/reference/semantic-release): `@rtorcato/repo-tooling/semantic-release{,/github,/docker}`.
 - [tsup](https://rtorcato.github.io/repo-tooling/reference/tsup): `@rtorcato/repo-tooling/tsup`.
 - [esbuild](https://rtorcato.github.io/repo-tooling/reference/esbuild): `@rtorcato/repo-tooling/esbuild`.
+- [.repo-tooling.json](https://rtorcato.github.io/repo-tooling/reference/repo-tooling-json): The lockfile the CLI writes. JSON Schemas: [lockfile](https://rtorcato.github.io/repo-tooling/schemas/lockfile.json), [ProjectConfig](https://rtorcato.github.io/repo-tooling/schemas/project-config.json).
 
 ## Source
 

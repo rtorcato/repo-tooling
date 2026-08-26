@@ -26,6 +26,7 @@
 		"prepublishOnly": "./scripts/fix-bins.sh",
 		"dev": "pnpm --filter @rtorcato/docs dev",
 		"docs:build": "pnpm --filter @rtorcato/docs build",
+		"schema:generate": "pnpm build-cli && node scripts/generate-lockfile-schema.mjs",
 		"==================== Common ====================": "",
 		"lint": "pnpm exec biome lint .",
 		"format": "pnpm exec biome format .",
