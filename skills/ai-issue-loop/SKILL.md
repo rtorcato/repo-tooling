@@ -266,9 +266,9 @@ immediately after a `worktree remove` and some with nothing removed at all. The 
 is unidentified, so this is detection and repair only:
 
 ```bash
-if [ "$(git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
+if [ "$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
   echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
-  git -C "$ROOT" config core.bare false || {
+  env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" config core.bare false || {
     echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
 fi
 ```
@@ -293,6 +293,14 @@ way and only *prints* the answer, so an exit-code probe is dead code. Verified o
 too, and nothing else separates the two — this skill ships to users' `~/.claude/skills/`,
 where "repairing" someone's real bare clone is the damage rather than the fix. The same
 check skips a linked worktree, whose `.git` is a file.
+
+**`GIT_DIR` and `GIT_WORK_TREE` beat `-C`, so unset them.** When either is exported —
+some tooling wrappers do — git ignores `-C "$ROOT"` and operates on whatever they
+point at, so the probe would diagnose a *different* repo and the repair would write
+that repo's `.git/config`. Both failures are silent, and both are worse than the bug
+being guarded against. This skill installs into arbitrary users' `~/.claude/skills/`,
+so the caller's environment is not ours to assume; `env -u` scopes the unset to the
+one command rather than to the tick.
 
 **Fail loudly.** The repair writes `$ROOT/.git/config`, which a restrictive sandbox
 refuses with `error: could not lock config file .git/config: Operation not permitted` —
@@ -351,9 +359,54 @@ and lacks either `ai-ok-*`, disarm it before labelling:
 gh pr merge <N> --disable-auto
 ```
 
-If there are no open PRs carrying any `ai-*` label **and** no eligible `ai-ready`
-issues (Pass 4's query), skip straight to Pass 5 with `SUMMARY=idle`. Skip the
-passes, never the report.
+**Adopt agent-opened PRs the same way.** A PR an agent opens outside Pass 4 — one
+with no `ai-ready` issue behind it — carries no `ai-*` label, so it matches no pass
+and is therefore assigned by nothing: it never reaches *Assigned to you*, which is
+the view where merges actually happen. Observed on #548, which passed all five
+required checks and read *Able to merge* while its assignees read *No one—assign
+yourself*. Label it `ai-review` and Pass 1 hands it over on the existing path once
+both arms pass — no second assignment rule is needed:
+
+```bash
+ME=$(gh api user --jq .login)   # the identity every loop agent opens PRs as
+gh pr list --state open --json number,author,labels,body \
+  | jq -r --arg me "$ME" \
+      '.[] | select(.author.login == $me)
+           | select([.labels[].name] | any(startswith("ai-")) | not)
+           | select((.body // "") | startswith("🤖 "))
+           | .number'
+```
+
+**The `🤖` header is the discriminator, not the login.** Every agent authenticates as
+the owner's own `gh`, so author login alone cannot tell a PR an agent opened from one
+the owner wrote by hand — and a PR the owner wrote themselves must not be swept in,
+which would put two reviewers on work nobody asked to have reviewed. The header is
+wire format, the same as the `<!-- ai-issue-loop:* -->` markers: every PR body this
+pipeline writes opens with `🤖 *Automated …*` or `🤖 *Opened by …*`, so match it and
+do not redefine it. `(.body // "")` is load-bearing for the reason Pass 1's upsert
+spells out — a null body throws and empties the whole filter, here adopting nothing
+rather than everything.
+
+If there are no open PRs carrying any `ai-*` label, no eligible `ai-ready` issues
+(Pass 4's query), **and** no `ai-*` worktree left on disk, skip straight to Pass 5
+with `SUMMARY=idle`. Skip the passes, never the report.
+
+```bash
+find "$WT_ROOT" "$ROOT/.claude/worktrees" -maxdepth 1 -name 'ai-*' -type d 2>/dev/null
+```
+
+**The third condition is not implied by the other two.** Pass 2's cleanup is keyed
+off worktrees *on disk*, never off open PRs, so the moment the last open PR is merged
+by hand both of the other conditions go true while its worktree is still present and
+its issue still carries `ai-wip` — the label only Pass 2 ever clears. Every later tick
+meets the same two conditions, so the worktree and the label survive indefinitely
+while the loop reports `idle`. The two leaks also protect each other: the
+orphan-worktree rule that would otherwise reap it matches only a worktree *whose issue
+is not `ai-wip`*, and the stale label is exactly what stops it. Observed 2026-08-26 —
+#541 and #542 closed and their PRs merged, both worktrees still on disk, both issues
+still `ai-wip`. No concurrency slot leaks (the cap counts *open* `ai-wip` issues); what
+leaks is disk, an issue list that reads as though agents are still working, and Pass
+2's `node_modules` rebuild, which is gated on `REMOVED=1` and so never runs.
 
 ### Pass 1 — merge
 
@@ -722,12 +775,15 @@ where `ai-blocked` would not be — nothing is lost, only the queue is honest.
 **Then re-check `core.bare`** — the same probe as Pass 0, against the same `ROOT`:
 
 ```bash
-if [ "$(git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
+if [ "$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
   echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
-  git -C "$ROOT" config core.bare false || {
+  env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" config core.bare false || {
     echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
 fi
 ```
+
+The `env -u` prefix carries the same weight here as in Pass 0, and for the same
+reason — keep it on both lines.
 
 This is the last pass that *removes* worktrees, not the tick's last touch on the main
 checkout — Pass 4 still runs `git -C "$ROOT" worktree add` against it. That is exactly
