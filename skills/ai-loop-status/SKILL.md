@@ -55,7 +55,8 @@ argument.
      (`ai-ok-code` missing → `code-reviewer`, `ai-ok-sec` missing →
      `security-expert`), and whether it is claimed (`ai-reviewing-code` /
      `ai-reviewing-sec` mean a reviewer is running right now)
-   - both `ai-ok-*`, no `ai-review` → **waiting on the human to merge**; add
+   - `merge-ready` (or, before the label reaches a repo, both `ai-ok-*` with
+     no `ai-review`) → **waiting on the human to merge**; add
      "read the comments first" when `ai-notes` rides along. Only Dependabot
      PRs — or issue PRs on a repo whose `release` environment has
      `required_reviewers` — auto-merge.

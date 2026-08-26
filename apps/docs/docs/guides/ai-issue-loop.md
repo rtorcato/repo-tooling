@@ -133,6 +133,7 @@ that state, so a missed tick, a crash, or a restart costs nothing.
 | `ai-ok-sec` | PR | `security-expert` passed. |
 | `ai-changes` | PR | A reviewer requested changes. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
+| `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. |
 
 Colours carry meaning here — `ai-ready` is green and `ai-blocked` red precisely
 so the two states a maintainer must tell apart are legible at a glance. `doctor`
@@ -146,7 +147,7 @@ check nor the fixer pushes labels into a repo that opted out.
 
 ```
 issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
-PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> assigned to you
+PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> merge-ready, assigned to you
                                  │        (± ai-notes)       │              ─> YOU merge
                                  │                           └─ dependabot ─> auto-merge
                                  └─> ai-changes ─> fix round (max 2) ─> ai-review
