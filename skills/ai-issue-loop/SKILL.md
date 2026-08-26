@@ -81,7 +81,7 @@ drift with a second copy to maintain.
 | `ai-ok-sec` | PR | `security-expert` passed. |
 | `ai-changes` | PR | A reviewer requested changes. Reviewers never apply it to a Dependabot PR. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
-| `ai-suggested` | issue | Follow-up a reviewer filed. A triage queue, never auto-picked. |
+| `ai-suggested` | issue | Follow-up a reviewer filed. A triage queue, never auto-picked. Pass 2 closes it after 30 days untouched. |
 | `holding` | issue | A gate — closes on human judgement, never picked up. |
 
 **`ai-notes` is advisory and never blocks.** It rides *alongside* a pass label,
@@ -670,6 +670,36 @@ and say in the comment that you re-queued it, that you deviated, and why. Re-add
 `ai-ready` is not optional: pickup cleared it, so clearing `ai-wip` alone drops the
 issue out of the queue silently, which is the worse failure. `ai-blocked` means *a
 human must look*; do not spend it on a claim you already understand.
+
+**Then decay the triage queue.** `ai-suggested` is the one queue nothing ever
+removes from — no pass picks it up, so it only grows, and a queue that only grows
+is a guilt list that makes Pass 5's digest unreadable. So it expires: any
+`ai-suggested` issue **untouched for 30 days** is closed here. "Untouched" is the
+issue's `updatedAt` — a comment, a label change, or a reopen all bump it, so
+anything a human has engaged with survives another 30 days for free.
+
+```bash
+gh issue list --label ai-suggested --state open --limit 100 --json number,updatedAt,labels \
+  --jq '.[] | select([.labels[].name] | any(. == "ai-ready" or . == "ai-wip" or . == "holding") | not)
+            | select((.updatedAt | fromdateiso8601) < (now - 30*86400)) | .number'
+```
+
+`fromdateiso8601`/`now` inside jq on purpose — `date -d '30 days ago'` is GNU-only
+and silently wrong on macOS's BSD `date`, which is exactly the class of bug that
+would expire the whole queue in one tick. The label filter is the other guard: an
+item a human promoted still carries `ai-suggested`, and closing a queued
+`ai-ready` issue because nobody commented on it is the one unrecoverable mistake
+this rule can make.
+
+Close each with the reason attached, in one call:
+
+```bash
+gh issue close <N> --comment '🤖 *Automated — `ai-issue-loop` Pass 2.* Unclaimed `ai-suggested` for 30d — closed to keep the triage queue honest. Reopen to revive.'
+```
+
+Closing is cheap and reversible: the issue keeps its body and its label, so
+reviving one is a click. That is what makes an automatic close proportionate here
+where `ai-blocked` would not be — nothing is lost, only the queue is honest.
 
 **Then re-check `core.bare`** — the same probe as Pass 0, against the same `ROOT`:
 
@@ -1455,10 +1485,14 @@ reach a human who is not already looking at GitHub.
 
 **End with the triage digest** — the open `ai-suggested` queue, one line per
 issue, straight from `gh issue list --label ai-suggested --state open --json
-number,title`. No new state, no extra prose: the queue only ever shrinks when a
-human promotes or closes an item, and a list scanned in one glance is what makes
-that happen. Skip the digest when the queue is empty or unchanged since the last
-tick (compare against a third line in `$STATUS`: the sorted issue numbers).
+number,title`. No new state, no extra prose: a list scanned in one glance is what
+makes a human promote or close something. Skip the digest when the queue is empty
+or unchanged since the last tick (compare against a third line in `$STATUS`: the
+sorted issue numbers).
+
+**The digest is a deadline, not an archive** — Pass 2 closes any item untouched
+for 30 days, so anything listed here that nobody engages with will expire on its
+own. That is the point: the queue shrinks whether or not a human gets to it.
 
 ---
 
