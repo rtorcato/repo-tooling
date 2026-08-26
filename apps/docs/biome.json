@@ -3,6 +3,12 @@
   "root": false,
   "extends": ["../../tooling/biome/preset.json"],
   "files": {
-    "includes": ["!**/.docusaurus", "!**/build", "!**/node_modules", "!**/docs/changelog.md"]
+    "includes": [
+      "!**/.docusaurus",
+      "!**/build",
+      "!**/node_modules",
+      "!**/docs/changelog.md",
+      "!**/static/schemas"
+    ]
   }
 }

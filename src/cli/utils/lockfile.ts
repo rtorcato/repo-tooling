@@ -1,7 +1,7 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import packageJson from '../../../package.json' with { type: 'json' }
-import { validateProjectConfig } from '../commands/setup-presets.js'
+import { CONFIG_SCHEMA, validateProjectConfig } from '../commands/setup-presets.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 export const LOCKFILE_NAME = '.repo-tooling.json'
@@ -48,6 +48,78 @@ export interface Lockfile {
 	}
 	writtenBy: string
 	writtenAt: string
+}
+
+/**
+ * JSON Schema for the lockfile, published with the docs site at the exact URL
+ * every written lockfile's `$schema` points to (#529). The `satisfies` clauses
+ * bind the property lists to the Lockfile interface, so adding or removing a
+ * field on the type is a compile error until the schema names it too. The
+ * committed copy under apps/docs/static/schemas/ is regenerated with
+ * `pnpm schema:generate` and gated by tests/cli/utils/lockfile-schema.test.ts.
+ *
+ * A function, not a const: lockfile.ts sits in an import cycle with
+ * setup-presets.ts (via the swift scaffolder), so CONFIG_SCHEMA is in its TDZ
+ * while this module evaluates.
+ */
+// ponytail: key sets are compiler-checked against the type; a changed field
+// *type* (string → number) still needs both lines edited by hand.
+export function lockfileSchema() {
+	// The published ProjectConfig schema, embedded (not $ref'd) so editors
+	// resolve the whole lockfile schema in one fetch. Its own $schema/$id are
+	// dropped: a nested $id would reset the base URI mid-document.
+	const { $schema: _meta, $id: _id, ...projectConfigSchema } = CONFIG_SCHEMA
+	return {
+		$schema: 'https://json-schema.org/draft/2020-12/schema',
+		$id: LOCKFILE_SCHEMA_URL,
+		title: 'Lockfile',
+		description: `${LOCKFILE_NAME} — the committed record of what @rtorcato/repo-tooling set up in this repo. Written by \`setup\` and \`fix\`, read by \`doctor\`.`,
+		type: 'object',
+		additionalProperties: false,
+		required: ['version', 'config', 'writtenBy', 'writtenAt'],
+		properties: {
+			$schema: {
+				type: 'string',
+				description: 'URL of this schema; stamped on every write so editors validate the file.',
+			},
+			version: {
+				type: 'integer',
+				description: `Lockfile format version (current: ${LOCKFILE_VERSION}). v2 added config.language, v3 added assets; older files are migrated on read.`,
+			},
+			config: {
+				...projectConfigSchema,
+				description: 'The resolved setup configuration this repo was scaffolded or audited with.',
+			},
+			assets: {
+				type: 'object',
+				additionalProperties: { type: 'string' },
+				description:
+					"Preset name → sha256 of the asset's pristine content at copy time. Lets doctor tell a deliberate local fork (file differs from this hash) from a copy the package has since moved past (file still matches, shipped asset doesn't). A preset with no entry is untracked, never drifted.",
+			},
+			aiLoop: {
+				type: 'object',
+				additionalProperties: false,
+				description:
+					'Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.',
+				properties: {
+					agentUser: {
+						type: 'string',
+						description:
+							'Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime.',
+					},
+				} satisfies Record<keyof NonNullable<Lockfile['aiLoop']>, object>,
+			},
+			writtenBy: {
+				type: 'string',
+				description: 'Package name and version that last wrote this file.',
+			},
+			writtenAt: {
+				type: 'string',
+				format: 'date-time',
+				description: 'ISO 8601 timestamp of the last write.',
+			},
+		} satisfies Record<keyof Lockfile, object>,
+	}
 }
 
 /**

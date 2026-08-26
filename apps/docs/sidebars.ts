@@ -66,6 +66,7 @@ const sidebars: SidebarsConfig = {
 				'reference/publint',
 				'reference/python',
 				'reference/release-please',
+				'reference/repo-tooling-json',
 				'reference/rolldown',
 				'reference/rollup',
 				'reference/semantic-release',

@@ -1,0 +1,194 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://rtorcato.github.io/repo-tooling/schemas/project-config.json",
+	"title": "ProjectConfig",
+	"description": "@rtorcato/repo-tooling setup configuration",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"projectName",
+		"projectType",
+		"typescript",
+		"linting",
+		"formatting",
+		"testing",
+		"gitHooks",
+		"commitLint",
+		"semanticRelease",
+		"securityAutomation",
+		"bundler"
+	],
+	"properties": {
+		"projectName": {
+			"type": "string",
+			"minLength": 1
+		},
+		"language": {
+			"type": "string",
+			"enum": [
+				"js",
+				"swift",
+				"perl",
+				"python"
+			]
+		},
+		"projectType": {
+			"type": "string",
+			"enum": [
+				"library",
+				"web-app",
+				"node-api",
+				"nextjs-app",
+				"react-app"
+			]
+		},
+		"typescript": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"enabled",
+				"config"
+			],
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"config": {
+					"type": "string",
+					"enum": [
+						"base",
+						"react",
+						"next",
+						"node",
+						"express"
+					]
+				}
+			}
+		},
+		"linting": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"tool"
+			],
+			"properties": {
+				"tool": {
+					"type": "string",
+					"enum": [
+						"biome",
+						"eslint",
+						"both",
+						"none"
+					]
+				},
+				"eslintConfig": {
+					"type": "string",
+					"enum": [
+						"base",
+						"nextjs"
+					]
+				}
+			}
+		},
+		"formatting": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"tool"
+			],
+			"properties": {
+				"tool": {
+					"type": "string",
+					"enum": [
+						"biome",
+						"prettier",
+						"none"
+					]
+				}
+			}
+		},
+		"testing": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"framework"
+			],
+			"properties": {
+				"framework": {
+					"type": "string",
+					"enum": [
+						"vitest",
+						"jest",
+						"playwright",
+						"cypress",
+						"none"
+					]
+				},
+				"environment": {
+					"type": "string",
+					"enum": [
+						"node",
+						"browser",
+						"both"
+					]
+				}
+			}
+		},
+		"gitHooks": {
+			"type": "boolean"
+		},
+		"commitLint": {
+			"type": "boolean"
+		},
+		"semanticRelease": {
+			"type": "boolean"
+		},
+		"changesets": {
+			"type": "boolean"
+		},
+		"releasePlease": {
+			"type": "boolean"
+		},
+		"oxlint": {
+			"type": "boolean"
+		},
+		"securityAutomation": {
+			"type": "boolean"
+		},
+		"bundler": {
+			"type": "string",
+			"enum": [
+				"tsup",
+				"esbuild",
+				"rollup",
+				"rolldown",
+				"vite",
+				"none"
+			]
+		},
+		"treeshakeCheck": {
+			"type": "boolean"
+		},
+		"publint": {
+			"type": "boolean"
+		},
+		"badges": {
+			"type": "boolean"
+		},
+		"aiSetup": {
+			"type": "boolean"
+		},
+		"turborepo": {
+			"type": "boolean"
+		},
+		"nx": {
+			"type": "boolean"
+		},
+		"tailwind": {
+			"type": "boolean"
+		},
+		"bun": {
+			"type": "boolean"
+		}
+	}
+}
