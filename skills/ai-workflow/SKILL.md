@@ -281,21 +281,15 @@ here**. A second copy of the handoff logic is drift with two files to keep
 honest; deferring means changes to Pass 1 (e.g. a future `merge-ready` label)
 take effect here without touching this file.
 
-- **Both arms passed** → Pass 1's ready-handoff, its `mergeStateStatus` check
-  included:
-  - `CLEAN` → Pass 1's assign-and-clear, exactly as it states it.
-  - `BEHIND` / `DIRTY` / `BLOCKED` → Pass 1's send-back (`ai-changes`, strip
-    the pass labels, marker-upsert comment naming the unblock) — the loop's
-    fix round then handles the rebase or conflict.
-  - `UNKNOWN` (GitHub still computing, CI mid-run) → do nothing; the loop's
-    next tick resolves it. Do **not** poll CI — the existing rule stands.
-    This step only closes the "reviews finished while the human is watching"
-    window.
+- **Both arms passed** → run ai-issue-loop's Pass 1 handoff/send-back logic
+  on this PR, per its current text — with one carve-out: `mergeStateStatus`
+  `UNKNOWN` (GitHub still computing, CI mid-run) ⇒ do nothing; the loop's next
+  tick resolves it. Do **not** poll CI — the existing rule stands. This step
+  only closes the "reviews finished while the human is watching" window.
 - **An arm requested changes** → do nothing; the PR carries `ai-changes` and
   the loop's fix round owns it.
 - **`pr: null` (blocked)** → verify the issue ended per the `ai-blocked`
-  contract in the loop skill — `ai-blocked` without `ai-wip`, assigned to the
-  human only, no `AGENT_USER` — and repair with `gh issue edit` if the
+  contract in the loop skill, and repair with `gh issue edit` if the
   implementer left it half-done.
 
 Then report — one block, nothing else:
