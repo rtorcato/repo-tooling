@@ -218,6 +218,38 @@ function demoteDeclined(results: CheckResult[], lock: Lockfile | null): CheckRes
 	})
 }
 
+// Declared exceptions (#558): a failing check the lock names is reported as
+// `declared` with its reason — shown, never hidden, but no longer failing the
+// run. An exception naming a check this run doesn't know is itself drift:
+// otherwise a typo silently does nothing and a check rename silently
+// un-suppresses a finding, and both are invisible.
+function applyExceptions(results: CheckResult[], lock: Lockfile | null): CheckResult[] {
+	const exceptions = lock?.exceptions
+	if (!exceptions) return results
+	const known = new Set(results.map((r) => r.check))
+	const overlaid: CheckResult[] = results.map((r) => {
+		const reason = exceptions[r.check]
+		if (!reason || r.status === 'ok') return r
+		// Hint deliberately dropped: the deviation is declared, so "how to fix it"
+		// is exactly the noise the exception exists to retire.
+		return {
+			check: r.check,
+			status: 'declared',
+			detail: `${r.detail} — declared exception: ${reason}`,
+		}
+	})
+	for (const name of Object.keys(exceptions)) {
+		if (known.has(name)) continue
+		overlaid.push({
+			check: 'Declared exceptions',
+			status: 'drift',
+			detail: `.repo-tooling.json declares an exception for "${name}", which is not a check this run knows`,
+			hint: 'A typo, or a check that was renamed or removed — fix or delete the entry in `exceptions`',
+		})
+	}
+	return overlaid
+}
+
 /**
  * The per-language inputs the base suite needs. Git hooks, commit linting and
  * README badges are repo concerns whose *evidence* is language-shaped (#309), so
@@ -335,7 +367,7 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 				skillsDir,
 			})),
 		]
-		return demoteDeclined(results, lock)
+		return applyExceptions(demoteDeclined(results, lock), lock)
 	}
 
 	// Swift suite (#286): base checks plus the module's own. Swift repos have no
@@ -360,7 +392,7 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 			})),
 			...(await runSwiftChecks(targetDir)),
 		]
-		return demoteDeclined(results, lock)
+		return applyExceptions(demoteDeclined(results, lock), lock)
 	}
 
 	// Python suite (#290): same shape as Swift — base checks plus the module's
@@ -385,7 +417,7 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 			})),
 			...(await runPythonChecks(targetDir)),
 		]
-		return demoteDeclined(results, lock)
+		return applyExceptions(demoteDeclined(results, lock), lock)
 	}
 
 	// Perl suite (#289): same shape as Swift and Python — base checks plus the
@@ -412,7 +444,7 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 			})),
 			...(await runPerlChecks(targetDir)),
 		]
-		return demoteDeclined(results, lock)
+		return applyExceptions(demoteDeclined(results, lock), lock)
 	}
 
 	// JS suite: the module's own checks, then the shared base ones. Only the
@@ -481,7 +513,7 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 		}))
 	)
 
-	return demoteDeclined(results, lock)
+	return applyExceptions(demoteDeclined(results, lock), lock)
 }
 
 const STATUS_ICONS: Record<CheckStatus, string> = {
@@ -489,6 +521,7 @@ const STATUS_ICONS: Record<CheckStatus, string> = {
 	drift: chalk.yellow('⚠️ '),
 	missing: chalk.red('❌'),
 	'optional-missing': chalk.gray('➖'),
+	declared: chalk.blue('📝'),
 }
 
 function statusLabel(status: CheckStatus): string {
@@ -501,6 +534,8 @@ function statusLabel(status: CheckStatus): string {
 			return chalk.red('missing')
 		case 'optional-missing':
 			return chalk.gray('not configured')
+		case 'declared':
+			return chalk.blue('declared')
 	}
 }
 
@@ -537,12 +572,14 @@ export function summarize(results: CheckResult[]): {
 	drift: number
 	missing: number
 	optionalMissing: number
+	declared: number
 } {
 	return {
 		ok: results.filter((r) => r.status === 'ok').length,
 		drift: results.filter((r) => r.status === 'drift').length,
 		missing: results.filter((r) => r.status === 'missing').length,
 		optionalMissing: results.filter((r) => r.status === 'optional-missing').length,
+		declared: results.filter((r) => r.status === 'declared').length,
 	}
 }
 
@@ -564,7 +601,7 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 		const summary = summarize(results)
 		console.log()
 		console.log(
-			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}\n`
+			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}, ${chalk.blue(`${summary.declared} declared`)}\n`
 		)
 		const suggestions = nextStepSuggestions(results, await detectLanguage(dir))
 		if (suggestions.length > 0) {

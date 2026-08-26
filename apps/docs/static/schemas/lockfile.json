@@ -282,6 +282,14 @@
 				}
 			}
 		},
+		"exceptions": {
+			"type": "object",
+			"additionalProperties": {
+				"type": "string",
+				"minLength": 1
+			},
+			"description": "Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift."
+		},
 		"writtenBy": {
 			"type": "string",
 			"description": "Package name and version that last wrote this file."
