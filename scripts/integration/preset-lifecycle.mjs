@@ -19,6 +19,11 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { stripAmbientGitEnv } from '../lib/git-env.mjs'
+
+// Before anything spawns git: this script runs `git init` in a temp project, and
+// under a hook GIT_DIR would redirect that into the real repo. See the helper.
+stripAmbientGitEnv()
 
 const REPO = process.cwd()
 const CLI = path.join(REPO, 'dist', 'cli', 'index.js')
