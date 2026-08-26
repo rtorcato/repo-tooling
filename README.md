@@ -181,10 +181,11 @@ ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md 
 
 This repo is also a self-hosted Claude Code marketplace. Install the plugin to
 get six skills — `repo-tooling` (adopt/audit the presets via the CLI),
-`npm-publish` (never hand-cut a release), `ai-issue-loop` (the label-driven
-issue → PR pipeline), `ai-workflow` (burst the `ai-ready` queue in parallel
-worktrees), `ai-issue` (file agent-executable issues) and `ai-loop-status`
-(read-only pipeline status) — in any session:
+`npm-publish` (never hand-cut a release), `ai-workflow` (**the entry point** to
+the `ai-ready` issue → PR pipeline: bursts the queue in parallel worktrees, then
+schedules the engine below), `ai-issue-loop` (that engine — one stateless tick;
+it runs on a loop rather than being typed), `ai-issue` (file agent-executable
+issues) and `ai-loop-status` (read-only pipeline status) — in any session:
 
 ```
 /plugin marketplace add rtorcato/repo-tooling

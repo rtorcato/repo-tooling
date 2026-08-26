@@ -2,11 +2,14 @@
 name: ai-issue-loop
 model: sonnet
 description: |
-  Run one tick of the label-driven GitHub issue pipeline: pick up `ai-ready`
-  issues into per-issue worktrees, review the resulting PRs with other agents,
-  and auto-merge once both reviewers pass. Use when the user says "run the
-  issue loop", "work the ai-ready issues", "babysit the AI PRs", or invokes
-  `/ai-issue-loop`. Designed to be driven by `/loop 15m /ai-issue-loop`.
+  **The engine behind `/ai-workflow` — normally you do not invoke this
+  directly.** One stateless tick over the GitHub label state: answer
+  `ai-changes` with a fix round, merge Dependabot PRs, hand passed issue PRs to
+  the human, clean up merged worktrees, reap stalled agents, and pick up any
+  remaining `ai-ready` issues. `/ai-workflow` is the entry point and schedules
+  this itself via `/loop 15m /ai-issue-loop`; reach for it directly only to
+  force a tick early — "run one tick", "babysit the AI PRs" — or when the user
+  invokes `/ai-issue-loop`. Only Dependabot PRs ever merge unattended.
   GitHub only (`gh`) — not GitLab.
 ---
 
