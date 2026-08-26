@@ -30,6 +30,8 @@ npx @rtorcato/repo-tooling doctor --json                 # confirm clean
   prompt to **No**; `--yes` is required to overwrite. Show `fix <target> --diff` first.
 - `missing` — required and absent → fix it.
 - `optional-missing` — opt-in tool not configured. Only fix if the user wants that tool.
+- `declared` — a real deviation the repo's `.repo-tooling.json` `exceptions` records on
+  purpose, with its reason. Leave it alone; it doesn't fail the run.
 
 `fix` returns `FixActionRecord[]` with `status: applied | dry-run | skipped | already-ok | unsupported`.
 

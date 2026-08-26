@@ -87,6 +87,14 @@ export interface Lockfile {
 	mcp?: {
 		recommended?: McpRecommendation[]
 	}
+	/**
+	 * Declared exceptions (#558): doctor check name (`CheckResult.check`) → the
+	 * mandatory reason this repo deliberately deviates. doctor reports the check
+	 * as `declared` (reason shown, never hidden) and it stops failing the run.
+	 * An entry naming a check the run doesn't know is itself reported as drift,
+	 * so a typo or a renamed check can't silently mute (or un-mute) anything.
+	 */
+	exceptions?: Record<string, string>
 	writtenBy: string
 	writtenAt: string
 }
@@ -191,6 +199,12 @@ export function lockfileSchema() {
 					},
 				} satisfies Record<keyof NonNullable<Lockfile['mcp']>, object>,
 			},
+			exceptions: {
+				type: 'object',
+				additionalProperties: { type: 'string', minLength: 1 },
+				description:
+					'Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift.',
+			},
 			writtenBy: {
 				type: 'string',
 				description: 'Package name and version that last wrote this file.',
@@ -268,6 +282,7 @@ export async function writeLockfile(
 		...(existing?.aiLoop ? { aiLoop: existing.aiLoop } : {}),
 		...(existing?.requiredSkills ? { requiredSkills: existing.requiredSkills } : {}),
 		...(existing?.mcp ? { mcp: existing.mcp } : {}),
+		...(existing?.exceptions ? { exceptions: existing.exceptions } : {}),
 		writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
 		writtenAt: new Date().toISOString(),
 	}

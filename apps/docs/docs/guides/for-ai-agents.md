@@ -82,7 +82,7 @@ npx @rtorcato/repo-tooling doctor --json -d ./existing-repo
 }
 ```
 
-Status values: `ok`, `drift` (file exists but doesn't extend the preset), `missing` (required file absent), `optional-missing` (optional convention absent).
+Status values: `ok`, `drift` (file exists but doesn't extend the preset), `missing` (required file absent), `optional-missing` (optional convention absent), `declared` (a real deviation `.repo-tooling.json` `exceptions` records on purpose, with its reason — don't fix it).
 
 ### `fix` — apply fixers for items doctor flagged
 
@@ -174,7 +174,7 @@ pnpm install
 DOCTOR=$(npx @rtorcato/repo-tooling doctor --json -d .)
 
 # 2. Parse, decide whether to fix everything or specific items
-#    (For agents: filter results where status !== "ok" && status !== "optional-missing")
+#    (For agents: filter results where status !== "ok" && status !== "optional-missing" && status !== "declared")
 
 # 3. Apply all fixable findings
 npx @rtorcato/repo-tooling fix --yes --json -d .
@@ -192,7 +192,7 @@ npx @rtorcato/repo-tooling fix dependabot --yes --json -d .
 ## Exit codes
 
 - `setup` — `0` on success, `1` on failure (validation error, write failure).
-- `doctor` — `0` if every check is `ok` or `optional-missing`; `1` if any `drift` or `missing`.
+- `doctor` — `0` if every check is `ok`, `optional-missing`, or `declared`; `1` if any `drift` or `missing`.
 - `fix` — always `0` (intent expressed; rerun `doctor` to confirm state). Unknown target → `1` with a JSON error payload.
 - `list` — `0`.
 - `copy` — `0` on success, `1` on unknown config name.

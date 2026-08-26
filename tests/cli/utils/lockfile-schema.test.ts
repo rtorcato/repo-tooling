@@ -157,4 +157,14 @@ describe("this repo's own lockfile", () => {
 			mcp([{ name: 'some-server', importance: 'important', why: 'x', command: 'npx anything' }])
 		).not.toEqual([])
 	})
+
+	// #558: an exception's reason is mandatory and non-empty — the schema is what
+	// enforces "every deviation is argued", so an empty reason must not validate.
+	it('accepts a declared exception with a reason and rejects one without', () => {
+		const exceptions = (value: unknown) => validate({ ...lockfile, exceptions: value }, schema)
+		expect(exceptions({ TypeScript: 'this repo is the package itself' })).toEqual([])
+		expect(exceptions({ TypeScript: '' })).not.toEqual([])
+		expect(exceptions({ TypeScript: true })).not.toEqual([])
+		expect(exceptions(['TypeScript'])).not.toEqual([])
+	})
 })

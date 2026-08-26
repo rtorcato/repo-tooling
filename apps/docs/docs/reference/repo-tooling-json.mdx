@@ -130,6 +130,32 @@ carries Claude Code's own first-use consent prompt. The lockfile says *what and 
 `.mcp.json` says *how*, and you say *whether*. User-scoped MCP config is machine-private and
 is not probed at all.
 
+## `exceptions` — declared deviations
+
+A map from a `doctor` check name (the `check` string in `doctor --json` output) to the reason
+this repo deliberately deviates. The reason is **mandatory and non-empty** — the schema rejects
+an entry without one, so every deviation is argued in the PR that declares it.
+
+```json
+"exceptions": {
+  "TypeScript": "this repo is the package; the tsconfig lives at src/cli/tsconfig.json"
+}
+```
+
+Three rules keep it from becoming a mute button:
+
+- **Shown, never hidden.** The check still appears in every report, as `declared` with its
+  reason, and the summary carries a `declared: N` count. Only the exit code changes: a declared
+  exception no longer fails the run.
+- **A stale exception is itself a finding.** An entry naming a check `doctor` does not run —
+  a typo, or a check that was renamed or removed — is reported as `drift`, so it can't silently
+  do nothing (or silently stop suppressing).
+- **Per-repo by construction.** The file lives in the repo it excuses, so an exception that is
+  legitimate here cannot leak into a repo where the same finding is real.
+
+A bulk `fix` / `fix --yes` skips declared checks; a targeted `fix <target>` still applies,
+since naming the fixer is an explicit override.
+
 ## Version history
 
 | Version | Change |

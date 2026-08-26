@@ -1143,7 +1143,11 @@ describe('doctor CODEOWNERS', () => {
 })
 
 describe('doctor + lockfile', () => {
-	async function writeLock(dir: string, configPatch: Record<string, unknown> = {}): Promise<void> {
+	async function writeLock(
+		dir: string,
+		configPatch: Record<string, unknown> = {},
+		extra: Record<string, unknown> = {}
+	): Promise<void> {
 		const config = {
 			projectName: 'demo',
 			projectType: 'library',
@@ -1161,6 +1165,7 @@ describe('doctor + lockfile', () => {
 		await fs.writeJson(join(dir, '.repo-tooling.json'), {
 			version: LOCKFILE_VERSION,
 			config,
+			...extra,
 			writtenBy: '@rtorcato/repo-tooling@test',
 			writtenAt: new Date().toISOString(),
 		})
@@ -1311,6 +1316,45 @@ describe('doctor + lockfile', () => {
 			expect(previous).toBe('optional-missing')
 			expect(r.status).toBe('ok')
 		}
+	})
+
+	// Declared exceptions (#558): shown with their reason, never hidden, and no
+	// longer counted toward the failing exit code.
+	it('reports an excepted failing check as declared, with its reason', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(
+			dir,
+			{},
+			{ exceptions: { TypeScript: 'this repo is the package; tsconfig lives elsewhere' } }
+		)
+		const results = await runDoctor(dir)
+		const ts = results.find((r) => r.check === 'TypeScript')
+		expect(ts?.status).toBe('declared')
+		expect(ts?.detail).toMatch(/declared exception: this repo is the package/)
+		// The whole point: declared feeds neither `drift` nor `missing`, the two
+		// counts doctorCommand derives its exit code from.
+		expect(summarize(results).declared).toBe(1)
+		expect(results.filter((r) => r.check === 'Declared exceptions')).toEqual([])
+	})
+
+	it('leaves a passing check ok even when an exception names it', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir, {}, { exceptions: { lockfile: 'not actually needed' } })
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'lockfile')?.status).toBe('ok')
+	})
+
+	it('reports an exception naming an unknown check as drift', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir, {}, { exceptions: { 'Type Script': 'typo of a real check' } })
+		const results = await runDoctor(dir)
+		const stale = results.find((r) => r.check === 'Declared exceptions')
+		expect(stale?.status).toBe('drift')
+		expect(stale?.detail).toMatch(/"Type Script"/)
+		expect(stale?.hint).toMatch(/renamed or removed/)
 	})
 })
 

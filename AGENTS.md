@@ -18,7 +18,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `setup --config <path>` | ✅ | `--dry-run` only | Scaffold with a full `ProjectConfig` JSON file. See `setup --config-schema`. |
 | `setup --config-schema` | ✅ | ✅ (JSON Schema) | Print the JSON Schema for `ProjectConfig`. Use to validate configs before scaffolding. |
 | `setup --dry-run` | ✅ | ✅ | Print resolved config + file list without writing. Pair with `--preset` or `--config`. |
-| `doctor --json` | ✅ | ✅ | Audit a project. Returns `{ directory, results: [{ check, status, detail, hint? }] }`. Status: `ok` / `drift` / `missing` / `optional-missing`. |
+| `doctor --json` | ✅ | ✅ | Audit a project. Returns `{ directory, results: [{ check, status, detail, hint? }] }`. Status: `ok` / `drift` / `missing` / `optional-missing` / `declared`. |
 | `fix --json --yes` | ✅ | ✅ | Walk every doctor finding, apply fixers. Returns `FixActionRecord[]` with `status: applied | dry-run | skipped | already-ok | unsupported`. |
 | `fix <target> --json --yes` | ✅ | ✅ | Apply one fixer. Targets from `list --json`. |
 | `fix --dry-run` | ✅ | ✅ | Print what each fixer would write without writing. Combine with `--json`. |
