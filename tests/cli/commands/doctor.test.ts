@@ -15,6 +15,7 @@ import {
 } from '../../../src/cli/generators/claude-skills.js'
 import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
+import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -1158,7 +1159,7 @@ describe('doctor + lockfile', () => {
 			...configPatch,
 		}
 		await fs.writeJson(join(dir, '.repo-tooling.json'), {
-			version: 1,
+			version: LOCKFILE_VERSION,
 			config,
 			writtenBy: '@rtorcato/repo-tooling@test',
 			writtenAt: new Date().toISOString(),
@@ -1179,6 +1180,35 @@ describe('doctor + lockfile', () => {
 		const results = await runDoctor(dir)
 		const lock = results.find((r) => r.check === 'lockfile')
 		expect(lock?.status).toBe('optional-missing')
+		expect(lock?.hint).toMatch(/fix lockfile/)
+	})
+
+	it('reports an older lockfile as optional-missing with the fix lockfile hint (#531)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 2,
+			config: {
+				projectName: 'demo',
+				projectType: 'library',
+				typescript: { enabled: true, config: 'base' },
+				linting: { tool: 'biome' },
+				formatting: { tool: 'biome' },
+				testing: { framework: 'vitest', environment: 'node' },
+				gitHooks: true,
+				commitLint: true,
+				semanticRelease: true,
+				securityAutomation: true,
+				bundler: 'tsup',
+				language: 'js',
+			},
+			writtenBy: '@rtorcato/repo-tooling@test',
+			writtenAt: new Date().toISOString(),
+		})
+		const results = await runDoctor(dir)
+		const lock = results.find((r) => r.check === 'lockfile')
+		expect(lock?.status).toBe('optional-missing')
+		expect(lock?.detail).toMatch(/v2/)
 		expect(lock?.hint).toMatch(/fix lockfile/)
 	})
 

@@ -109,6 +109,7 @@ import { generateBun } from '../../cli/generators/bun.js'
 import { generateDocsSite } from '../../cli/generators/docs-site.js'
 import { generateTypedocConfig, generateTypedocWorkflow } from '../../cli/generators/typedoc.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
+import { identifiablePresetHashes } from '../../cli/utils/copied-assets.js'
 import { LOCKFILE_NAME, writeLockfile } from '../../cli/utils/lockfile.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
@@ -930,13 +931,19 @@ export const FIXERS: Fixer[] = [
 		outputs: [LOCKFILE_NAME],
 		riskLevel: 'safe-add',
 		canFixDrift: false,
-		async run({ targetDir, pkg }) {
-			if (!pkg) {
+		async run({ targetDir, pkg, lock }) {
+			// An existing lockfile keeps its recorded config — this path migrates the
+			// file to the current version on disk (#531), it never re-infers over
+			// choices the repo already made.
+			if (!lock && !pkg) {
 				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
-			const config = inferProjectConfig(pkg)
-			await writeLockfile(targetDir, config)
+			const config = lock ? lock.config : inferProjectConfig(pkg as Record<string, unknown>)
+			// Recorded hashes win: they capture the pristine content at copy time,
+			// which a byte-match against today's shipped asset can only approximate.
+			const assets = { ...(await identifiablePresetHashes(targetDir)), ...lock?.assets }
+			await writeLockfile(targetDir, config, assets)
 			return { filesWritten: [LOCKFILE_NAME] }
 		},
 	},

@@ -72,13 +72,14 @@ describe('readLockfile', () => {
 		})
 
 		const lock = await readLockfile(dir)
-		expect(lock?.version).toBe(LOCKFILE_VERSION)
+		// The on-disk version is preserved so doctor can flag it as older (#531).
+		expect(lock?.version).toBe(1)
 		expect(lock?.config.language).toBe('js')
 		// Existing fields survive the migration untouched.
 		expect(lock?.config.projectName).toBe('demo')
 	})
 
-	it('migrates a v2 file to v3 with no recorded asset hashes (#428)', async () => {
+	it('migrates a v2 file in memory with no recorded asset hashes (#428)', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, LOCKFILE_NAME), {
 			version: 2,
@@ -88,7 +89,8 @@ describe('readLockfile', () => {
 		})
 
 		const lock = await readLockfile(dir)
-		expect(lock?.version).toBe(3)
+		// The on-disk version is preserved so doctor can flag it as older (#531).
+		expect(lock?.version).toBe(2)
 		expect(lock?.assets).toEqual({})
 		expect(lock?.config.projectName).toBe('demo')
 	})

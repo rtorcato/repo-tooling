@@ -125,13 +125,14 @@ export function lockfileSchema() {
 /**
  * Upgrade an older lockfile in-memory. Only touches files older than the
  * current version, so a newer-than-supported file is left as-is for
- * checkLockfile to flag. The file is rewritten to v3 next time it's saved.
+ * checkLockfile to flag. `version` stays at the on-disk value — bumping it here
+ * hid every older file from doctor's older-than-current check (#531); the write
+ * path stamps LOCKFILE_VERSION anyway, so the file is v3 next time it's saved.
  */
 function migrate(lock: Lockfile): Lockfile {
 	if (lock.version >= LOCKFILE_VERSION) return lock
 	return {
 		...lock,
-		version: LOCKFILE_VERSION,
 		config: { language: 'js', ...lock.config },
 		assets: lock.assets ?? {},
 	}

@@ -393,6 +393,15 @@ program.hook('preAction', async (_, actionCommand) => {
 		// so CI can audit our own config the same way it does consumers'. Scoped
 		// to doctor — the mutating setup/fix stay blocked even with the flag set.
 		if (name === 'doctor' && process.env.REPO_TOOLING_ALLOW_SELF === '1') return
+		// One mutating exception (#531): `fix lockfile` writes only
+		// .repo-tooling.json — no scaffolding — so our own lockfile can be
+		// migrated by the fixer we ship instead of by hand.
+		if (
+			name === 'fix' &&
+			actionCommand.args[0] === 'lockfile' &&
+			process.env.REPO_TOOLING_ALLOW_SELF === '1'
+		)
+			return
 		const dir = (actionCommand.opts().directory as string | undefined) ?? process.cwd()
 		if (await isSelfRepo(dir)) {
 			console.log(
