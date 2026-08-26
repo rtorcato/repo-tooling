@@ -16,20 +16,30 @@ async function scaffoldSkill(dir: string, name: string): Promise<void> {
 }
 
 /**
- * Run one emitted command line through a real shell with `npx` swapped for a
- * printf that echoes its argv, and return what `npx` would have received. A
- * name the shell splits, expands or executes fails to come back intact.
+ * Run one emitted command through a real shell with `npx` swapped for a printf
+ * that echoes its argv, and return what `npx` would have received. A name the
+ * shell splits, expands or executes fails to come back intact. NUL separates the
+ * arguments — it is the one byte argv cannot carry, so a newline in a name round
+ * trips instead of reading as two arguments.
  */
 function shellArgv(command: string): string[] {
-	const out = execFileSync('sh', ['-c', command.replace(/^npx /, "printf '%s\\n' ")], {
+	const out = execFileSync('sh', ['-c', command.replace(/^npx /, "printf '%s\\0' ")], {
 		encoding: 'utf8',
 	})
-	return out.split('\n').slice(0, -1)
+	return out.split('\0').slice(0, -1)
 }
 
-/** The command lines inside the ```bash fence. */
+/**
+ * The commands inside the ```bash fence. A quoted name may contain a newline, so
+ * a command is not a line: each runs to the next `npx skills add ` boundary, and
+ * the last to the closing fence — which the generator emits as the final line.
+ */
 function commandLines(body: string): string[] {
-	return body.split('\n').filter((line) => line.startsWith('npx skills add '))
+	const lines = body.split('\n')
+	const open = lines.findIndex((line) => /^`{3,}bash$/.test(line))
+	if (open === -1) return []
+	const block = lines.slice(open + 1, -1).join('\n')
+	return block === '' ? [] : block.split(/\n(?=npx skills add )/)
 }
 
 describe('buildSkillsInstallBody', () => {
@@ -56,6 +66,9 @@ describe('buildSkillsInstallBody', () => {
 		['backticks and a variable', '`echo pwned`$HOME'],
 		['a double quote', 'we"rd'],
 		['a single quote', "it's"],
+		// Quoting does not escape a newline: this command spans two physical
+		// lines, so a per-line helper would drop the second and assert less.
+		['a newline', 'one\ntwo'],
 	])('hands %s to npx as one literal argument', (_what, skill) => {
 		const [command, ...rest] = commandLines(buildSkillsInstallBody('rtorcato', 'x', [skill]))
 		expect(rest).toEqual([])
