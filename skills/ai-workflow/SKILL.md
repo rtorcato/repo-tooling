@@ -269,9 +269,30 @@ Notes on the script, so it doesn't get "tidied" into breakage:
   same verdict markers the loop's Pass 3 reads — so a later tick adopts their
   verdicts instead of re-reviewing.
 
-## 4. Report
+## 4. Hand over, then report
 
-One block, nothing else:
+The loop's next tick would hand these PRs over in Pass 1, but a human watching
+the burst beats a 15-minute tick and inherits unassigned PRs — #537 and #539
+were merged by hand before any tick ran, never appearing in *Assigned to you*
+and still wearing a stale `ai-review`. Close that window here: once per PR
+whose two review arms both completed, apply the `ai-issue-loop` skill's Pass 1
+**by reference — execute what its text currently says, never a copy of it
+here**. A second copy of the handoff logic is drift with two files to keep
+honest; deferring means changes to Pass 1 (e.g. a future `merge-ready` label)
+take effect here without touching this file.
+
+- **Both arms passed** → run ai-issue-loop's Pass 1 handoff/send-back logic
+  on this PR, per its current text — with one carve-out: `mergeStateStatus`
+  `UNKNOWN` (GitHub still computing, CI mid-run) ⇒ do nothing; the loop's next
+  tick resolves it. Do **not** poll CI — the existing rule stands. This step
+  only closes the "reviews finished while the human is watching" window.
+- **An arm requested changes** → do nothing; the PR carries `ai-changes` and
+  the loop's fix round owns it.
+- **`pr: null` (blocked)** → verify the issue ended per the `ai-blocked`
+  contract in the loop skill, and repair with `gh issue edit` if the
+  implementer left it half-done.
+
+Then report — one block, nothing else:
 
 - PRs opened, with numbers and review verdicts.
 - Anything `ai-blocked`, and why.
