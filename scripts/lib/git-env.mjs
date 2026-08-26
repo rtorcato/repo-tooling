@@ -18,14 +18,43 @@
  * TypeScript compiled into `dist/` for consumers, while this one is loaded
  * directly by `.mjs` scripts that run before any build.
  */
+/**
+ * This is `git rev-parse --local-env-vars` verbatim — git's own answer to
+ * "which variables bind a process to one specific repository", and what
+ * githooks(1) tells you to clear before touching a different one. Do not curate
+ * it by hand: an earlier version of this list was assembled from the vars that
+ * looked repository-ish and missed the `GIT_CONFIG*` family, two of which are
+ * exported by the maintainer's own shell.
+ *
+ * `GIT_CONFIG` and `GIT_CONFIG_COUNT` matter most here. They redirect where
+ * `git config` reads *and writes* regardless of `-C` or cwd — and `git config`
+ * is the exact operation behind the original corruption (`core.bare false` in
+ * src/cli/commands/loop-guard.ts, `git -C <cwd> config` in
+ * src/base/git-hooks.ts). `GIT_CONFIG_PARAMETERS` is how git hands `-c` down to
+ * child processes, so it is routinely present in a hook chain.
+ *
+ * A test asserts this covers everything the installed git reports, so a future
+ * git that adds a variable fails loudly instead of silently reopening the hole.
+ */
 export const AMBIENT_GIT_REPO_VARS = [
+	'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+	'GIT_CONFIG',
+	'GIT_CONFIG_PARAMETERS',
+	'GIT_CONFIG_COUNT',
+	'GIT_OBJECT_DIRECTORY',
 	'GIT_DIR',
 	'GIT_WORK_TREE',
+	'GIT_IMPLICIT_WORK_TREE',
+	'GIT_GRAFT_FILE',
 	'GIT_INDEX_FILE',
-	'GIT_COMMON_DIR',
-	'GIT_OBJECT_DIRECTORY',
-	'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+	'GIT_NO_REPLACE_OBJECTS',
+	'GIT_REPLACE_REF_BASE',
 	'GIT_PREFIX',
+	'GIT_SHALLOW_FILE',
+	'GIT_COMMON_DIR',
+	// Not in git's local-env list: it scopes which refs are visible rather than
+	// which repository is used. Cleared anyway — a namespace inherited from a
+	// hook would hide refs from a command that meant to see all of them.
 	'GIT_NAMESPACE',
 ]
 

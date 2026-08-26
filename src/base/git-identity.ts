@@ -82,15 +82,38 @@ const GIT_TIMEOUT_MS = 5_000
  * `loop guard`, whose whole job is deciding whether one specific checkout has
  * gone bare (#519). Every caller here names its repo explicitly, so the
  * ambient one is never what was meant.
+ *
+ * This is `git rev-parse --local-env-vars` verbatim — git's own answer, and what
+ * githooks(1) says to clear before touching a different repository. Do not
+ * curate it by hand: the first version of this list was assembled from the vars
+ * that looked repository-ish and missed the `GIT_CONFIG*` family, which
+ * redirects where `git config` reads *and writes* — the exact operation this
+ * module's callers perform.
+ *
+ * Kept byte-identical with `AMBIENT_GIT_REPO_VARS` in `scripts/lib/git-env.mjs`;
+ * a test asserts both cover what the installed git reports. Two copies because
+ * this one compiles into `dist/` for consumers and that one is loaded raw by
+ * `.mjs` scripts that run before any build.
  */
-const AMBIENT_REPO_VARS = [
+export const AMBIENT_REPO_VARS = [
+	'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+	'GIT_CONFIG',
+	'GIT_CONFIG_PARAMETERS',
+	'GIT_CONFIG_COUNT',
+	'GIT_OBJECT_DIRECTORY',
 	'GIT_DIR',
 	'GIT_WORK_TREE',
+	'GIT_IMPLICIT_WORK_TREE',
+	'GIT_GRAFT_FILE',
 	'GIT_INDEX_FILE',
-	'GIT_COMMON_DIR',
-	'GIT_OBJECT_DIRECTORY',
-	'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+	'GIT_NO_REPLACE_OBJECTS',
+	'GIT_REPLACE_REF_BASE',
 	'GIT_PREFIX',
+	'GIT_SHALLOW_FILE',
+	'GIT_COMMON_DIR',
+	// Not in git's local-env list: it scopes which refs are visible rather than
+	// which repository is used. Cleared anyway — a namespace inherited from a
+	// hook would hide refs from a command that meant to see all of them.
 	'GIT_NAMESPACE',
 ]
 
