@@ -1,11 +1,13 @@
 ---
 name: ai-workflow
 description: |
-  Implement the `ai-ready` GitHub issue queue in parallel — one agent per issue,
-  each in its own git worktree, ending at open PRs reviewed by two agents. Use
-  when the user says "burst the queue", "work all the ai-ready issues in
-  parallel", or invokes `/ai-workflow`. Hands off to the ai-issue-loop skill for
-  fix rounds and merging. GitHub only (`gh`) — not GitLab.
+  **The entry point for the `ai-ready` issue pipeline — start here.** Implements
+  the queue in parallel, one agent per issue, each in its own git worktree,
+  ending at open PRs reviewed by two agents; then registers the ai-issue-loop
+  engine on a 15-minute loop to carry those PRs through fix rounds and cleanup.
+  Use when the user says "burst the queue", "run the AI pipeline", "work the
+  ai-ready issues", or invokes `/ai-workflow`. Never merges. GitHub only
+  (`gh`) — not GitLab.
 ---
 
 # ai-workflow
