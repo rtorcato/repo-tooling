@@ -24,6 +24,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `fix --dry-run` | ✅ | ✅ | Print what each fixer would write without writing. Combine with `--json`. |
 | `list --json` | ✅ | ✅ | Enumerate the library's surface area. Each entry has `{ name, description, exports, fixTarget }`. |
 | `copy <name>` | ✅ | text only | Copy a single preset (`biome`, `tsconfig`) into the current directory. |
+| `loop guard --root <path>` | ✅ | ✅ | Guard an `ai-issue-loop` tick: repair a wrongly-bare main checkout, gate the `node_modules` rebuild (`--removed`). Exit `0` continue, `1` repair failed, `2` root is not a repairable checkout — both non-zero halt the tick. |
 
 ## Recommended workflows
 
@@ -104,6 +105,7 @@ A fixer may also **refuse** — the target file holds something the generator ca
 - `src/cli/commands/doctor.ts` — all checks and the public `runDoctor(dir)` / `evaluateNodeVersion(version)` / `nextStepSuggestions(results)`
 - `src/cli/commands/fix.ts` — `Fixer` interface, fixer registry, `fixCommand`
 - `src/cli/commands/fix-targets.ts` — shared check → fix target map (used by both doctor's footer and fix's lookup)
+- `src/cli/commands/loop-guard.ts` — `loop guard`: the `--is-inside-work-tree` / `.git` invariant table and the `node_modules` rebuild gate, drained out of the ai-issue-loop skill's prose (#519)
 - `src/cli/generators/` — one file per concern (linting, testing, build, git, github-actions, security, misc)
 - `tooling/` — every shipped preset, mirrored 1:1 with `package.json` `exports`
 

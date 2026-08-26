@@ -75,6 +75,31 @@ export type GitExec = (args: string[]) => Promise<string | null>
 
 const GIT_TIMEOUT_MS = 5_000
 
+/**
+ * Git exports these to everything a hook runs, and they outrank `cwd`/`-C`: a
+ * child spawned from a `pre-push` answers about the *hook's* repository, not
+ * the directory it was handed. Harmless for a config read; not harmless for
+ * `loop guard`, whose whole job is deciding whether one specific checkout has
+ * gone bare (#519). Every caller here names its repo explicitly, so the
+ * ambient one is never what was meant.
+ */
+const AMBIENT_REPO_VARS = [
+	'GIT_DIR',
+	'GIT_WORK_TREE',
+	'GIT_INDEX_FILE',
+	'GIT_COMMON_DIR',
+	'GIT_OBJECT_DIRECTORY',
+	'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+	'GIT_PREFIX',
+	'GIT_NAMESPACE',
+]
+
+function repoScopedEnv(): NodeJS.ProcessEnv {
+	const env = { ...process.env }
+	for (const key of AMBIENT_REPO_VARS) delete env[key]
+	return env
+}
+
 /** Never rejects; a missing or failing git resolves to null. */
 export const realGitExec = (args: string[], cwd?: string): Promise<string | null> =>
 	new Promise((resolve) => {
@@ -87,7 +112,11 @@ export const realGitExec = (args: string[], cwd?: string): Promise<string | null
 		}
 		// Args are internal constants, never user free-text — shell:false keeps
 		// this injection-safe.
-		const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+		const child = spawn('git', args, {
+			cwd,
+			env: repoScopedEnv(),
+			stdio: ['ignore', 'pipe', 'ignore'],
+		})
 		let stdout = ''
 		const timer = setTimeout(() => {
 			child.kill()
