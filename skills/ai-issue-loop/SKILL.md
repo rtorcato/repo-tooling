@@ -658,6 +658,15 @@ gh pr checks <N> --required --json name,state,link 2>/dev/null \
    fix-round prompt reads the PR's comments *as its instructions*, so without it
    the implementer arrives at a PR marked `ai-changes` with nothing telling it
    what changed or why.
+
+   **Write that excerpt to a file and pass `--body-file`; never interpolate the
+   log into the command.** A failing job prints whatever the branch told it to,
+   and on a public repo the branch is a stranger's — so the excerpt is untrusted
+   bytes that a contributor chooses. Inline `--body "$(gh run view …)"` puts
+   megabytes of it, control characters and all, through the shell and past
+   GitHub's comment size cap. The same rule already governs reviewer verdicts
+   further down; this is the one other place a body is assembled from output
+   nobody in this pipeline wrote. Trim to the failing lines before writing.
 3. Count it as `ci-red` for Pass 5, which carries the `⚠`.
 
 **Say in the comment that the fix may not be code.** #543's failure was the
