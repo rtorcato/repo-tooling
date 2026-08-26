@@ -7,6 +7,7 @@ import fs from 'fs-extra'
 import packageJson from '../../package.json' with { type: 'json' }
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand } from './commands/fix.js'
+import { loopGuardCommand } from './commands/loop-guard.js'
 import { setupProject } from './commands/setup.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
 
@@ -383,6 +384,27 @@ program
 			forceSkills: options.forceSkills,
 		})
 	)
+
+// Mechanics the ai-issue-loop skill used to describe in prose-with-shell (#519).
+// Deliberately outside the isSelfRepo hook below: the loop runs against this
+// repo like any other, and a guard that refuses here would guard nothing.
+const loop = program.command('loop').description('🔁 ai-issue-loop mechanics as tested commands')
+
+loop
+	.command('guard')
+	.description('🛡️  Repair a wrongly-bare main checkout and gate the node_modules rebuild')
+	.option('--root <path>', 'Main checkout the loop branches worktrees from', process.cwd())
+	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
+	.option('--removed', 'A worktree was removed this tick — consider rebuilding node_modules')
+	.option('--json', 'Emit machine-readable JSON output')
+	.addHelpText(
+		'after',
+		'\nExit codes:\n' +
+			'  0  root is a usable work tree (healthy, or repaired in place) — continue the tick\n' +
+			'  1  repair was attempted and failed; the root is still bare — halt the tick\n' +
+			'  2  root is not a repairable main checkout (bare clone, linked worktree, or not a repo) — halt the tick\n'
+	)
+	.action(loopGuardCommand)
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()
