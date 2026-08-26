@@ -79,6 +79,57 @@ enum-valued records — see the schema for their exact shapes.
 
 See the [AI issue loop guide](../guides/ai-issue-loop.md) for how this is used.
 
+## `requiredSkills` — agent skills this repo depends on
+
+A list of the skills this package ships (`ai-issue-loop`, `ai-workflow`, `ai-issue`,
+`ai-loop-status`) that the repo's workflows assume. It exists for **staleness**, not absence:
+a skill that isn't installed fails loudly the moment something reaches for it, while a copy
+three releases behind runs to completion without complaint.
+
+```json
+"requiredSkills": ["ai-issue-loop", "ai-workflow"]
+```
+
+`doctor` compares each listed skill's installed `SKILL.md` — its stamped `repo-tooling-hash`,
+under `~/.claude/skills` or wherever `--skills-dir` points — against the hash of the copy this
+package ships, and reports anything missing, stale, or matching no shipped version at all.
+
+Two rules make it safe to commit:
+
+- **Never `drift`, never `missing`.** The check probes your machine, not the repo, so a
+  contributor with no Claude installed must not fail its `doctor`. It only ever reports
+  "not configured", which leaves the exit code alone. It is also skipped entirely unless the
+  file has an `aiLoop` key — that key is already the "this repo uses the pipeline" signal.
+- **Check and hint only.** `doctor` names `fix claude-skills`; it never runs it. Committed
+  repo config that directs writes into your home directory is the shape of a supply-chain
+  attack even when the content is benign, so that step stays a human's.
+
+## `mcp` — recommended MCP servers
+
+Advisory metadata about the MCP servers the repo's workflow assumes. **Never an install
+directive**: an entry may say *what* and *why*, and may not say *how*.
+
+```json
+"mcp": {
+  "recommended": [
+    { "name": "some-server", "importance": "important", "why": "edits the design files under design/" }
+  ]
+}
+```
+
+<Fields schema={lockfileSchema.properties.mcp.properties.recommended.items} />
+
+`importance` is one of `nice-to-have`, `important`, `critical` — it signals how much of the
+workflow assumes the server, and nothing more. `why` is the one line that `.mcp.json`
+structurally cannot carry.
+
+`doctor` reports, informationally, which recommended names the repo-scoped `.mcp.json` does not
+declare. It never installs or enables a server, and there is deliberately no `command`, `args`
+or `env` here: MCP servers execute code, so the real config belongs in `.mcp.json`, which
+carries Claude Code's own first-use consent prompt. The lockfile says *what and why*,
+`.mcp.json` says *how*, and you say *whether*. User-scoped MCP config is machine-private and
+is not probed at all.
+
 ## Version history
 
 | Version | Change |

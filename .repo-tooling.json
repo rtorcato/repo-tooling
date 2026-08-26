@@ -33,6 +33,7 @@
   "aiLoop": {
     "agentUser": "rtorcato-bot"
   },
+  "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"],
   "writtenBy": "@rtorcato/repo-tooling@3.11.0",
   "writtenAt": "2026-08-26T14:58:22.032Z"
 }

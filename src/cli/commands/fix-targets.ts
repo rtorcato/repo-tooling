@@ -52,6 +52,12 @@ export const FIX_TARGETS: Record<string, string> = {
 	'Claude worktree settings': 'ai',
 	'Claude skills': 'claude-skills',
 	'Copied assets': 'copied-assets',
+	// `Required skills` (#533) and `Recommended MCP` (#534) are deliberately
+	// absent. Both are driven by committed repo config and both would act outside
+	// the repo — installing into `~/.claude`, enabling a code-executing MCP
+	// server. Staying out of this map keeps them out of `fix`'s footer suggestions
+	// and out of every lookup a fixer path makes; their own hints name the command
+	// a human runs by hand.
 }
 
 /**

@@ -46,23 +46,34 @@ interface JsonSchema {
 	required?: readonly string[]
 	properties?: Record<string, JsonSchema>
 	additionalProperties?: boolean | JsonSchema
+	items?: JsonSchema
 }
 
 /**
  * Validate against the keyword subset lockfileSchema() actually uses: type
- * (object/string/integer/boolean), enum, minLength, required, properties and
- * additionalProperties (`false` or a schema). Returns one message per problem.
+ * (object/array/string/integer/boolean), enum, minLength, required, properties,
+ * additionalProperties (`false` or a schema) and items. Returns one message per
+ * problem.
  *
  * Hand-rolled because the repo has no JSON Schema validator, and the schema
- * leans on six keywords — not enough to justify an ajv devDependency.
+ * leans on seven keywords — not enough to justify an ajv devDependency.
  */
 // ponytail: `format: date-time` on writtenAt is not checked, and neither are
-// arrays or composition keywords — none appear in the schema. Reach for ajv the
-// day one does.
+// composition keywords — none appear in the schema. Reach for ajv the day one
+// does.
 function validate(value: unknown, schema: JsonSchema, path = '$'): string[] {
 	const errors: string[] = []
 	if (schema.enum && !schema.enum.includes(value as string)) {
 		errors.push(`${path}: ${JSON.stringify(value)} is not one of ${schema.enum.join(', ')}`)
+	}
+	if (schema.type === 'array') {
+		if (!Array.isArray(value)) return [`${path}: expected array`]
+		if (schema.items) {
+			for (const [i, item] of value.entries()) {
+				errors.push(...validate(item, schema.items, `${path}[${i}]`))
+			}
+		}
+		return errors
 	}
 	if (schema.type === 'object') {
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -122,11 +133,28 @@ describe("this repo's own lockfile", () => {
 		expect(validate({ ...lockfile, strayKey: true }, schema)).not.toEqual([])
 		expect(validate({ ...lockfile, version: '3' }, schema)).not.toEqual([])
 		expect(validate({ ...lockfile, aiLoop: { agentUsr: 'typo' } }, schema)).not.toEqual([])
+		// #533: only skills this package ships, and only as an array.
+		expect(validate({ ...lockfile, requiredSkills: ['not-a-skill'] }, schema)).not.toEqual([])
+		expect(validate({ ...lockfile, requiredSkills: 'ai-issue-loop' }, schema)).not.toEqual([])
 		expect(
 			validate(
 				{ ...lockfile, config: { ...(lockfile.config as object), bundler: 'webpack' } },
 				schema
 			)
+		).not.toEqual([])
+	})
+
+	// #534: the schema is the whole enforcement of "advisory metadata, never an
+	// install directive" — an entry may say what and why, and may not say how.
+	it('accepts an advisory mcp.recommended entry and rejects executable config', () => {
+		const mcp = (recommended: unknown) => validate({ ...lockfile, mcp: { recommended } }, schema)
+		expect(
+			mcp([{ name: 'some-server', importance: 'important', why: 'edits the design files' }])
+		).toEqual([])
+		expect(mcp([{ name: 'some-server', importance: 'vital', why: 'x' }])).not.toEqual([])
+		expect(mcp([{ name: 'some-server', importance: 'important' }])).not.toEqual([])
+		expect(
+			mcp([{ name: 'some-server', importance: 'important', why: 'x', command: 'npx anything' }])
 		).not.toEqual([])
 	})
 })

@@ -38,6 +38,8 @@ import {
 	checkNestedLanguages,
 	checkPrePushHook,
 	checkReadmeBadges,
+	checkRecommendedMcp,
+	checkRequiredSkills,
 	COMMITLINT_FILE_CHECK,
 	type GitHooksProfile,
 } from '../../base/checks.js'
@@ -285,6 +287,16 @@ async function runBaseChecks(
 	results.push(await checkAiSetup(dir))
 	// User-global, not repo state — see checkClaudeSkills on why it never returns drift.
 	results.push(await checkClaudeSkills(opts.skillsDir))
+	// #533: gated on `aiLoop`, which is already the "this repo uses the pipeline"
+	// signal, so a repo that doesn't gets no line at all rather than an empty one.
+	if (lock?.aiLoop && lock.requiredSkills?.length) {
+		results.push(await checkRequiredSkills(lock.requiredSkills, opts.skillsDir))
+	}
+	// #534: advisory. Absent `mcp.recommended` means the repo has nothing to say
+	// about MCP, which is not a finding.
+	if (lock?.mcp?.recommended?.length) {
+		results.push(await checkRecommendedMcp(dir, lock.mcp.recommended))
+	}
 	results.push(await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget))
 	results.push(await checkCoverageUpload(dir))
 	return results
