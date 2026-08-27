@@ -16,9 +16,17 @@ import { type GitExec, isNewerVersion, resolveShippedVersion } from '../utils/ve
 
 /**
  * Skills this package owns the content of and keeps up to date. The loop first —
- * it is the pipeline; the other three are its drivers (burst, on-ramp, status).
+ * it is the pipeline; the next three are its drivers (burst, on-ramp, status).
+ * `dogfood` stands apart: it tests the consuming repo's own tooling rather than
+ * driving the loop, and it is the only one that writes nothing outside a temp dir.
  */
-export const SHIPPED_SKILLS = ['ai-issue-loop', 'ai-workflow', 'ai-issue', 'ai-loop-status']
+export const SHIPPED_SKILLS = [
+	'ai-issue-loop',
+	'ai-workflow',
+	'ai-issue',
+	'ai-loop-status',
+	'dogfood',
+]
 
 /** The primary skill — the default everywhere a single name is accepted. */
 export const SHIPPED_SKILL = 'ai-issue-loop'
