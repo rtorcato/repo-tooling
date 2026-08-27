@@ -964,14 +964,15 @@ review that already exists — `<ARM>` is `code` or `sec`:
 
 ```bash
 ME=$(gh api user --jq .login)   # the identity every loop agent posts as
+HEAD=$(gh pr view <N> --json headRefOid --jq .headRefOid)
 VERDICT=$(gh api "repos/$OWNER_REPO/pulls/<N>/reviews" --paginate --slurp \
-  | jq -r --arg me "$ME" '[add[]
-            | select(.user.login==$me)
+  | jq -r --arg me "$ME" --arg head "$HEAD" '[add[]
+            | select(.user.login==$me and .commit_id==$head)
             | (.body // "")
             | capture("<!-- ai-issue-loop:verdict:<ARM>:(?<v>[A-Z-]+) -->").v] | last // empty')
 ```
 
-Four details there are load-bearing:
+Five details there are load-bearing:
 
 - **`pulls/<N>/reviews`, because the prompt posts with `gh pr review --comment`.**
   That creates a *review*, which never appears under `issues/<N>/comments`. The
@@ -993,6 +994,19 @@ Four details there are load-bearing:
   count. Login, not `author_association`, because association wobbles with repo
   ownership (an org-owned repo never yields `OWNER`, even for its admins) while
   `gh api user` names exactly who this loop posts as.
+- **The head gate — `.commit_id==$head`, so a verdict expires with the diff it
+  read.** Every review carries the commit it was submitted against; ungated, the
+  read takes `last` over all of them, so after a fix round the newest marker is
+  still the *pre-fix* one and the tick adopts a verdict about a diff that no
+  longer exists. Both directions bite: a stale `CHANGES` re-applies `ai-changes`
+  for a finding the fix round already resolved, burning a round of two and
+  pushing the PR toward `ai-blocked` over nothing; a stale `PASS` is worse, since
+  it marks a rewritten diff reviewed when nothing read it. Scoped to the head, an
+  older marker reads as absent and that arm re-spawns — which is already the
+  behaviour for an arm that never posted. **This does not cost the #497 recovery
+  case** the read exists for: a reviewer that died between posting and labelling
+  posted against the head that is still current, so its marker still matches.
+  Only genuinely stale markers stop matching, which is the point.
 - **`(.body // "")` and `// empty`.** A review can have a null body, which
   `capture` throws on, aborting the whole filter; and `jq -r` prints a missing
   value as the literal string `null`, which is not empty and would read as a
