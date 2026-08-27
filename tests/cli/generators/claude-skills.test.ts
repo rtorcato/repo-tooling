@@ -6,9 +6,7 @@ import {
 	claudeSkillStatus,
 	HASH_KEY,
 	installClaudeSkill,
-	isNewerVersion,
 	readShippedSkill,
-	resolveShippedVersion,
 	readSkillVersion,
 	resolveSkillsDir,
 	SHIPPED_SKILL,
@@ -19,6 +17,7 @@ import {
 	stripSkillStamps,
 	VERSION_KEY,
 } from '../../../src/cli/generators/claude-skills.js'
+import { isNewerVersion, resolveShippedVersion } from '../../../src/cli/utils/version.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
