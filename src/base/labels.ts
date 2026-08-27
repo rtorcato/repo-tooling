@@ -46,6 +46,11 @@ export const LOOP_LABELS: readonly LabelSpec[] = [
 	{ name: 'ai-ok-sec', color: '0e8a16', description: 'security-expert passed' },
 	{ name: 'ai-changes', color: 'd93f0b', description: 'Reviewer requested changes' },
 	{
+		name: 'ai-fixing',
+		color: '006b75',
+		description: 'Fix-round implementer claimed and running',
+	},
+	{
 		name: 'ai-notes',
 		color: 'fbca04',
 		description: 'Passed, but a reviewer left something to read before merging',
@@ -64,7 +69,7 @@ export const LOOP_LABELS: readonly LabelSpec[] = [
 
 /**
  * How many of the set have to exist before this repo counts as running the
- * loop. A repo with none has opted out, not drifted — creating thirteen labels it
+ * loop. A repo with none has opted out, not drifted — creating fourteen labels it
  * will never use is the nag this threshold exists to prevent. One alone is the
  * observed half-state (`cf-common` has only `ai-ready`, applied by hand), which
  * is likewise not evidence the pipeline runs there.
@@ -177,7 +182,7 @@ export async function checkLoopLabels(dir: string, exec?: GhExec): Promise<Check
  * Repairs colour and description with `gh label edit`, and creates the labels
  * the set is missing. Only on a repo already running the loop (the same
  * `IN_USE_THRESHOLD` gate the check uses) — otherwise a plain `fix --yes` would
- * push thirteen labels into every repo it touches.
+ * push fourteen labels into every repo it touches.
  *
  * Idempotent: an aligned repo is a no-op, and a label whose only difference is
  * the hex case is not touched at all.

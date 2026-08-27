@@ -132,6 +132,7 @@ that state, so a missed tick, a crash, or a restart costs nothing.
 | `ai-ok-code` | PR | `code-reviewer` passed. In-flight only — the handoff strips it. |
 | `ai-ok-sec` | PR | `security-expert` passed. In-flight only — the handoff strips it. |
 | `ai-changes` | PR | A reviewer requested changes, or Pass 1 sent the PR back over red CI. |
+| `ai-fixing` | PR | Fix-round implementer claimed and running. Cleared with its push. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
 | `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. Supersedes the `ai-ok-*` pair rather than joining it. |
 
@@ -162,15 +163,18 @@ issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
 PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> merge-ready, assigned to you
                                  │        (± ai-notes)       │              ─> YOU merge
                                  │                           └─ dependabot ─> auto-merge
-                                 └─> ai-changes ─> fix round (max 2) ─> ai-review
+                                 └─> ai-changes ─> ai-fixing (max 2) ─> ai-review
                                      ▲                       └─ round 3 ─> ai-blocked
                                      └─ Pass 1 sends back: not CLEAN, or a required check FAILED
 ```
 
-`ai-reviewing-code` / `ai-reviewing-sec` are the claim step. Pass 3 applies one
-immediately before spawning that reviewer and skips spawning a second while it is
-set, so a tick that fires mid-review cannot double-spawn; the reviewer clears its
-own claim alongside its verdict.
+`ai-reviewing-code` / `ai-reviewing-sec` / `ai-fixing` are the claim step. Pass 3
+applies one immediately before spawning that agent and skips spawning a second
+while it is set, so a tick that fires mid-run cannot double-spawn; the agent
+clears its own claim alongside the label it ends on — a verdict for a reviewer,
+`ai-review` for the fix round. A duplicated fix round is the worse of the two:
+both implementers share one worktree and one branch, so they race each other's
+commits rather than merely posting two review comments.
 
 `ai-changes` is the send-back — **never** re-apply `ai-ready` to an open PR's
 issue; that is what double-picks it.
