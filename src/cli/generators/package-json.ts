@@ -1,3 +1,4 @@
+import chalk from 'chalk'
 import fs from 'fs-extra'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
@@ -13,6 +14,9 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 
 	const includeTreeshake = Boolean(config.treeshakeCheck && config.projectType === 'library')
 
+	const generatedScripts = getScripts(config, { includeTreeshake })
+	const existingScripts: Record<string, string> = (existingPackageJson as any)?.scripts ?? {}
+
 	const packageJson: any = {
 		name: config.projectName,
 		version: '0.1.0',
@@ -22,10 +26,7 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 		// generated workflows carry no `version:` input (#364).
 		packageManager: `pnpm@${detectPnpmVersion() ?? PNPM_FALLBACK_VERSION}`,
 		...existingPackageJson,
-		scripts: {
-			...getScripts(config, { includeTreeshake }),
-			...(existingPackageJson as any)?.scripts,
-		},
+		scripts: resolveScripts(config, generatedScripts, existingScripts),
 		dependencies: {
 			...(existingPackageJson as any)?.dependencies,
 		},
@@ -74,6 +75,40 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 	// (see ensureBuildApprovals in build.ts).
 
 	await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 })
+}
+
+/**
+ * Merge the generated scripts with what the package.json already had. Existing
+ * values win — that merge-don't-clobber policy is what makes re-running `setup`
+ * on a live repo safe.
+ *
+ * `build` on a library is the one exception. The library branch of
+ * generatePackageJson overwrites the whole publish contract
+ * (main/module/types/exports) unconditionally, and that contract names files
+ * only the preset's bundler emits: a preserved `build: tsc` produces
+ * dist/index.js + dist/index.d.ts and never the ./dist/index.cjs that `main`
+ * and every `require` condition point at, so `pnpm build && npm publish` ships
+ * a package whose CJS entry points 404 (#570). Owning the contract means owning
+ * its producer; the replacement is announced rather than silent.
+ */
+function resolveScripts(
+	config: ProjectConfig,
+	generated: Record<string, string>,
+	existing: Record<string, string>
+): Record<string, string> {
+	const scripts = { ...generated, ...existing }
+
+	if (config.projectType !== 'library' || !generated.build) return scripts
+
+	if (existing.build && existing.build !== generated.build) {
+		console.warn(
+			chalk.yellow(
+				`⚠️  Replaced "build": "${existing.build}" with "${generated.build}" — the library exports map names files only ${config.bundler} emits.`
+			)
+		)
+	}
+	scripts.build = generated.build
+	return scripts
 }
 
 interface GetScriptsOptions {

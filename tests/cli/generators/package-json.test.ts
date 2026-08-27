@@ -1,6 +1,7 @@
 import fs from 'fs-extra'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { buildPresetConfig } from '../../../src/cli/commands/setup-presets.js'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import {
 	SIZE_LIMIT_VERSION,
@@ -344,5 +345,72 @@ describe('composeVerifyScriptFromPkg test fallback', () => {
 			devDependencies: { typescript: '^5.9.3', vitest: '^4.0.0' },
 		})
 		expect(verify).toBe('pnpm typecheck && pnpm exec vitest run')
+	})
+})
+
+// #570: the preset wrote a dual-format publish contract but preserved the repo's
+// existing `build: tsc`, which emits neither ./dist/index.cjs nor
+// ./dist/index.d.cts — so every CJS entry point in the published package 404'd.
+// Nothing asserted setup's own output was internally coherent, which is why it
+// shipped.
+describe('library publish contract (#570)', () => {
+	// What each build command actually drops in dist/ for a `src/index.ts` in a
+	// "type": "module" package. tsup (format: ['cjs','esm'], dts: true) is the only
+	// one producing the .cjs / .d.cts half of the dual contract.
+	const EMITS: Record<string, string[]> = {
+		tsup: ['./dist/index.js', './dist/index.cjs', './dist/index.d.ts', './dist/index.d.cts'],
+		tsc: ['./dist/index.js', './dist/index.d.ts'],
+	}
+
+	function declaredEntryPoints(pkg: Record<string, any>): string[] {
+		const found: string[] = []
+		const walk = (node: unknown) => {
+			if (typeof node === 'string') found.push(node)
+			else if (node && typeof node === 'object') Object.values(node).forEach(walk)
+		}
+		walk(pkg.exports)
+		for (const field of ['main', 'module', 'types']) {
+			if (pkg[field]) found.push(pkg[field])
+		}
+		return [...new Set(found)]
+	}
+
+	async function readCoherentPkg(dir: string) {
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		const emitted = EMITS[pkg.scripts.build]
+		expect(emitted, `no emitted-file list for build script: ${pkg.scripts.build}`).toBeDefined()
+		expect(declaredEntryPoints(pkg).filter((p) => !emitted.includes(p))).toEqual([])
+		return pkg
+	}
+
+	it('names only entry points the resolved build script emits (greenfield)', async () => {
+		const dir = newTmpDir()
+		await generatePackageJson(buildPresetConfig('library', 'my-lib'), dir)
+		await readCoherentPkg(dir)
+	})
+
+	it('claims a stale `build` rather than shipping exports nothing emits', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'my-lib',
+			main: 'dist/index.js',
+			scripts: { build: 'tsc', 'my:script': 'echo hi', test: 'node --test' },
+		})
+		await generatePackageJson(buildPresetConfig('library', 'my-lib'), dir)
+
+		const pkg = await readCoherentPkg(dir)
+		expect(pkg.scripts.build).toBe('tsup')
+		// `build` is the only script the contract claims — the rest still merge.
+		expect(pkg.scripts['my:script']).toBe('echo hi')
+		expect(pkg.scripts.test).toBe('node --test')
+	})
+
+	it('leaves a non-library `build` alone', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { scripts: { build: 'tsc' } })
+		await generatePackageJson(baseConfig({ projectType: 'node-api', bundler: 'tsup' }), dir)
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.scripts.build).toBe('tsc')
 	})
 })
