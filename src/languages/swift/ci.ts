@@ -19,17 +19,36 @@ export interface SwiftPackage {
 	products: string[]
 	/** Deployment platforms declared in `platforms:`, as xcodebuild destination names. */
 	platforms: string[]
+	/** Declared target names, of every kind — the `Swift targets` check (#575) reads these. */
+	targets: string[]
 }
 
 /**
- * Pull the two facts CI needs out of a Package.swift. A regex rather than a
- * SwiftPM invocation: `swift package dump-package` would need a Swift toolchain
- * on the machine running `repo-tooling`, which is usually a Node environment.
+ * Every SwiftPM target factory. `name:` is their first parameter and Swift
+ * enforces argument order, so a literal name always follows the open paren.
+ * `binaryTarget` owns no source directory but is matched anyway: the only
+ * consumer uses this set to *suppress* a report, so over-matching costs a
+ * missed finding while under-matching costs a false one.
+ */
+const TARGET_DECL =
+	/\.(?:target|executableTarget|testTarget|macro|plugin|systemLibrary|binaryTarget)\(\s*name:\s*"([^"]+)"/g
+
+/**
+ * Pull the facts doctor and CI need out of a Package.swift. A regex rather than
+ * a SwiftPM invocation: `swift package dump-package` would need a Swift
+ * toolchain on the machine running `repo-tooling`, which is usually a Node
+ * environment.
+ *
+ * ponytail: literal string arguments only. A manifest that builds its target
+ * list in a loop, behind `#if`, or from a variable parses as fewer targets than
+ * it declares — callers that act on the result must fail open. Upgrade path is
+ * `swift package dump-package` on a machine that has Swift.
  */
 export function parsePackageSwift(contents: string): SwiftPackage {
 	const products = [...contents.matchAll(/\.library\(\s*name:\s*"([^"]+)"/g)].map(
 		(m) => m[1] as string
 	)
+	const targets = [...contents.matchAll(TARGET_DECL)].map((m) => m[1] as string)
 
 	// Only the `platforms:` array declares deployment targets — matching
 	// `.iOS(` across the whole manifest would also catch `.iOS` in target
@@ -39,12 +58,12 @@ export function parsePackageSwift(contents: string): SwiftPackage {
 		(m) => m[1] as string
 	)
 
-	return { products, platforms: [...new Set(platforms)] }
+	return { products, platforms: [...new Set(platforms)], targets }
 }
 
 export async function readSwiftPackage(dir: string): Promise<SwiftPackage> {
 	const filepath = path.join(dir, 'Package.swift')
-	if (!(await fs.pathExists(filepath))) return { products: [], platforms: [] }
+	if (!(await fs.pathExists(filepath))) return { products: [], platforms: [], targets: [] }
 	return parsePackageSwift(await fs.readFile(filepath, 'utf-8'))
 }
 

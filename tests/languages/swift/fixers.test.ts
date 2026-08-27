@@ -71,7 +71,9 @@ describe('swift fixers', () => {
 		// there is no drift for a fixer to close. `Release gate` and `Release
 		// environment` (#429) are covered by the base `release-environment` fixer.
 		// `AI loop agent` (#530) is unfixable by design — inviting a collaborator
-		// is the operator's call.
+		// is the operator's call. `Swift targets` (#575) has two opposite repairs —
+		// declare the target, or delete the directory — and only the project knows
+		// which, so there is nothing safe for a fixer to do.
 		expect(uncovered).toEqual([
 			'language',
 			'Monorepo',
@@ -81,6 +83,7 @@ describe('swift fixers', () => {
 			'README badges',
 			'Coverage upload',
 			'Package.swift',
+			'Swift targets',
 			'Swift tests',
 		])
 	})

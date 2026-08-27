@@ -89,6 +89,7 @@ describe('generateSwiftProject', () => {
 			'Periphery: ok',
 			'swift-format: optional-missing',
 			'Swift .gitignore: ok',
+			'Swift targets: ok',
 			'Swift tests: ok',
 			'DocC: optional-missing',
 			'Release automation: ok',

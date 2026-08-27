@@ -20,6 +20,7 @@ The standard here is the one [`swift-common`](https://github.com/rtorcato/swift-
 | Periphery | `optional-missing` | `periphery` |
 | swift-format | `optional-missing` | `swift-format` |
 | Swift `.gitignore` | `missing` | `swift-gitignore` |
+| Swift targets | `drift` | — (manifest edit, or delete the directory) |
 | Swift tests | `missing` | — (manifest edit, or `swift-ci`) |
 | DocC | `optional-missing` | `docc` |
 | Release automation | `optional-missing` | `swift-release` |
@@ -27,6 +28,20 @@ The standard here is the one [`swift-common`](https://github.com/rtorcato/swift-
 | Pre-push hook | `optional-missing` | `swift-git-hooks` |
 
 `Package.swift` is checked for two things SwiftPM will not infer: a `// swift-tools-version:` comment (without it the manifest doesn't parse) and an explicit `platforms:` clause (without it SwiftPM assumes its oldest supported deployment target, which rejects modern APIs at build time). There's no fixer — rewriting someone's manifest isn't safe, so `doctor` reports and you edit.
+
+`Swift targets` compares the directories under `Sources/` and `Tests/` against
+the target names the manifest declares. A directory no target names is invisible
+to SwiftPM: it is never compiled, its tests never run, and `swift build` /
+`swift test` both still exit 0 — a real defect with no red X anywhere. A renamed
+target, a dropped `.target(...)` line, or a generator that rewrote the manifest
+all produce it.
+
+The manifest is read with a regex, not a Swift toolchain, so the check only sees
+targets declared with a **literal** name — `.target(name: "Widget")`. Targets
+built in a loop, behind `#if`, or from a variable are invisible to it and their
+directories would be reported as orphans. It also skips the whole check on any
+manifest containing a `path:` argument, since a custom path decouples directory
+names from target names entirely.
 
 `Swift tests` has two halves: the manifest must declare a `.testTarget(`, and
 some pipeline (`.github/workflows/*` or `.gitlab-ci.yml`) must actually run
