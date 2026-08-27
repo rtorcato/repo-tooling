@@ -326,9 +326,11 @@ async function runBaseChecks(
 	results.push(await checkAiSetup(dir))
 	// User-global, not repo state — see checkClaudeSkills on why it never returns drift.
 	results.push(await checkClaudeSkills(opts.skillsDir))
-	// #533: gated on `aiLoop`, which is already the "this repo uses the pipeline"
+	// #533: gated on `aiLoop.agentUser`, which is the "this repo uses the pipeline"
 	// signal, so a repo that doesn't gets no line at all rather than an empty one.
-	if (lock?.rules?.aiLoop && lock.rules.requiredSkills?.length) {
+	// The key itself no longer says that — since #571 every repo is scaffolded with
+	// an empty `aiLoop`, and the skills have always read the login, not the key.
+	if (lock?.rules?.aiLoop?.agentUser && lock.rules.requiredSkills?.length) {
 		results.push(await checkRequiredSkills(lock.rules.requiredSkills, opts.skillsDir))
 	}
 	// #534: advisory. Absent `mcp.recommended` means the repo has nothing to say
