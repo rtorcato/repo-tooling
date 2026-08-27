@@ -262,7 +262,8 @@
 							"ai-issue-loop",
 							"ai-workflow",
 							"ai-issue",
-							"ai-loop-status"
+							"ai-loop-status",
+							"dogfood"
 						]
 					},
 					"description": "Agent skills this repo's workflows depend on. doctor compares each installed copy's stamped hash against the shipped one and reports a missing or stale skill — always as \"not configured\", never drift, because it probes the machine rather than the repo. It never runs the fixer for you."
