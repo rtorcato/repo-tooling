@@ -1146,7 +1146,7 @@ describe('doctor + lockfile', () => {
 	async function writeLock(
 		dir: string,
 		configPatch: Record<string, unknown> = {},
-		extra: Record<string, unknown> = {}
+		rules: Record<string, unknown> = {}
 	): Promise<void> {
 		const config = {
 			projectName: 'demo',
@@ -1164,10 +1164,12 @@ describe('doctor + lockfile', () => {
 		}
 		await fs.writeJson(join(dir, '.repo-tooling.json'), {
 			version: LOCKFILE_VERSION,
-			config,
-			...extra,
-			writtenBy: '@rtorcato/repo-tooling@test',
-			writtenAt: new Date().toISOString(),
+			record: {
+				config,
+				writtenBy: '@rtorcato/repo-tooling@test',
+				writtenAt: new Date().toISOString(),
+			},
+			...(Object.keys(rules).length > 0 ? { rules } : {}),
 		})
 	}
 
@@ -1222,21 +1224,23 @@ describe('doctor + lockfile', () => {
 		await seedPackageJson(dir)
 		await fs.writeJson(join(dir, '.repo-tooling.json'), {
 			version: 99,
-			config: {
-				projectName: 'demo',
-				projectType: 'library',
-				typescript: { enabled: true, config: 'base' },
-				linting: { tool: 'biome' },
-				formatting: { tool: 'biome' },
-				testing: { framework: 'vitest' },
-				gitHooks: true,
-				commitLint: true,
-				semanticRelease: true,
-				securityAutomation: true,
-				bundler: 'tsup',
+			record: {
+				config: {
+					projectName: 'demo',
+					projectType: 'library',
+					typescript: { enabled: true, config: 'base' },
+					linting: { tool: 'biome' },
+					formatting: { tool: 'biome' },
+					testing: { framework: 'vitest' },
+					gitHooks: true,
+					commitLint: true,
+					semanticRelease: true,
+					securityAutomation: true,
+					bundler: 'tsup',
+				},
+				writtenBy: 'future',
+				writtenAt: new Date().toISOString(),
 			},
-			writtenBy: 'future',
-			writtenAt: new Date().toISOString(),
 		})
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'lockfile')?.status).toBe('drift')

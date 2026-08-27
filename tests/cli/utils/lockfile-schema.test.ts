@@ -125,20 +125,28 @@ describe("this repo's own lockfile", () => {
 	})
 
 	// Proves the assertion above is real: each mutation is a way the file could
-	// drift, and each must produce at least one error.
+	// drift, and each must produce at least one error. `record`/`rules` since #559.
+	const record = lockfile.record as Record<string, unknown>
+	const withRules = (rules: unknown) => ({ ...lockfile, rules })
+
 	it('rejects a drifted lockfile', () => {
-		const missingRequired = { ...lockfile }
-		delete missingRequired.writtenBy
+		const missingRequired = { ...lockfile, record: { ...record } }
+		delete missingRequired.record.writtenBy
 		expect(validate(missingRequired, schema)).not.toEqual([])
 		expect(validate({ ...lockfile, strayKey: true }, schema)).not.toEqual([])
-		expect(validate({ ...lockfile, version: '3' }, schema)).not.toEqual([])
-		expect(validate({ ...lockfile, aiLoop: { agentUsr: 'typo' } }, schema)).not.toEqual([])
+		expect(validate({ ...lockfile, version: '4' }, schema)).not.toEqual([])
+		// The flat pre-#559 layout no longer validates as v4.
+		expect(validate({ ...lockfile, aiLoop: { agentUser: 'flat' } }, schema)).not.toEqual([])
+		expect(validate(withRules({ aiLoop: { agentUsr: 'typo' } }), schema)).not.toEqual([])
 		// #533: only skills this package ships, and only as an array.
-		expect(validate({ ...lockfile, requiredSkills: ['not-a-skill'] }, schema)).not.toEqual([])
-		expect(validate({ ...lockfile, requiredSkills: 'ai-issue-loop' }, schema)).not.toEqual([])
+		expect(validate(withRules({ requiredSkills: ['not-a-skill'] }), schema)).not.toEqual([])
+		expect(validate(withRules({ requiredSkills: 'ai-issue-loop' }), schema)).not.toEqual([])
 		expect(
 			validate(
-				{ ...lockfile, config: { ...(lockfile.config as object), bundler: 'webpack' } },
+				{
+					...lockfile,
+					record: { ...record, config: { ...(record.config as object), bundler: 'webpack' } },
+				},
 				schema
 			)
 		).not.toEqual([])
@@ -147,7 +155,7 @@ describe("this repo's own lockfile", () => {
 	// #534: the schema is the whole enforcement of "advisory metadata, never an
 	// install directive" — an entry may say what and why, and may not say how.
 	it('accepts an advisory mcp.recommended entry and rejects executable config', () => {
-		const mcp = (recommended: unknown) => validate({ ...lockfile, mcp: { recommended } }, schema)
+		const mcp = (recommended: unknown) => validate(withRules({ mcp: { recommended } }), schema)
 		expect(
 			mcp([{ name: 'some-server', importance: 'important', why: 'edits the design files' }])
 		).toEqual([])
@@ -161,7 +169,7 @@ describe("this repo's own lockfile", () => {
 	// #558: an exception's reason is mandatory and non-empty — the schema is what
 	// enforces "every deviation is argued", so an empty reason must not validate.
 	it('accepts a declared exception with a reason and rejects one without', () => {
-		const exceptions = (value: unknown) => validate({ ...lockfile, exceptions: value }, schema)
+		const exceptions = (value: unknown) => validate(withRules({ exceptions: value }), schema)
 		expect(exceptions({ TypeScript: 'this repo is the package itself' })).toEqual([])
 		expect(exceptions({ TypeScript: '' })).not.toEqual([])
 		expect(exceptions({ TypeScript: true })).not.toEqual([])

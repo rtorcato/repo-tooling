@@ -939,10 +939,10 @@ export const FIXERS: Fixer[] = [
 				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
-			const config = lock ? lock.config : inferProjectConfig(pkg as Record<string, unknown>)
+			const config = lock ? lock.record.config : inferProjectConfig(pkg as Record<string, unknown>)
 			// Recorded hashes win: they capture the pristine content at copy time,
 			// which a byte-match against today's shipped asset can only approximate.
-			const assets = { ...(await identifiablePresetHashes(targetDir)), ...lock?.assets }
+			const assets = { ...(await identifiablePresetHashes(targetDir)), ...lock?.record.assets }
 			await writeLockfile(targetDir, config, assets)
 			return { filesWritten: [LOCKFILE_NAME] }
 		},

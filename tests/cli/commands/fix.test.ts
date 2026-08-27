@@ -1160,8 +1160,8 @@ describe('fix + lockfile', () => {
 		await fixCommand('lockfile', { directory: dir, yes: true })
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
 		expect(lock.version).toBe(LOCKFILE_VERSION)
-		expect(lock.config.projectName).toBe('demo')
-		expect(lock.config.linting.tool).toBe('biome')
+		expect(lock.record.config.projectName).toBe('demo')
+		expect(lock.record.config.linting.tool).toBe('biome')
 	})
 
 	it('fix lockfile --yes migrates an older lockfile in place, keeping its config (#531)', async () => {
@@ -1177,8 +1177,8 @@ describe('fix + lockfile', () => {
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
 		expect(lock.version).toBe(LOCKFILE_VERSION)
 		// Recorded choices survive — no re-inference over an existing lockfile.
-		expect(lock.config.testing.framework).toBe('jest')
-		expect(lock.assets.biome).toMatch(/^[0-9a-f]{64}$/)
+		expect(lock.record.config.testing.framework).toBe('jest')
+		expect(lock.record.assets.biome).toMatch(/^[0-9a-f]{64}$/)
 	})
 
 	it('fix vitest --yes regenerates the config but keeps an existing vitest.setup.ts', async () => {
@@ -1197,7 +1197,7 @@ describe('fix + lockfile', () => {
 		await writeLock(dir, { testing: { framework: 'jest', environment: 'node' } })
 		await fixCommand('vitest', { directory: dir, yes: true })
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.config.testing.framework).toBe('vitest')
+		expect(lock.record.config.testing.framework).toBe('vitest')
 	})
 
 	it('fix biome --yes on an eslint-locked project flips the recorded linting choice', async () => {
@@ -1209,8 +1209,8 @@ describe('fix + lockfile', () => {
 		})
 		await fixCommand('biome', { directory: dir, yes: true })
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.config.linting.tool).toBe('biome')
-		expect(lock.config.formatting.tool).toBe('biome')
+		expect(lock.record.config.linting.tool).toBe('biome')
+		expect(lock.record.config.formatting.tool).toBe('biome')
 	})
 
 	it('does not touch the lockfile when no lockfile exists', async () => {

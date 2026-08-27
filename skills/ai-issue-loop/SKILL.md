@@ -219,8 +219,9 @@ behaves exactly as it did before this existed.
 
 ```bash
 # Repo config first — committed, so it travels with the repo and survives a new
-# machine. `AI_LOOP_AGENT` overrides it for a repo with no lockfile.
-AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
+# machine. `AI_LOOP_AGENT` overrides it for a repo with no lockfile. The flat
+# `.aiLoop` fallback reads a pre-v4 lockfile that hasn't migrated yet (#559).
+AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.rules.aiLoop.agentUser // .aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
 # A typo would fail every `gh` edit for the whole tick, so prove it is assignable
 # once, here. 204 = yes, 404 = no; push access is what qualifies an account.
 [ -n "$AGENT_USER" ] && { gh api "repos/$OWNER_REPO/assignees/$AGENT_USER" --silent 2>/dev/null || {
@@ -235,7 +236,7 @@ being that assignment quietly stops. In `.repo-tooling.json` it is committed,
 reviewable, and carried forward by `fix lockfile`:
 
 ```json
-{ "aiLoop": { "agentUser": "your-bot-account" } }
+{ "rules": { "aiLoop": { "agentUser": "your-bot-account" } } }
 ```
 
 Every later use is `${AGENT_USER:+--add-assignee "$AGENT_USER"}`, which expands

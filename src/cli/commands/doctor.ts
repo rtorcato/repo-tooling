@@ -199,7 +199,9 @@ function checkLockfile(lock: Lockfile | null): CheckResult {
 	return {
 		check: 'lockfile',
 		status: 'ok',
-		detail: `.repo-tooling.json v${lock.version} (written by ${lock.writtenBy})`,
+		// The stamp only ever describes the tool-written `record` subtree — the
+		// human-written `rules` half is deliberately unstamped (#559).
+		detail: `.repo-tooling.json v${lock.version} (record written by ${lock.record.writtenBy})`,
 	}
 }
 
@@ -224,7 +226,7 @@ function demoteDeclined(results: CheckResult[], lock: Lockfile | null): CheckRes
 // otherwise a typo silently does nothing and a check rename silently
 // un-suppresses a finding, and both are invisible.
 function applyExceptions(results: CheckResult[], lock: Lockfile | null): CheckResult[] {
-	const exceptions = lock?.exceptions
+	const exceptions = lock?.rules?.exceptions
 	if (!exceptions) return results
 	const known = new Set(results.map((r) => r.check))
 	const overlaid: CheckResult[] = results.map((r) => {
@@ -313,7 +315,7 @@ async function runBaseChecks(
 	// ai-issue-loop label colours/descriptions (#446) — same seam, same self-skip.
 	results.push(await checkLoopLabels(dir))
 	// aiLoop.agentUser assignability (#530) — same seam, same self-skip.
-	results.push(await checkAgentUser(dir, lock?.aiLoop?.agentUser))
+	results.push(await checkAgentUser(dir, lock?.rules?.aiLoop?.agentUser))
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
 	results.push(await checkCommunityHealth(dir))
@@ -323,13 +325,13 @@ async function runBaseChecks(
 	results.push(await checkClaudeSkills(opts.skillsDir))
 	// #533: gated on `aiLoop`, which is already the "this repo uses the pipeline"
 	// signal, so a repo that doesn't gets no line at all rather than an empty one.
-	if (lock?.aiLoop && lock.requiredSkills?.length) {
-		results.push(await checkRequiredSkills(lock.requiredSkills, opts.skillsDir))
+	if (lock?.rules?.aiLoop && lock.rules.requiredSkills?.length) {
+		results.push(await checkRequiredSkills(lock.rules.requiredSkills, opts.skillsDir))
 	}
 	// #534: advisory. Absent `mcp.recommended` means the repo has nothing to say
 	// about MCP, which is not a finding.
-	if (lock?.mcp?.recommended?.length) {
-		results.push(await checkRecommendedMcp(dir, lock.mcp.recommended))
+	if (lock?.rules?.mcp?.recommended?.length) {
+		results.push(await checkRecommendedMcp(dir, lock.rules.mcp.recommended))
 	}
 	results.push(await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget))
 	results.push(await checkCoverageUpload(dir))
