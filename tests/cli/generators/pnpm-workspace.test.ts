@@ -32,6 +32,19 @@ describe('familyGlob', () => {
 		// A lone '@' with no slash is not a scope.
 		expect(familyGlob('@nope')).toBeNull()
 	})
+
+	// The name is preserved verbatim from any pre-existing package.json and is
+	// never validated as an npm name on the way here, so a crafted '@*/x' would
+	// otherwise write the glob '@*/*' and exempt every scoped package from the
+	// minimumReleaseAge delay rather than just this repo's own scope.
+	it('writes no exemption for a name carrying glob metacharacters', () => {
+		for (const name of ['@*/x', '@!(a)/x', '@ac me/x', '@[a-z]/x', '@.acme/x']) {
+			expect(familyGlob(name)).toBeNull()
+			expect(upsertPnpmSettings('', false, familyGlob(name))).not.toContain(
+				'minimumReleaseAgeExclude'
+			)
+		}
+	})
 })
 
 describe('upsertPnpmSettings', () => {
