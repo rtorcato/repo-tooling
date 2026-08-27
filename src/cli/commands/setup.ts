@@ -149,10 +149,19 @@ async function reviewPresetConfig(config: ProjectConfig): Promise<ProjectConfig>
  * `writtenBy`/`writtenAt` stamps describe the reference's own history, and this
  * repo's lockfile gets its own on the first write. `rules` is left behind too,
  * since an `exceptions` entry excuses a deviation in the repo that wrote it.
+ *
+ * `null` means the reference could not be read — reported plainly and declined,
+ * the way `doctor --rules-from` reports "not compared". Falling through to an
+ * unseeded wizard would be worse: the user asked for that repo's answers, and
+ * generic defaults would be written as though they had confirmed them.
  */
-async function seedFromReference(reference: string): Promise<ProjectConfig> {
+async function seedFromReference(reference: string): Promise<ProjectConfig | null> {
 	const result = await fetchReferenceLockfile(reference)
-	if (!result.ok) throw new Error(`Cannot seed from ${reference}: ${result.reason}`)
+	if (!result.ok) {
+		console.error(chalk.red(`\n❌ Cannot seed from ${reference} — ${result.reason}.`))
+		console.error(chalk.gray('   Re-run without --from to answer the wizard from scratch.\n'))
+		return null
+	}
 	console.log(
 		chalk.cyan(`\n🌱 Seeding defaults from ${reference} — every answer is still yours to change.\n`)
 	)
@@ -200,7 +209,12 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		if (options.dryRun || options.yes || !isInteractiveTerminal()) return config
 		return reviewPresetConfig(config)
 	}
-	const seed = options.from ? await seedFromReference(options.from) : undefined
+	let seed: ProjectConfig | undefined
+	if (options.from) {
+		const seeded = await seedFromReference(options.from)
+		if (seeded === null) return null
+		seed = seeded
+	}
 	return promptForConfig(path.resolve(options.directory), seed)
 }
 

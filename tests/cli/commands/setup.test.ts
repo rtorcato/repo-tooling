@@ -806,6 +806,37 @@ describe('setup language prompt', () => {
 		expect(lock.rules).toBeUndefined()
 	})
 
+	// The reference is untrusted and remote, so "could not read it" is an ordinary
+	// outcome, not a crash. Declining leaves the directory untouched rather than
+	// scaffolding generic defaults the user never asked for.
+	it('declines plainly when the reference cannot be read', async () => {
+		const dir = newTmpDir()
+		vi.mocked(fetchReferenceLockfile).mockResolvedValue({
+			ok: false,
+			reason: 'someone/theirs has no .repo-tooling.json (or is not visible to you)',
+		})
+		const spy = mockPrompt({ language: 'js' }, JS_ANSWERS)
+		const errors: string[] = []
+		const errSpy = vi.spyOn(console, 'error').mockImplementation((m) => errors.push(String(m)))
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
+		try {
+			await setupProject({ directory: dir, skipInstall: true, from: 'someone/theirs' })
+		} finally {
+			logSpy.mockRestore()
+			errSpy.mockRestore()
+			exitSpy.mockRestore()
+		}
+		expect(errors.join('\n')).toContain('Cannot seed from someone/theirs')
+		expect(errors.join('\n')).toContain('is not visible to you')
+		// Reported, not thrown: no `Setup failed:` dump and no non-zero exit.
+		expect(errors.join('\n')).not.toContain('Setup failed')
+		expect(exitSpy).not.toHaveBeenCalled()
+		// Declined before the wizard ran, so nothing was asked and nothing written.
+		expect(spy).not.toHaveBeenCalled()
+		expect(await fs.pathExists(join(dir, '.repo-tooling.json'))).toBe(false)
+	})
+
 	it('ignores --from when --preset already skips the wizard', async () => {
 		const dir = newTmpDir()
 		// vi.restoreAllMocks() leaves a module-factory vi.fn's call log intact.
