@@ -43,6 +43,32 @@ describe('generateConfigs size-limit budget', () => {
 	})
 })
 
+// #573: under `--preset` the config's projectName is only the directory
+// basename, so a repo whose package.json is already scoped used to get no
+// minimumReleaseAgeExclude — leaving doctor at exit 1 on a tree setup just wrote.
+describe('generateConfigs release-age exemption', () => {
+	it('derives the scope from an existing package.json name, not the directory', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: '@acme/widget' })
+		await generateConfigs(
+			{ ...buildPresetConfig('library', 'widget'), aiSetup: false, securityAutomation: false },
+			dir
+		)
+		const yaml = await fs.readFile(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
+		expect(yaml).toContain("- '@acme/*'")
+	})
+
+	it('writes no exemption for an unscoped package', async () => {
+		const dir = newTmpDir()
+		await generateConfigs(
+			{ ...buildPresetConfig('library', 'widget'), aiSetup: false, securityAutomation: false },
+			dir
+		)
+		const yaml = await fs.readFile(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
+		expect(yaml).not.toContain('minimumReleaseAgeExclude')
+	})
+})
+
 describe('setup-presets', () => {
 	it('builds a valid config for every preset', () => {
 		for (const name of PRESET_NAMES) {
