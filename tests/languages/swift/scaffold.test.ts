@@ -160,6 +160,61 @@ describe('generateSwiftProject', () => {
 		expect(editorconfig).toMatch(/\[\*\.swift\][\s\S]*indent_style = space/)
 	})
 
+	// #574: Package.swift is source. Rewriting one that exists renames the package
+	// after the directory and orphans Sources/<Target>/ — and `swift build` still
+	// exits 0, so the loss is silent.
+	describe('with a Package.swift already on disk', () => {
+		const EXISTING = `// swift-tools-version: 5.9
+
+import PackageDescription
+
+let package = Package(
+    name: "Widget",
+    products: [
+        .library(name: "Widget", targets: ["Widget"])
+    ],
+    targets: [
+        .target(name: "Widget")
+    ]
+)
+`
+
+		async function scaffoldOver() {
+			const dir = newTmpDir()
+			await fs.writeFile(join(dir, 'Package.swift'), EXISTING)
+			await fs.outputFile(join(dir, 'Sources/Widget/Widget.swift'), 'public enum Widget {}\n')
+			await generateSwiftProject(buildPresetConfig('swift-library', 'swiftlib'), dir)
+			return dir
+		}
+
+		it('leaves the manifest byte-identical', async () => {
+			const dir = await scaffoldOver()
+			expect(await fs.readFile(join(dir, 'Package.swift'), 'utf-8')).toBe(EXISTING)
+		})
+
+		it('scaffolds no target the manifest does not declare', async () => {
+			const dir = await scaffoldOver()
+			expect(await fs.pathExists(join(dir, 'Sources/Swiftlib'))).toBe(false)
+			expect(await fs.pathExists(join(dir, 'Tests/SwiftlibTests'))).toBe(false)
+			expect(await fs.pathExists(join(dir, 'Sources/Widget/Widget.swift'))).toBe(true)
+		})
+
+		it('names the README after the manifest, not the directory', async () => {
+			const dir = await scaffoldOver()
+			const readme = await fs.readFile(join(dir, 'README.md'), 'utf-8')
+			expect(readme).toContain('Sources/Widget/')
+			expect(readme).not.toContain('Swiftlib')
+		})
+
+		// The rest of the standard still lands — preserving the manifest is not a
+		// reason to skip the linter config or CI.
+		it('still writes the surrounding tooling', async () => {
+			const dir = await scaffoldOver()
+			expect(await fs.pathExists(join(dir, '.swiftlint.yml'))).toBe(true)
+			expect(await fs.pathExists(join(dir, '.github/workflows/ci.yml'))).toBe(true)
+		})
+	})
+
 	it('omits security workflows when securityAutomation is off', async () => {
 		const dir = newTmpDir()
 		await generateSwiftProject(

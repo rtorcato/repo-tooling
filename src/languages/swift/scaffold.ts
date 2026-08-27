@@ -19,7 +19,12 @@ import { generateEditorConfig } from '../../cli/generators/misc.js'
 import { generateCodeQLWorkflow, generateDependabotConfig } from '../../cli/generators/security.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { LANGUAGES } from '../registry.js'
-import { readSwiftPackage, renderSwiftReleaseWorkflow, renderSwiftWorkflow } from './ci.js'
+import {
+	parsePackageSwift,
+	readSwiftPackage,
+	renderSwiftReleaseWorkflow,
+	renderSwiftWorkflow,
+} from './ci.js'
 import { SWIFT_HOOKS_DIR, installSwiftGitHooks } from './git-hooks.js'
 import { ensureSwiftGitignore } from './gitignore.js'
 
@@ -205,6 +210,10 @@ git tag 1.0.0 && git push origin 1.0.0
 /**
  * Relative paths `setup --dry-run` reports for a Swift config, in write order.
  * Kept beside the writer so the two can't drift.
+ *
+ * This is the greenfield list. Against a directory that already has a
+ * Package.swift the writer preserves it and skips the target scaffolding, so the
+ * preview over-reports there — the safe direction for a dry run.
  */
 export function swiftFileList(config: ProjectConfig): string[] {
 	const module = swiftModuleName(config.projectName)
@@ -246,19 +255,36 @@ export function swiftFileList(config: ProjectConfig): string[] {
 	return files
 }
 
-/** Scaffold a SwiftPM library. The Swift arm of `generateConfigs`. */
+/**
+ * Scaffold a SwiftPM library. The Swift arm of `generateConfigs`.
+ *
+ * Package.swift is source, not config (#574): rewriting one that already exists
+ * renames the package after the *directory* and leaves the real `Sources/<Target>/`
+ * declared by no target — and `swift build` still exits 0, because SwiftPM just
+ * ignores the orphaned directory. So an existing manifest is left byte-identical
+ * and the module name is read back off it rather than derived from the directory,
+ * the same way the JS presets merge into a package.json instead of replacing it.
+ */
 export async function generateSwiftProject(config: ProjectConfig, targetDir: string) {
-	const module = swiftModuleName(config.projectName)
+	const manifestPath = path.join(targetDir, 'Package.swift')
+	const existingManifest = (await fs.pathExists(manifestPath))
+		? parsePackageSwift(await fs.readFile(manifestPath, 'utf-8'))
+		: null
+	const module = existingManifest?.products[0] ?? swiftModuleName(config.projectName)
 
-	await fs.writeFile(path.join(targetDir, 'Package.swift'), packageSwift(module))
-	await fs.outputFile(
-		path.join(targetDir, 'Sources', module, `${module}.swift`),
-		sourceFile(module)
-	)
-	await fs.outputFile(
-		path.join(targetDir, 'Tests', `${module}Tests`, `${module}Tests.swift`),
-		testFile(module)
-	)
+	// Nothing is scaffolded under Sources/ or Tests/ either: those would be
+	// directories for a target the existing manifest doesn't declare.
+	if (!existingManifest) {
+		await fs.writeFile(manifestPath, packageSwift(module))
+		await fs.outputFile(
+			path.join(targetDir, 'Sources', module, `${module}.swift`),
+			sourceFile(module)
+		)
+		await fs.outputFile(
+			path.join(targetDir, 'Tests', `${module}Tests`, `${module}Tests.swift`),
+			testFile(module)
+		)
+	}
 
 	await copyPreset('swiftlint', targetDir)
 	await copyPreset('periphery', targetDir)
