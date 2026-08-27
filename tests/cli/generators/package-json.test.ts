@@ -2,6 +2,7 @@ import fs from 'fs-extra'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildPresetConfig } from '../../../src/cli/commands/setup-presets.js'
+import { declaredEntryPoints } from '../../../src/languages/js/checks.js'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import {
 	SIZE_LIMIT_VERSION,
@@ -362,19 +363,8 @@ describe('library publish contract (#570)', () => {
 		tsc: ['./dist/index.js', './dist/index.d.ts'],
 	}
 
-	function declaredEntryPoints(pkg: Record<string, any>): string[] {
-		const found: string[] = []
-		const walk = (node: unknown) => {
-			if (typeof node === 'string') found.push(node)
-			else if (node && typeof node === 'object') Object.values(node).forEach(walk)
-		}
-		walk(pkg.exports)
-		for (const field of ['main', 'module', 'types']) {
-			if (pkg[field]) found.push(pkg[field])
-		}
-		return [...new Set(found)]
-	}
-
+	// `declaredEntryPoints` is doctor's own walker (#578), so this test and the
+	// `Exports buildable` check cannot drift on what the contract even is.
 	async function readCoherentPkg(dir: string) {
 		const pkg = await fs.readJson(join(dir, 'package.json'))
 		const emitted = EMITS[pkg.scripts.build]

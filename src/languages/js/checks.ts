@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import type { BadgeAudience, FileCheck, GitHooksProfile } from '../../base/checks.js'
 import { checkFile, hookHasUncommented } from '../../base/checks.js'
+import { type GitExec, realGitExec } from '../../base/git-identity.js'
 import {
 	CLAUDE_SETTINGS_FILE,
 	readClaudeSettings,
@@ -1061,6 +1062,211 @@ export async function checkPublint(_dir: string, pkg: Pkg | null): Promise<Check
 		status: 'optional-missing',
 		detail: 'publint not configured',
 		hint: 'Run `npx @rtorcato/repo-tooling fix publint` to lint your package before publishing',
+	}
+}
+
+/**
+ * The file extensions each recognised build command drops in the output
+ * directory. Inferring this from an arbitrary shell command is inherently
+ * partial, so the table is deliberately small and anything missing from it
+ * makes the whole check stand down (see `emittedExtensions`) — a doctor check
+ * that cries wolf on a valid config is worse than one with a stated blind spot.
+ */
+const BUILD_EMITS: Record<string, readonly string[]> = {
+	// tsc mirrors its input extension: .ts → .js + .d.ts. It reaches .cjs/.d.cts
+	// only from .cts sources, which is why a repo that has any stands the check
+	// down below.
+	tsc: ['.js', '.d.ts'],
+	// tsup's real set is whatever `format`/`dts` say in a config file this does
+	// not parse, so it claims the broadest set tsup could emit. A tsup build is
+	// therefore passed rather than guessed at, while `rimraf dist && tsup` still
+	// resolves instead of standing the check down.
+	tsup: ['.js', '.cjs', '.mjs', '.d.ts', '.d.cts', '.d.mts'],
+	// Cleaners emit nothing. Recognised only so the very common
+	// `rimraf dist && tsc` is still judged on its tsc half.
+	rimraf: [],
+	rm: [],
+	del: [],
+}
+
+/** Package-manager noise to strip before the command name: `pnpm exec tsup`. */
+const RUNNER_TOKENS = new Set([
+	'npx',
+	'npm',
+	'pnpm',
+	'yarn',
+	'bun',
+	'exec',
+	'dlx',
+	'run',
+	'x',
+	'-s',
+	'--silent',
+])
+
+/**
+ * Extensions this check will judge, longest suffix first. Anything else — a
+ * package publishing `./src/index.ts` directly, a `./dist/style.css` from a
+ * non-JS step — is left alone rather than measured against a JS emit table.
+ */
+const ARTEFACT_EXTENSIONS = ['.d.cts', '.d.mts', '.d.ts', '.cjs', '.mjs', '.js'] as const
+
+function artefactExtension(p: string): string | null {
+	return ARTEFACT_EXTENSIONS.find((ext) => p.endsWith(ext)) ?? null
+}
+
+/**
+ * Every file path the publish contract names. Shared with the #570 regression
+ * test so doctor and that test agree on what the contract is.
+ */
+export function declaredEntryPoints(pkg: Pkg): string[] {
+	const found: string[] = []
+	const walk = (node: unknown) => {
+		if (typeof node === 'string') found.push(node)
+		else if (node && typeof node === 'object') Object.values(node).forEach(walk)
+	}
+	walk(pkg.exports)
+	for (const field of ['main', 'module', 'types']) {
+		const value = pkg[field]
+		if (typeof value === 'string') found.push(value)
+	}
+	return [...new Set(found)]
+}
+
+/**
+ * What `command` puts in the output directory, or null when any part of it is
+ * absent from BUILD_EMITS. Null means "don't know", and every caller stands
+ * down on it rather than guessing.
+ */
+function emittedExtensions(
+	scripts: Record<string, string>,
+	command: string,
+	seen: Set<string> = new Set()
+): string[] | null {
+	// Only a plain `a && b` chain is read. Pipes, `||`, subshells and redirects
+	// are not something to infer an output set from.
+	if (/[|;`<>]|\$\(/.test(command)) return null
+	const emitted = new Set<string>()
+	for (const segment of command.split('&&')) {
+		const tokens = segment.trim().split(/\s+/).filter(Boolean)
+		const before = tokens.length
+		while (tokens.length > 0 && RUNNER_TOKENS.has(tokens[0] as string)) tokens.shift()
+		const name = tokens[0]
+		if (!name) return null
+		// `"build": "pnpm build-cli"` — one script delegating to another. Followed
+		// only when a runner was actually stripped, because a bare `tsc` runs the
+		// binary even in a repo that also happens to have a script by that name.
+		const nested = tokens.length < before ? scripts[name] : undefined
+		if (nested !== undefined) {
+			if (seen.has(name)) return null
+			seen.add(name)
+			const inner = emittedExtensions(scripts, nested, seen)
+			if (!inner) return null
+			for (const ext of inner) emitted.add(ext)
+			continue
+		}
+		const known = BUILD_EMITS[name]
+		if (!known) return null
+		for (const ext of known) emitted.add(ext)
+	}
+	return [...emitted]
+}
+
+/**
+ * Catches a publish contract naming files the repo's own `build` cannot produce
+ * (#578) — the class of bug that shipped `main: ./dist/index.cjs` alongside
+ * `build: tsc`, which emits only .js and .d.ts, so every CJS consumer of the
+ * published package got a 404 (#570). #577 fixed the preset that wrote that
+ * pair; this catches it however else it arises, e.g. a repo editing `build` or
+ * the contract by hand afterwards.
+ *
+ * Judged from the build *script*, never from `dist/` on disk: a clean checkout
+ * has no dist/ and a stale one has whatever the last build left, so neither
+ * answers the question. Git is what separates the two kinds of path a contract
+ * may name — a tracked `./tooling/preset.mjs` ships as committed source and
+ * needs no build, while an untracked `./dist/index.cjs` has to come out of
+ * `build` or it will not exist at publish time.
+ *
+ * This overlaps publint, which the generated `verify` already runs — but not in
+ * time. publint fires at release, against a dist/ just built on a machine where
+ * it happens to work; this fires at setup/doctor time, on a checkout, before
+ * anything is built.
+ */
+export async function checkExportsBuildable(
+	dir: string,
+	pkg: Pkg | null,
+	exec?: GitExec
+): Promise<CheckResult> {
+	const check = 'Exports buildable'
+	if (!pkg || !isPublishableLibrary(pkg)) {
+		return { check, status: 'ok', detail: 'not applicable (private or no published exports)' }
+	}
+	const scripts = (pkg.scripts as Record<string, string> | undefined) ?? {}
+	const build = scripts.build
+	if (!build) {
+		return { check, status: 'ok', detail: 'no build script — nothing is expected to be generated' }
+	}
+	const emitted = emittedExtensions(scripts, build)
+	if (!emitted) {
+		return {
+			check,
+			status: 'ok',
+			detail: `not checked — cannot infer what \`${build}\` emits (recognised: ${Object.keys(BUILD_EMITS).join(', ')})`,
+		}
+	}
+	const declared = declaredEntryPoints(pkg).filter((p) => artefactExtension(p))
+	if (declared.length === 0) {
+		return { check, status: 'ok', detail: 'no JS entry points named in main/module/types/exports' }
+	}
+	if (!(await fs.pathExists(path.join(dir, '.git')))) {
+		return {
+			check,
+			status: 'ok',
+			detail:
+				'not checked — not a git repository, so committed assets and build output are indistinguishable',
+		}
+	}
+
+	// Declared paths are `./dist/index.js`; git speaks `dist/index.js`.
+	const declaredByPath = new Map(declared.map((p) => [p.replace(/^\.\//, ''), p]))
+	const git: GitExec = exec ?? ((args) => realGitExec(args, dir))
+	// One call answers both questions: which declared paths are committed, and
+	// whether the repo has .cts/.mts sources. Every argument is a pathspec behind
+	// `--`, so a package.json path beginning with `-` cannot become a flag.
+	const listed = await git(['ls-files', '-z', '--', ...declaredByPath.keys(), '*.cts', '*.mts'])
+	if (listed === null) {
+		return { check, status: 'ok', detail: 'not checked — `git ls-files` is unavailable here' }
+	}
+	const tracked = new Set(listed.split('\0').filter(Boolean))
+
+	const unbuildable = [...declaredByPath]
+		.filter(([bare]) => !tracked.has(bare))
+		.map(([, declaredPath]) => declaredPath)
+		.filter((p) => !emitted.includes(artefactExtension(p) as string))
+
+	if (unbuildable.length === 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `every declared entry point is committed or emitted by \`${build}\``,
+		}
+	}
+	// tsc emits .cjs/.d.cts from a .cts input, so its narrow BUILD_EMITS entry is
+	// wrong for a repo that has any. Checked last, and only when there is
+	// something to report, so the common repo pays nothing for it.
+	if ([...tracked].some((p) => !declaredByPath.has(p) && /\.[cm]ts$/.test(p))) {
+		return {
+			check,
+			status: 'ok',
+			detail:
+				'not checked — repo has .cts/.mts sources, whose emitted extensions this cannot infer',
+		}
+	}
+	return {
+		check,
+		status: 'drift',
+		detail: `\`${build}\` emits ${emitted.join(', ')}; package.json names ${unbuildable.length} entry point(s) nothing produces: ${unbuildable.join(', ')}`,
+		hint: 'The published package will 404 on those paths. Either point `build` at a bundler that emits those formats (tsup with `format: ["cjs", "esm"]`), or narrow main/module/exports to the formats the current build produces. No autofix — both directions are valid and only the package author knows which one it promises.',
 	}
 }
 
