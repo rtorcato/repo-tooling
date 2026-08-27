@@ -2,14 +2,12 @@
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"$id": "https://rtorcato.github.io/repo-tooling/schemas/lockfile.json",
 	"title": "Lockfile",
-	"description": ".repo-tooling.json — the committed record of what @rtorcato/repo-tooling set up in this repo. Written by `setup` and `fix`, read by `doctor`.",
+	"description": ".repo-tooling.json — two documents sharing one file: `record` is written by @rtorcato/repo-tooling (`setup` and `fix`) and stamped with provenance; `rules` is written by humans, reviewed in PRs, and never stamped. Both are read by `doctor`.",
 	"type": "object",
 	"additionalProperties": false,
 	"required": [
 		"version",
-		"config",
-		"writtenBy",
-		"writtenAt"
+		"record"
 	],
 	"properties": {
 		"$schema": {
@@ -18,286 +16,305 @@
 		},
 		"version": {
 			"type": "integer",
-			"description": "Lockfile format version (current: 3). v2 added config.language, v3 added assets; older files are migrated on read."
+			"description": "Lockfile format version (current: 4). v2 added config.language, v3 added assets, v4 split the file into record/rules subtrees; older files are migrated on read."
 		},
-		"config": {
-			"title": "ProjectConfig",
-			"description": "The resolved setup configuration this repo was scaffolded or audited with.",
+		"record": {
 			"type": "object",
 			"additionalProperties": false,
 			"required": [
-				"projectName",
-				"projectType",
-				"typescript",
-				"linting",
-				"formatting",
-				"testing",
-				"gitHooks",
-				"commitLint",
-				"semanticRelease",
-				"securityAutomation",
-				"bundler"
+				"config",
+				"writtenBy",
+				"writtenAt"
 			],
+			"description": "The tool-written record of what setup/fix last did. Only the tool writes here — the writtenBy/writtenAt stamps are provenance claims about exactly this subtree.",
 			"properties": {
-				"projectName": {
-					"type": "string",
-					"minLength": 1
-				},
-				"language": {
-					"type": "string",
-					"enum": [
-						"js",
-						"swift",
-						"perl",
-						"python"
-					]
-				},
-				"projectType": {
-					"type": "string",
-					"enum": [
-						"library",
-						"web-app",
-						"node-api",
-						"nextjs-app",
-						"react-app"
-					]
-				},
-				"typescript": {
+				"config": {
+					"title": "ProjectConfig",
+					"description": "The resolved setup configuration this repo was scaffolded or audited with.",
 					"type": "object",
 					"additionalProperties": false,
 					"required": [
-						"enabled",
-						"config"
+						"projectName",
+						"projectType",
+						"typescript",
+						"linting",
+						"formatting",
+						"testing",
+						"gitHooks",
+						"commitLint",
+						"semanticRelease",
+						"securityAutomation",
+						"bundler"
 					],
 					"properties": {
-						"enabled": {
+						"projectName": {
+							"type": "string",
+							"minLength": 1
+						},
+						"language": {
+							"type": "string",
+							"enum": [
+								"js",
+								"swift",
+								"perl",
+								"python"
+							]
+						},
+						"projectType": {
+							"type": "string",
+							"enum": [
+								"library",
+								"web-app",
+								"node-api",
+								"nextjs-app",
+								"react-app"
+							]
+						},
+						"typescript": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": [
+								"enabled",
+								"config"
+							],
+							"properties": {
+								"enabled": {
+									"type": "boolean"
+								},
+								"config": {
+									"type": "string",
+									"enum": [
+										"base",
+										"react",
+										"next",
+										"node",
+										"express"
+									]
+								}
+							}
+						},
+						"linting": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": [
+								"tool"
+							],
+							"properties": {
+								"tool": {
+									"type": "string",
+									"enum": [
+										"biome",
+										"eslint",
+										"both",
+										"none"
+									]
+								},
+								"eslintConfig": {
+									"type": "string",
+									"enum": [
+										"base",
+										"nextjs"
+									]
+								}
+							}
+						},
+						"formatting": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": [
+								"tool"
+							],
+							"properties": {
+								"tool": {
+									"type": "string",
+									"enum": [
+										"biome",
+										"prettier",
+										"none"
+									]
+								}
+							}
+						},
+						"testing": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": [
+								"framework"
+							],
+							"properties": {
+								"framework": {
+									"type": "string",
+									"enum": [
+										"vitest",
+										"jest",
+										"playwright",
+										"cypress",
+										"none"
+									]
+								},
+								"environment": {
+									"type": "string",
+									"enum": [
+										"node",
+										"browser",
+										"both"
+									]
+								}
+							}
+						},
+						"gitHooks": {
 							"type": "boolean"
 						},
-						"config": {
+						"commitLint": {
+							"type": "boolean"
+						},
+						"semanticRelease": {
+							"type": "boolean"
+						},
+						"changesets": {
+							"type": "boolean"
+						},
+						"releasePlease": {
+							"type": "boolean"
+						},
+						"oxlint": {
+							"type": "boolean"
+						},
+						"securityAutomation": {
+							"type": "boolean"
+						},
+						"bundler": {
 							"type": "string",
 							"enum": [
-								"base",
-								"react",
-								"next",
-								"node",
-								"express"
-							]
-						}
-					}
-				},
-				"linting": {
-					"type": "object",
-					"additionalProperties": false,
-					"required": [
-						"tool"
-					],
-					"properties": {
-						"tool": {
-							"type": "string",
-							"enum": [
-								"biome",
-								"eslint",
-								"both",
+								"tsup",
+								"esbuild",
+								"rollup",
+								"rolldown",
+								"vite",
 								"none"
 							]
 						},
-						"eslintConfig": {
-							"type": "string",
-							"enum": [
-								"base",
-								"nextjs"
-							]
-						}
-					}
-				},
-				"formatting": {
-					"type": "object",
-					"additionalProperties": false,
-					"required": [
-						"tool"
-					],
-					"properties": {
-						"tool": {
-							"type": "string",
-							"enum": [
-								"biome",
-								"prettier",
-								"none"
-							]
-						}
-					}
-				},
-				"testing": {
-					"type": "object",
-					"additionalProperties": false,
-					"required": [
-						"framework"
-					],
-					"properties": {
-						"framework": {
-							"type": "string",
-							"enum": [
-								"vitest",
-								"jest",
-								"playwright",
-								"cypress",
-								"none"
-							]
+						"treeshakeCheck": {
+							"type": "boolean"
 						},
-						"environment": {
-							"type": "string",
-							"enum": [
-								"node",
-								"browser",
-								"both"
-							]
+						"publint": {
+							"type": "boolean"
+						},
+						"badges": {
+							"type": "boolean"
+						},
+						"aiSetup": {
+							"type": "boolean"
+						},
+						"turborepo": {
+							"type": "boolean"
+						},
+						"nx": {
+							"type": "boolean"
+						},
+						"tailwind": {
+							"type": "boolean"
+						},
+						"bun": {
+							"type": "boolean"
 						}
 					}
 				},
-				"gitHooks": {
-					"type": "boolean"
+				"assets": {
+					"type": "object",
+					"additionalProperties": {
+						"type": "string"
+					},
+					"description": "Preset name → sha256 of the asset's pristine content at copy time. Lets doctor tell a deliberate local fork (file differs from this hash) from a copy the package has since moved past (file still matches, shipped asset doesn't). A preset with no entry is untracked, never drifted."
 				},
-				"commitLint": {
-					"type": "boolean"
-				},
-				"semanticRelease": {
-					"type": "boolean"
-				},
-				"changesets": {
-					"type": "boolean"
-				},
-				"releasePlease": {
-					"type": "boolean"
-				},
-				"oxlint": {
-					"type": "boolean"
-				},
-				"securityAutomation": {
-					"type": "boolean"
-				},
-				"bundler": {
+				"writtenBy": {
 					"type": "string",
-					"enum": [
-						"tsup",
-						"esbuild",
-						"rollup",
-						"rolldown",
-						"vite",
-						"none"
-					]
+					"description": "Package name and version that last wrote the record subtree."
 				},
-				"treeshakeCheck": {
-					"type": "boolean"
-				},
-				"publint": {
-					"type": "boolean"
-				},
-				"badges": {
-					"type": "boolean"
-				},
-				"aiSetup": {
-					"type": "boolean"
-				},
-				"turborepo": {
-					"type": "boolean"
-				},
-				"nx": {
-					"type": "boolean"
-				},
-				"tailwind": {
-					"type": "boolean"
-				},
-				"bun": {
-					"type": "boolean"
+				"writtenAt": {
+					"type": "string",
+					"format": "date-time",
+					"description": "ISO 8601 timestamp of the last record write."
 				}
 			}
 		},
-		"assets": {
-			"type": "object",
-			"additionalProperties": {
-				"type": "string"
-			},
-			"description": "Preset name → sha256 of the asset's pristine content at copy time. Lets doctor tell a deliberate local fork (file differs from this hash) from a copy the package has since moved past (file still matches, shipped asset doesn't). A preset with no entry is untracked, never drifted."
-		},
-		"aiLoop": {
+		"rules": {
 			"type": "object",
 			"additionalProperties": false,
-			"description": "Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.",
+			"description": "The human-written ruleset: the repo's stated intent, edited by hand and reviewed in PRs. The tool carries it forward verbatim on every write and never stamps it.",
 			"properties": {
-				"agentUser": {
-					"type": "string",
-					"description": "Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime."
-				}
-			}
-		},
-		"requiredSkills": {
-			"type": "array",
-			"items": {
-				"type": "string",
-				"enum": [
-					"ai-issue-loop",
-					"ai-workflow",
-					"ai-issue",
-					"ai-loop-status"
-				]
-			},
-			"description": "Agent skills this repo's workflows depend on. doctor compares each installed copy's stamped hash against the shipped one and reports a missing or stale skill — always as \"not configured\", never drift, because it probes the machine rather than the repo. It never runs the fixer for you."
-		},
-		"mcp": {
-			"type": "object",
-			"additionalProperties": false,
-			"description": "Advisory MCP metadata: names, importance and reasons only, never an install directive. Executable server config belongs in the native .mcp.json, which carries Claude Code's own first-use consent prompt.",
-			"properties": {
-				"recommended": {
+				"aiLoop": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.",
+					"properties": {
+						"agentUser": {
+							"type": "string",
+							"description": "Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime."
+						}
+					}
+				},
+				"requiredSkills": {
 					"type": "array",
-					"description": "MCP servers this repo's workflow assumes. doctor reports which of them .mcp.json does not declare, informationally — it never installs or enables one.",
 					"items": {
-						"type": "object",
-						"additionalProperties": false,
-						"required": [
-							"name",
-							"importance",
-							"why"
-						],
-						"properties": {
-							"name": {
-								"type": "string",
-								"description": "The server name as it would appear in .mcp.json."
-							},
-							"importance": {
-								"type": "string",
-								"enum": [
-									"nice-to-have",
-									"important",
-									"critical"
+						"type": "string",
+						"enum": [
+							"ai-issue-loop",
+							"ai-workflow",
+							"ai-issue",
+							"ai-loop-status"
+						]
+					},
+					"description": "Agent skills this repo's workflows depend on. doctor compares each installed copy's stamped hash against the shipped one and reports a missing or stale skill — always as \"not configured\", never drift, because it probes the machine rather than the repo. It never runs the fixer for you."
+				},
+				"mcp": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "Advisory MCP metadata: names, importance and reasons only, never an install directive. Executable server config belongs in the native .mcp.json, which carries Claude Code's own first-use consent prompt.",
+					"properties": {
+						"recommended": {
+							"type": "array",
+							"description": "MCP servers this repo's workflow assumes. doctor reports which of them .mcp.json does not declare, informationally — it never installs or enables one.",
+							"items": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": [
+									"name",
+									"importance",
+									"why"
 								],
-								"description": "How much of the repo's workflow assumes the server."
-							},
-							"why": {
-								"type": "string",
-								"description": "One line on what the server is for — the thing .mcp.json structurally cannot say."
+								"properties": {
+									"name": {
+										"type": "string",
+										"description": "The server name as it would appear in .mcp.json."
+									},
+									"importance": {
+										"type": "string",
+										"enum": [
+											"nice-to-have",
+											"important",
+											"critical"
+										],
+										"description": "How much of the repo's workflow assumes the server."
+									},
+									"why": {
+										"type": "string",
+										"description": "One line on what the server is for — the thing .mcp.json structurally cannot say."
+									}
+								}
 							}
 						}
 					}
+				},
+				"exceptions": {
+					"type": "object",
+					"additionalProperties": {
+						"type": "string",
+						"minLength": 1
+					},
+					"description": "Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift."
 				}
 			}
-		},
-		"exceptions": {
-			"type": "object",
-			"additionalProperties": {
-				"type": "string",
-				"minLength": 1
-			},
-			"description": "Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift."
-		},
-		"writtenBy": {
-			"type": "string",
-			"description": "Package name and version that last wrote this file."
-		},
-		"writtenAt": {
-			"type": "string",
-			"format": "date-time",
-			"description": "ISO 8601 timestamp of the last write."
 		}
 	}
 }

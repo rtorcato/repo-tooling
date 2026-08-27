@@ -82,7 +82,7 @@ npx @rtorcato/repo-tooling doctor --json -d ./existing-repo
 }
 ```
 
-Status values: `ok`, `drift` (file exists but doesn't extend the preset), `missing` (required file absent), `optional-missing` (optional convention absent), `declared` (a real deviation `.repo-tooling.json` `exceptions` records on purpose, with its reason — don't fix it).
+Status values: `ok`, `drift` (file exists but doesn't extend the preset), `missing` (required file absent), `optional-missing` (optional convention absent), `declared` (a real deviation `.repo-tooling.json` `rules.exceptions` records on purpose, with its reason — don't fix it).
 
 ### `fix` — apply fixers for items doctor flagged
 

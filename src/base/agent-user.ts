@@ -41,15 +41,15 @@ export async function checkAgentUser(
 		return {
 			check: CHECK,
 			status: 'ok',
-			detail: 'not applicable — no aiLoop.agentUser in .repo-tooling.json',
+			detail: 'not applicable — no rules.aiLoop.agentUser in .repo-tooling.json',
 		}
 	}
 	if (!LOGIN.test(agentUser)) {
 		return {
 			check: CHECK,
 			status: 'drift',
-			detail: `aiLoop.agentUser "${agentUser}" is not a valid GitHub login`,
-			hint: 'Fix or remove aiLoop.agentUser in .repo-tooling.json',
+			detail: `rules.aiLoop.agentUser "${agentUser}" is not a valid GitHub login`,
+			hint: 'Fix or remove rules.aiLoop.agentUser in .repo-tooling.json',
 		}
 	}
 	// Cheap gate first: no .git → never spawn (keeps tmp-dir doctor runs offline).
@@ -61,15 +61,15 @@ export async function checkAgentUser(
 		return {
 			check: CHECK,
 			status: 'ok',
-			detail: `aiLoop.agentUser "${agentUser}" is an assignable collaborator`,
+			detail: `rules.aiLoop.agentUser "${agentUser}" is an assignable collaborator`,
 		}
 	}
 	if (/HTTP 404/.test(r.stderr)) {
 		return {
 			check: CHECK,
 			status: 'drift',
-			detail: `aiLoop.agentUser "${agentUser}" is not an assignable collaborator — the loop skills will silently assign nothing`,
-			hint: `Add the account as a collaborator (\`gh api -X PUT repos/{owner}/{repo}/collaborators/${agentUser}\`) or remove aiLoop.agentUser from .repo-tooling.json`,
+			detail: `rules.aiLoop.agentUser "${agentUser}" is not an assignable collaborator — the loop skills will silently assign nothing`,
+			hint: `Add the account as a collaborator (\`gh api -X PUT repos/{owner}/{repo}/collaborators/${agentUser}\`) or remove rules.aiLoop.agentUser from .repo-tooling.json`,
 		}
 	}
 	// Offline, unauthenticated, or gh missing — not evidence of drift.

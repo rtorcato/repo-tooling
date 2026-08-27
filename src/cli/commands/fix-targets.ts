@@ -132,7 +132,7 @@ export function getFixTargetForCheck(checkName: string, language?: string): stri
  */
 export function declinedInLock(lock: Lockfile | null, checkName: string): boolean {
 	if (!lock) return false
-	const c = lock.config
+	const c = lock.record.config
 	switch (checkName) {
 		case 'TypeScript':
 			return c.typescript?.enabled === false
@@ -200,7 +200,7 @@ export function lockfilePatchForTarget(
 	target: string,
 	lock: Lockfile
 ): Partial<ProjectConfig> | null {
-	const c = lock.config
+	const c = lock.record.config
 	switch (target) {
 		case 'biome':
 			if (c.linting.tool === 'biome' || c.linting.tool === 'both') return null

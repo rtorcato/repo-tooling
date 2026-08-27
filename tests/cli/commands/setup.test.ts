@@ -270,7 +270,7 @@ describe('setup --preset', () => {
 		expect(await fs.pathExists(join(dir, 'package.json'))).toBe(false)
 
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.config.language).toBe('swift')
+		expect(lock.record.config.language).toBe('swift')
 	})
 
 	it('rejects unknown preset names', async () => {
@@ -464,9 +464,9 @@ describe('setup --preset review prompt', () => {
 		expect(await fs.pathExists(join(dir, 'release.config.mjs'))).toBe(true)
 
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.config.gitHooks).toBe(false)
-		expect(lock.config.aiSetup).toBe(false)
-		expect(lock.config.semanticRelease).toBe(true)
+		expect(lock.record.config.gitHooks).toBe(false)
+		expect(lock.record.config.aiSetup).toBe(false)
+		expect(lock.record.config.semanticRelease).toBe(true)
 	})
 
 	it('prints the resolved file list before asking', async () => {
@@ -723,7 +723,7 @@ describe('setup language prompt', () => {
 
 		expect(await fs.pathExists(join(dir, 'Sources/MySwiftLib/MySwiftLib.swift'))).toBe(true)
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.config.language).toBe('swift')
+		expect(lock.record.config.language).toBe('swift')
 	})
 
 	it('records the chosen language in the lockfile instead of a hardcoded js', async () => {
@@ -736,7 +736,7 @@ describe('setup language prompt', () => {
 			logSpy.mockRestore()
 		}
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
-		expect(lock.config.language).toBe('js')
+		expect(lock.record.config.language).toBe('js')
 	})
 
 	// #463: every test above spies on `inquirer.prompt`, which replaces the

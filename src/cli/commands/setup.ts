@@ -153,11 +153,13 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		const raw = await fs.readJson(configPath)
 		// Accept the `.repo-tooling.json` lockfile itself as the config source, so a
 		// repo needs only one file: the lockfile already embeds the full
-		// ProjectConfig under `config`. Unwrap it here rather than requiring a
-		// separate hand-authored config file (#271).
+		// ProjectConfig — under `record.config` since v4, top-level `config` before
+		// (#559). Unwrap it here rather than requiring a separate config file (#271).
 		const candidate =
-			typeof raw === 'object' && raw !== null && 'config' in raw && 'version' in raw
-				? (raw as { config: unknown }).config
+			typeof raw === 'object' && raw !== null && 'version' in raw
+				? ((raw as { record?: { config?: unknown } }).record?.config ??
+					(raw as { config?: unknown }).config ??
+					raw)
 				: raw
 		const { valid, errors } = validateProjectConfig(candidate)
 		if (!valid) {

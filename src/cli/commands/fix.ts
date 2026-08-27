@@ -401,7 +401,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			}
 			process.exit(1)
 		}
-		const files = computeFileList(resyncLock.config)
+		const files = computeFileList(resyncLock.record.config)
 		if (!silent) {
 			console.log(
 				chalk.cyan(`\n🔄 Resync from ${LOCKFILE_NAME} (${files.length} files in scope)\n`)
@@ -432,8 +432,8 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 				return
 			}
 		}
-		await generateConfigs(resyncLock.config, targetDir)
-		await writeLockfile(targetDir, resyncLock.config)
+		await generateConfigs(resyncLock.record.config, targetDir)
+		await writeLockfile(targetDir, resyncLock.record.config)
 		if (json) {
 			console.log(
 				JSON.stringify({ directory: targetDir, mode: 'resync', dryRun: false, files }, null, 2)

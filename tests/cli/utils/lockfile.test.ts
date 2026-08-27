@@ -53,13 +53,13 @@ describe('readLockfile', () => {
 	it('falls back to the pre-rename .js-tooling.json name (#272)', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, LEGACY_LOCKFILE_NAME), {
-			version: LOCKFILE_VERSION,
+			version: 3,
 			config: baseConfig({ language: 'js' }),
 			writtenBy: 'old',
 			writtenAt: '2024-01-01T00:00:00.000Z',
 		})
 		const lock = await readLockfile(dir)
-		expect(lock?.config.projectName).toBe('demo')
+		expect(lock?.record.config.projectName).toBe('demo')
 	})
 
 	it('migrates a v1 file, defaulting language to js', async () => {
@@ -74,9 +74,9 @@ describe('readLockfile', () => {
 		const lock = await readLockfile(dir)
 		// The on-disk version is preserved so doctor can flag it as older (#531).
 		expect(lock?.version).toBe(1)
-		expect(lock?.config.language).toBe('js')
+		expect(lock?.record.config.language).toBe('js')
 		// Existing fields survive the migration untouched.
-		expect(lock?.config.projectName).toBe('demo')
+		expect(lock?.record.config.projectName).toBe('demo')
 	})
 
 	it('migrates a v2 file in memory with no recorded asset hashes (#428)', async () => {
@@ -91,8 +91,50 @@ describe('readLockfile', () => {
 		const lock = await readLockfile(dir)
 		// The on-disk version is preserved so doctor can flag it as older (#531).
 		expect(lock?.version).toBe(2)
-		expect(lock?.assets).toEqual({})
-		expect(lock?.config.projectName).toBe('demo')
+		expect(lock?.record.assets).toEqual({})
+		expect(lock?.record.config.projectName).toBe('demo')
+	})
+
+	// #559: v4 split the file into record (tool-written) and rules (human-written).
+	it('migrates a flat v3 file into the record/rules subtrees, field for field', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, LOCKFILE_NAME), {
+			version: 3,
+			config: baseConfig({ language: 'js' }),
+			assets: { biome: 'abc123' },
+			aiLoop: { agentUser: 'some-bot' },
+			requiredSkills: ['ai-issue-loop'],
+			mcp: { recommended: [{ name: 's', importance: 'critical', why: 'because' }] },
+			exceptions: { TypeScript: 'reason' },
+			writtenBy: 'old',
+			writtenAt: '2024-01-01T00:00:00.000Z',
+		})
+
+		const lock = await readLockfile(dir)
+		// The on-disk version is preserved so doctor can flag it as older (#531).
+		expect(lock?.version).toBe(3)
+		expect(lock?.record.config.projectName).toBe('demo')
+		expect(lock?.record.assets).toEqual({ biome: 'abc123' })
+		expect(lock?.record.writtenBy).toBe('old')
+		expect(lock?.record.writtenAt).toBe('2024-01-01T00:00:00.000Z')
+		expect(lock?.rules).toEqual({
+			aiLoop: { agentUser: 'some-bot' },
+			requiredSkills: ['ai-issue-loop'],
+			mcp: { recommended: [{ name: 's', importance: 'critical', why: 'because' }] },
+			exceptions: { TypeScript: 'reason' },
+		})
+	})
+
+	it('omits rules entirely when a v3 file set none of its fields', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, LOCKFILE_NAME), {
+			version: 3,
+			config: baseConfig({ language: 'js' }),
+			writtenBy: 'old',
+			writtenAt: '2024-01-01T00:00:00.000Z',
+		})
+		const lock = await readLockfile(dir)
+		expect(lock?.rules).toBeUndefined()
 	})
 })
 
@@ -105,16 +147,16 @@ describe('writeLockfile', () => {
 		const lock = await readLockfile(dir)
 		expect(lock).not.toBeNull()
 		expect(lock?.version).toBe(LOCKFILE_VERSION)
-		expect(lock?.config.projectName).toBe('demo')
-		expect(lock?.config.testing.framework).toBe('vitest')
-		expect(lock?.writtenBy).toMatch(/@rtorcato\/repo-tooling@/)
-		expect(lock?.writtenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+		expect(lock?.record.config.projectName).toBe('demo')
+		expect(lock?.record.config.testing.framework).toBe('vitest')
+		expect(lock?.record.writtenBy).toMatch(/@rtorcato\/repo-tooling@/)
+		expect(lock?.record.writtenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
 	})
 
 	it('migrates a pre-rename repo: writes the new name and removes the legacy file (#272)', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, LEGACY_LOCKFILE_NAME), {
-			version: LOCKFILE_VERSION,
+			version: 3,
 			config: baseConfig({ language: 'js' }),
 			writtenBy: 'old',
 			writtenAt: '2024-01-01T00:00:00.000Z',
@@ -140,10 +182,10 @@ describe('updateLockfileConfig', () => {
 		})
 		expect(updated).toBe(true)
 		const lock = await readLockfile(dir)
-		expect(lock?.config.testing.framework).toBe('jest')
+		expect(lock?.record.config.testing.framework).toBe('jest')
 		// Other fields preserved
-		expect(lock?.config.linting.tool).toBe('biome')
-		expect(lock?.config.gitHooks).toBe(true)
+		expect(lock?.record.config.linting.tool).toBe('biome')
+		expect(lock?.record.config.gitHooks).toBe(true)
 	})
 
 	it('returns false when no lockfile exists', async () => {
@@ -160,8 +202,8 @@ describe('updateLockfileConfig', () => {
 		await updateLockfileConfig(dir, { gitHooks: false })
 
 		const lock = await readLockfile(dir)
-		expect(lock?.assets).toEqual({ oxlint: 'abc123' })
-		expect(lock?.config.gitHooks).toBe(false)
+		expect(lock?.record.assets).toEqual({ oxlint: 'abc123' })
+		expect(lock?.record.config.gitHooks).toBe(false)
 	})
 })
 
@@ -175,45 +217,52 @@ describe('recordAssetHash', () => {
 
 // #524: writeLockfile rebuilds the object from scratch, so any key it does not
 // name is silently dropped — the same trap the `assets` carry-forward exists for.
-describe('aiLoop settings survive a rewrite', () => {
-	it('carries aiLoop forward when only config is rewritten', async () => {
+// Since #559 every hand-edited field lives under `rules`, carried verbatim.
+describe('rules survive a rewrite', () => {
+	it('carries rules forward when only config is rewritten', async () => {
 		const dir = newTmpDir()
 		await writeLockfile(dir, baseConfig())
 		const file = join(dir, '.repo-tooling.json')
 		const lock = await fs.readJson(file)
-		await fs.writeJson(file, { ...lock, aiLoop: { agentUser: 'some-bot' } }, { spaces: 2 })
+		const mcp = { recommended: [{ name: 's', importance: 'critical', why: 'because' }] }
+		const rules = { aiLoop: { agentUser: 'some-bot' }, requiredSkills: ['ai-issue-loop'], mcp }
+		await fs.writeJson(file, { ...lock, rules }, { spaces: 2 })
 
 		await writeLockfile(dir, { ...baseConfig(), projectName: 'renamed' })
 
 		const after = await fs.readJson(file)
-		expect(after.aiLoop).toEqual({ agentUser: 'some-bot' })
-		expect(after.config.projectName).toBe('renamed')
+		expect(after.rules).toEqual(rules)
+		expect(after.record.config.projectName).toBe('renamed')
 	})
 
 	it('omits the key entirely when nothing set it', async () => {
 		const dir = newTmpDir()
 		await writeLockfile(dir, baseConfig())
-		expect(await fs.readJson(join(dir, '.repo-tooling.json'))).not.toHaveProperty('aiLoop')
+		expect(await fs.readJson(join(dir, '.repo-tooling.json'))).not.toHaveProperty('rules')
 	})
 
-	// #533 / #534: same trap, two more hand-edited-only keys.
-	it('carries requiredSkills and mcp forward, and omits them when unset', async () => {
+	// #559: rewriting a flat v3 file migrates it on disk — the hand-edited fields
+	// land under `rules`, nothing is lost, and the file is v4 from then on.
+	it('nests flat v3 hand-edited fields under rules on the next write', async () => {
 		const dir = newTmpDir()
-		await writeLockfile(dir, baseConfig())
-		const file = join(dir, '.repo-tooling.json')
-		expect(await fs.readJson(file)).not.toHaveProperty('requiredSkills')
-		expect(await fs.readJson(file)).not.toHaveProperty('mcp')
+		await fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 3,
+			config: baseConfig({ language: 'js' }),
+			aiLoop: { agentUser: 'some-bot' },
+			exceptions: { TypeScript: 'reason' },
+			writtenBy: 'old',
+			writtenAt: '2024-01-01T00:00:00.000Z',
+		})
 
-		const mcp = { recommended: [{ name: 's', importance: 'critical', why: 'because' }] }
-		await fs.writeJson(
-			file,
-			{ ...(await fs.readJson(file)), requiredSkills: ['ai-issue-loop'], mcp },
-			{ spaces: 2 }
-		)
-		await writeLockfile(dir, { ...baseConfig(), projectName: 'renamed' })
+		await writeLockfile(dir, baseConfig({ language: 'js' }))
 
-		const after = await fs.readJson(file)
-		expect(after.requiredSkills).toEqual(['ai-issue-loop'])
-		expect(after.mcp).toEqual(mcp)
+		const after = await fs.readJson(join(dir, '.repo-tooling.json'))
+		expect(after.version).toBe(LOCKFILE_VERSION)
+		expect(after.rules).toEqual({
+			aiLoop: { agentUser: 'some-bot' },
+			exceptions: { TypeScript: 'reason' },
+		})
+		expect(after).not.toHaveProperty('aiLoop')
+		expect(after).not.toHaveProperty('config')
 	})
 })

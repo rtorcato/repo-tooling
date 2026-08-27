@@ -1,39 +1,43 @@
 {
   "$schema": "https://rtorcato.github.io/repo-tooling/schemas/lockfile.json",
-  "version": 3,
-  "config": {
-    "language": "js",
-    "projectName": "@rtorcato/repo-tooling",
-    "projectType": "library",
-    "typescript": {
-      "enabled": true,
-      "config": "base"
+  "version": 4,
+  "record": {
+    "config": {
+      "language": "js",
+      "projectName": "@rtorcato/repo-tooling",
+      "projectType": "library",
+      "typescript": {
+        "enabled": true,
+        "config": "base"
+      },
+      "linting": {
+        "tool": "biome",
+        "eslintConfig": "base"
+      },
+      "formatting": {
+        "tool": "biome"
+      },
+      "testing": {
+        "framework": "vitest",
+        "environment": "node"
+      },
+      "gitHooks": true,
+      "commitLint": true,
+      "semanticRelease": true,
+      "securityAutomation": true,
+      "bundler": "none"
     },
-    "linting": {
-      "tool": "biome",
-      "eslintConfig": "base"
+    "assets": {
+      "docusaurus-sync-changelog": "de05aecb200657c2023dc3540dbdd2f9f2f17f1027e67a06266119d12cc05fea",
+      "docusaurus-theme": "3ead9ab407c2676bc404f7df552977a0fb0412b0f0d0bcde223c271a51860005"
     },
-    "formatting": {
-      "tool": "biome"
-    },
-    "testing": {
-      "framework": "vitest",
-      "environment": "node"
-    },
-    "gitHooks": true,
-    "commitLint": true,
-    "semanticRelease": true,
-    "securityAutomation": true,
-    "bundler": "none"
+    "writtenBy": "@rtorcato/repo-tooling@3.11.0",
+    "writtenAt": "2026-08-27T00:34:30.140Z"
   },
-  "assets": {
-    "docusaurus-sync-changelog": "de05aecb200657c2023dc3540dbdd2f9f2f17f1027e67a06266119d12cc05fea",
-    "docusaurus-theme": "3ead9ab407c2676bc404f7df552977a0fb0412b0f0d0bcde223c271a51860005"
-  },
-  "aiLoop": {
-    "agentUser": "rtorcato-bot"
-  },
-  "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"],
-  "writtenBy": "@rtorcato/repo-tooling@3.11.0",
-  "writtenAt": "2026-08-26T14:58:22.032Z"
+  "rules": {
+    "aiLoop": {
+      "agentUser": "rtorcato-bot"
+    },
+    "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
+  }
 }

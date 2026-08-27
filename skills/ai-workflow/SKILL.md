@@ -53,7 +53,7 @@ git -C "$ROOT" fetch --prune
 # Optional: the account in-flight work is assigned to, so `assignee` says whose
 # turn it is. Unset → nothing below assigns, exactly as before. See the
 # ai-issue-loop skill's Pass 0 for why this is repo config rather than an env var.
-AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
+AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.rules.aiLoop.agentUser // .aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
 [ -n "$AGENT_USER" ] && { gh api "repos/$R/assignees/$AGENT_USER" --silent 2>/dev/null || AGENT_USER=""; }
 ```
 

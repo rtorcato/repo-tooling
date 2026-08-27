@@ -44,7 +44,7 @@ export async function classifyCopiedAssets(dir: string): Promise<CopiedAssetStat
 		const current = await hashFile(path.join(dir, preset.target))
 		if (current === null) continue
 
-		const recorded = lock?.assets?.[name]
+		const recorded = lock?.record.assets?.[name]
 		// Unmodified since the copy, so whether it's stale is purely a question of
 		// what this package ships now. A source we can't read (shouldn't happen)
 		// falls back to the recorded hash — "no news", not drift.

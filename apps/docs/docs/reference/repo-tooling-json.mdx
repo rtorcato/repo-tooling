@@ -37,8 +37,16 @@ export const Fields = ({ schema }) => (
 
 <p>{lockfileSchema.description}</p>
 
-`setup` creates it, `fix` keeps it current, and `doctor` reads it to know what the repo opted into.
-Commit it — it is the repo's memory of its own tooling choices.
+The file is **two documents sharing one name**, split by who writes them:
+
+- **`record`** — the tool-written half. `setup` creates it, `fix` keeps it current, and its
+  `writtenBy`/`writtenAt` stamps are provenance claims about exactly this subtree.
+- **`rules`** — the human-written half: the repo's stated intent (`aiLoop`, `requiredSkills`,
+  `mcp`, `exceptions`), edited by hand and reviewed in PRs. The tool carries it forward
+  verbatim on every write and never stamps it.
+
+`doctor` reads both. Commit the file — it is the repo's memory of its own tooling choices
+*and* its standing rules.
 
 ## Editor validation
 
@@ -46,7 +54,7 @@ Every written file carries a `$schema` pointer, so editors that understand JSON 
 (VS Code out of the box) validate, autocomplete, and show these descriptions inline:
 
 <pre>
-<code>{JSON.stringify({ $schema: lockfileSchema.$id, version: 3 }, null, 2).replace('\n}', ',\n  ...\n}')}</code>
+<code>{JSON.stringify({ $schema: lockfileSchema.$id, version: 4 }, null, 2).replace('\n}', ',\n  ...\n}')}</code>
 </pre>
 
 The schema itself is published at <a href={lockfileSchema.$id}>{lockfileSchema.$id}</a>. It is
@@ -59,27 +67,38 @@ is what your editor enforces.
 <Fields schema={lockfileSchema} />
 
 Unknown fields are rejected (`additionalProperties: false`): the CLI rewrites the file from
-scratch on every save, so any key it doesn't know is a key it would silently drop.
+scratch on every save, so any key it doesn't know is a key it would silently drop — except
+`rules`, which is carried forward verbatim.
 
-## `config` — the ProjectConfig
+## `record` — what the tool wrote
+
+<Fields schema={lockfileSchema.properties.record} />
+
+### `record.config` — the ProjectConfig
 
 The full setup configuration, identical to what `setup --config` accepts
 (its standalone schema is published at
 <a href="https://rtorcato.github.io/repo-tooling/schemas/project-config.json">/schemas/project-config.json</a>,
 printable with `setup --config-schema`):
 
-<Fields schema={lockfileSchema.properties.config} />
+<Fields schema={lockfileSchema.properties.record.properties.config} />
 
 The `object`-typed fields above (`typescript`, `linting`, `formatting`, `testing`) are small
 enum-valued records — see the schema for their exact shapes.
 
-## `aiLoop` — ai-issue-loop settings
+## `rules` — what the humans wrote
 
-<Fields schema={lockfileSchema.properties.aiLoop} />
+Everything under `rules` is edited by hand and reviewed in PRs. It is deliberately outside
+the `writtenBy`/`writtenAt` stamps: the tool never writes here, so it never claims authorship
+of a rule — a hand edit to `rules` leaves the record's provenance true.
+
+### `rules.aiLoop` — ai-issue-loop settings
+
+<Fields schema={lockfileSchema.properties.rules.properties.aiLoop} />
 
 See the [AI issue loop guide](../guides/ai-issue-loop.md) for how this is used.
 
-## `requiredSkills` — agent skills this repo depends on
+### `rules.requiredSkills` — agent skills this repo depends on
 
 A list of the skills this package ships (`ai-issue-loop`, `ai-workflow`, `ai-issue`,
 `ai-loop-status`) that the repo's workflows assume. It exists for **staleness**, not absence:
@@ -87,7 +106,9 @@ a skill that isn't installed fails loudly the moment something reaches for it, w
 three releases behind runs to completion without complaint.
 
 ```json
-"requiredSkills": ["ai-issue-loop", "ai-workflow"]
+"rules": {
+  "requiredSkills": ["ai-issue-loop", "ai-workflow"]
+}
 ```
 
 `doctor` compares each listed skill's installed `SKILL.md` — its stamped `repo-tooling-hash`,
@@ -99,25 +120,27 @@ Two rules make it safe to commit:
 - **Never `drift`, never `missing`.** The check probes your machine, not the repo, so a
   contributor with no Claude installed must not fail its `doctor`. It only ever reports
   "not configured", which leaves the exit code alone. It is also skipped entirely unless the
-  file has an `aiLoop` key — that key is already the "this repo uses the pipeline" signal.
+  file has a `rules.aiLoop` key — that key is already the "this repo uses the pipeline" signal.
 - **Check and hint only.** `doctor` names `fix claude-skills`; it never runs it. Committed
   repo config that directs writes into your home directory is the shape of a supply-chain
   attack even when the content is benign, so that step stays a human's.
 
-## `mcp` — recommended MCP servers
+### `rules.mcp` — recommended MCP servers
 
 Advisory metadata about the MCP servers the repo's workflow assumes. **Never an install
 directive**: an entry may say *what* and *why*, and may not say *how*.
 
 ```json
-"mcp": {
-  "recommended": [
-    { "name": "some-server", "importance": "important", "why": "edits the design files under design/" }
-  ]
+"rules": {
+  "mcp": {
+    "recommended": [
+      { "name": "some-server", "importance": "important", "why": "edits the design files under design/" }
+    ]
+  }
 }
 ```
 
-<Fields schema={lockfileSchema.properties.mcp.properties.recommended.items} />
+<Fields schema={lockfileSchema.properties.rules.properties.mcp.properties.recommended.items} />
 
 `importance` is one of `nice-to-have`, `important`, `critical` — it signals how much of the
 workflow assumes the server, and nothing more. `why` is the one line that `.mcp.json`
@@ -130,15 +153,17 @@ carries Claude Code's own first-use consent prompt. The lockfile says *what and 
 `.mcp.json` says *how*, and you say *whether*. User-scoped MCP config is machine-private and
 is not probed at all.
 
-## `exceptions` — declared deviations
+### `rules.exceptions` — declared deviations
 
 A map from a `doctor` check name (the `check` string in `doctor --json` output) to the reason
 this repo deliberately deviates. The reason is **mandatory and non-empty** — the schema rejects
 an entry without one, so every deviation is argued in the PR that declares it.
 
 ```json
-"exceptions": {
-  "TypeScript": "this repo is the package; the tsconfig lives at src/cli/tsconfig.json"
+"rules": {
+  "exceptions": {
+    "TypeScript": "this repo is the package; the tsconfig lives at src/cli/tsconfig.json"
+  }
 }
 ```
 
@@ -163,6 +188,7 @@ since naming the fixer is an explicit override.
 | 1 | Initial format. |
 | 2 | Added `config.language` (multi-language seam). Older files migrate to `js` on read. |
 | 3 | Added `assets` — pristine hashes of copied presets, so `doctor` can tell a local fork from a stale copy. |
+| 4 | Split the file into `record` (tool-written, stamped) and `rules` (human-written, unstamped) subtrees. Nothing renamed or dropped — the flat v3 fields moved into them. |
 
 Older files are migrated in memory on read and rewritten at the current version on the next save.
 The pre-rename `.js-tooling.json` is still read as a fallback and replaced on the next write.

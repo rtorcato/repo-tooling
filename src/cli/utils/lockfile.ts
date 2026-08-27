@@ -18,7 +18,10 @@ export const LEGACY_LOCKFILE_NAME = `.${LEGACY_TOOL_NAME}.json`
 // migrated to v2 on read, defaulting language to 'js'.
 // v3 added `assets` — the pristine hash of each copied preset (#428). Older
 // files carry no hashes, which reads as "not tracked", never as drift.
-export const LOCKFILE_VERSION = 3
+// v4 split the file into two subtrees with documented ownership (#559):
+// `record` (tool-written, stamped) and `rules` (human-written, unstamped).
+// Nothing was renamed or dropped — the flat v3 fields just moved into them.
+export const LOCKFILE_VERSION = 4
 const LOCKFILE_SCHEMA_URL = 'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json'
 
 /**
@@ -43,9 +46,13 @@ export interface McpRecommendation {
 	why: string
 }
 
-export interface Lockfile {
-	$schema?: string
-	version: number
+/**
+ * The tool-written half (#559): what `setup`/`fix` last did, stamped with the
+ * version that did it. Only the tool writes here, so `writtenBy`/`writtenAt`
+ * are provenance claims about exactly this subtree and nothing else — a hand
+ * edit to `rules` no longer makes the stamp a lie.
+ */
+export interface LockfileRecord {
 	config: ProjectConfig
 	/**
 	 * Preset name → sha256 of the asset's *pristine* content at copy time (#428).
@@ -55,6 +62,16 @@ export interface Lockfile {
 	 * entry here is simply untracked; absence is not evidence of drift.
 	 */
 	assets?: Record<string, string>
+	writtenBy: string
+	writtenAt: string
+}
+
+/**
+ * The human-written half (#559): the repo's stated rules, edited by hand and
+ * reviewed in PRs. Deliberately unstamped — the tool carries this subtree
+ * forward verbatim on every write and never claims authorship of it.
+ */
+export interface LockfileRules {
 	/**
 	 * Settings for the `ai-issue-loop` skills (#524). Repo-scoped on purpose: the
 	 * agent account is a collaborator on *this* repo, so a machine-wide env var
@@ -95,8 +112,13 @@ export interface Lockfile {
 	 * so a typo or a renamed check can't silently mute (or un-mute) anything.
 	 */
 	exceptions?: Record<string, string>
-	writtenBy: string
-	writtenAt: string
+}
+
+export interface Lockfile {
+	$schema?: string
+	version: number
+	record: LockfileRecord
+	rules?: LockfileRules
 }
 
 /**
@@ -123,10 +145,10 @@ export function lockfileSchema() {
 		$schema: 'https://json-schema.org/draft/2020-12/schema',
 		$id: LOCKFILE_SCHEMA_URL,
 		title: 'Lockfile',
-		description: `${LOCKFILE_NAME} — the committed record of what @rtorcato/repo-tooling set up in this repo. Written by \`setup\` and \`fix\`, read by \`doctor\`.`,
+		description: `${LOCKFILE_NAME} — two documents sharing one file: \`record\` is written by @rtorcato/repo-tooling (\`setup\` and \`fix\`) and stamped with provenance; \`rules\` is written by humans, reviewed in PRs, and never stamped. Both are read by \`doctor\`.`,
 		type: 'object',
 		additionalProperties: false,
-		required: ['version', 'config', 'writtenBy', 'writtenAt'],
+		required: ['version', 'record'],
 		properties: {
 			$schema: {
 				type: 'string',
@@ -134,88 +156,120 @@ export function lockfileSchema() {
 			},
 			version: {
 				type: 'integer',
-				description: `Lockfile format version (current: ${LOCKFILE_VERSION}). v2 added config.language, v3 added assets; older files are migrated on read.`,
+				description: `Lockfile format version (current: ${LOCKFILE_VERSION}). v2 added config.language, v3 added assets, v4 split the file into record/rules subtrees; older files are migrated on read.`,
 			},
-			config: {
-				...projectConfigSchema,
-				description: 'The resolved setup configuration this repo was scaffolded or audited with.',
-			},
-			assets: {
-				type: 'object',
-				additionalProperties: { type: 'string' },
-				description:
-					"Preset name → sha256 of the asset's pristine content at copy time. Lets doctor tell a deliberate local fork (file differs from this hash) from a copy the package has since moved past (file still matches, shipped asset doesn't). A preset with no entry is untracked, never drifted.",
-			},
-			aiLoop: {
+			record: {
 				type: 'object',
 				additionalProperties: false,
+				required: ['config', 'writtenBy', 'writtenAt'],
 				description:
-					'Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.',
+					'The tool-written record of what setup/fix last did. Only the tool writes here — the writtenBy/writtenAt stamps are provenance claims about exactly this subtree.',
 				properties: {
-					agentUser: {
+					config: {
+						...projectConfigSchema,
+						description:
+							'The resolved setup configuration this repo was scaffolded or audited with.',
+					},
+					assets: {
+						type: 'object',
+						additionalProperties: { type: 'string' },
+						description:
+							"Preset name → sha256 of the asset's pristine content at copy time. Lets doctor tell a deliberate local fork (file differs from this hash) from a copy the package has since moved past (file still matches, shipped asset doesn't). A preset with no entry is untracked, never drifted.",
+					},
+					writtenBy: {
 						type: 'string',
-						description:
-							'Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime.',
+						description: 'Package name and version that last wrote the record subtree.',
 					},
-				} satisfies Record<keyof NonNullable<Lockfile['aiLoop']>, object>,
+					writtenAt: {
+						type: 'string',
+						format: 'date-time',
+						description: 'ISO 8601 timestamp of the last record write.',
+					},
+				} satisfies Record<keyof LockfileRecord, object>,
 			},
-			requiredSkills: {
-				type: 'array',
-				items: { type: 'string', enum: SHIPPED_SKILLS },
-				description:
-					'Agent skills this repo\'s workflows depend on. doctor compares each installed copy\'s stamped hash against the shipped one and reports a missing or stale skill — always as "not configured", never drift, because it probes the machine rather than the repo. It never runs the fixer for you.',
-			},
-			mcp: {
+			rules: {
 				type: 'object',
 				additionalProperties: false,
 				description:
-					"Advisory MCP metadata: names, importance and reasons only, never an install directive. Executable server config belongs in the native .mcp.json, which carries Claude Code's own first-use consent prompt.",
+					"The human-written ruleset: the repo's stated intent, edited by hand and reviewed in PRs. The tool carries it forward verbatim on every write and never stamps it.",
 				properties: {
-					recommended: {
-						type: 'array',
+					aiLoop: {
+						type: 'object',
+						additionalProperties: false,
 						description:
-							"MCP servers this repo's workflow assumes. doctor reports which of them .mcp.json does not declare, informationally — it never installs or enables one.",
-						items: {
-							type: 'object',
-							additionalProperties: false,
-							required: ['name', 'importance', 'why'],
-							properties: {
-								name: {
-									type: 'string',
-									description: 'The server name as it would appear in .mcp.json.',
-								},
-								importance: {
-									type: 'string',
-									enum: MCP_IMPORTANCE,
-									description: "How much of the repo's workflow assumes the server.",
-								},
-								why: {
-									type: 'string',
-									description:
-										'One line on what the server is for — the thing .mcp.json structurally cannot say.',
-								},
-							} satisfies Record<keyof McpRecommendation, object>,
-						},
+							'Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.',
+						properties: {
+							agentUser: {
+								type: 'string',
+								description:
+									'Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime.',
+							},
+						} satisfies Record<keyof NonNullable<LockfileRules['aiLoop']>, object>,
 					},
-				} satisfies Record<keyof NonNullable<Lockfile['mcp']>, object>,
-			},
-			exceptions: {
-				type: 'object',
-				additionalProperties: { type: 'string', minLength: 1 },
-				description:
-					'Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift.',
-			},
-			writtenBy: {
-				type: 'string',
-				description: 'Package name and version that last wrote this file.',
-			},
-			writtenAt: {
-				type: 'string',
-				format: 'date-time',
-				description: 'ISO 8601 timestamp of the last write.',
+					requiredSkills: {
+						type: 'array',
+						items: { type: 'string', enum: SHIPPED_SKILLS },
+						description:
+							'Agent skills this repo\'s workflows depend on. doctor compares each installed copy\'s stamped hash against the shipped one and reports a missing or stale skill — always as "not configured", never drift, because it probes the machine rather than the repo. It never runs the fixer for you.',
+					},
+					mcp: {
+						type: 'object',
+						additionalProperties: false,
+						description:
+							"Advisory MCP metadata: names, importance and reasons only, never an install directive. Executable server config belongs in the native .mcp.json, which carries Claude Code's own first-use consent prompt.",
+						properties: {
+							recommended: {
+								type: 'array',
+								description:
+									"MCP servers this repo's workflow assumes. doctor reports which of them .mcp.json does not declare, informationally — it never installs or enables one.",
+								items: {
+									type: 'object',
+									additionalProperties: false,
+									required: ['name', 'importance', 'why'],
+									properties: {
+										name: {
+											type: 'string',
+											description: 'The server name as it would appear in .mcp.json.',
+										},
+										importance: {
+											type: 'string',
+											enum: MCP_IMPORTANCE,
+											description: "How much of the repo's workflow assumes the server.",
+										},
+										why: {
+											type: 'string',
+											description:
+												'One line on what the server is for — the thing .mcp.json structurally cannot say.',
+										},
+									} satisfies Record<keyof McpRecommendation, object>,
+								},
+							},
+						} satisfies Record<keyof NonNullable<LockfileRules['mcp']>, object>,
+					},
+					exceptions: {
+						type: 'object',
+						additionalProperties: { type: 'string', minLength: 1 },
+						description:
+							'Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift.',
+					},
+				} satisfies Record<keyof LockfileRules, object>,
 			},
 		} satisfies Record<keyof Lockfile, object>,
 	}
+}
+
+/** The flat v1–v3 layout: every field at the top level, no subtrees (#559). */
+interface FlatLockfile {
+	$schema?: string
+	version: number
+	config: ProjectConfig
+	assets?: Record<string, string>
+	aiLoop?: LockfileRules['aiLoop']
+	requiredSkills?: string[]
+	mcp?: LockfileRules['mcp']
+	exceptions?: Record<string, string>
+	writtenBy: string
+	writtenAt: string
 }
 
 /**
@@ -223,14 +277,30 @@ export function lockfileSchema() {
  * current version, so a newer-than-supported file is left as-is for
  * checkLockfile to flag. `version` stays at the on-disk value — bumping it here
  * hid every older file from doctor's older-than-current check (#531); the write
- * path stamps LOCKFILE_VERSION anyway, so the file is v3 next time it's saved.
+ * path stamps LOCKFILE_VERSION anyway, so the file is v4 next time it's saved.
+ *
+ * v1–v3 are flat: nest the fields into record/rules (#559), default language
+ * to 'js' (v1, #140) and assets to {} (pre-v3, #428). Nothing is renamed.
  */
-function migrate(lock: Lockfile): Lockfile {
-	if (lock.version >= LOCKFILE_VERSION) return lock
+function migrate(raw: Record<string, unknown>): Lockfile {
+	if ((raw.version as number) >= LOCKFILE_VERSION) return raw as unknown as Lockfile
+	const flat = raw as unknown as FlatLockfile
+	const rules: LockfileRules = {
+		...(flat.aiLoop ? { aiLoop: flat.aiLoop } : {}),
+		...(flat.requiredSkills ? { requiredSkills: flat.requiredSkills } : {}),
+		...(flat.mcp ? { mcp: flat.mcp } : {}),
+		...(flat.exceptions ? { exceptions: flat.exceptions } : {}),
+	}
 	return {
-		...lock,
-		config: { language: 'js', ...lock.config },
-		assets: lock.assets ?? {},
+		...(flat.$schema ? { $schema: flat.$schema } : {}),
+		version: flat.version,
+		record: {
+			config: { language: 'js', ...flat.config },
+			assets: flat.assets ?? {},
+			writtenBy: flat.writtenBy,
+			writtenAt: flat.writtenAt,
+		},
+		...(Object.keys(rules).length > 0 ? { rules } : {}),
 	}
 }
 
@@ -247,8 +317,13 @@ export async function readLockfile(dir: string): Promise<Lockfile | null> {
 		if (typeof raw !== 'object' || raw === null) return null
 		const obj = raw as Record<string, unknown>
 		if (typeof obj.version !== 'number') return null
-		if (typeof obj.config !== 'object' || obj.config === null) return null
-		return migrate(obj as unknown as Lockfile)
+		// v4+ keeps config under `record`; v1–v3 keep it at the top level (#559).
+		const config =
+			obj.version >= LOCKFILE_VERSION
+				? (obj.record as Record<string, unknown> | undefined)?.config
+				: obj.config
+		if (typeof config !== 'object' || config === null) return null
+		return migrate(obj)
 	} catch {
 		return null
 	}
@@ -270,21 +345,21 @@ export async function writeLockfile(
 	}
 	// One read, because everything not rebuilt from `config` has to be carried
 	// forward explicitly — this object is constructed from scratch, so any key
-	// not named here is dropped by the next `fix lockfile`.
+	// not named here is dropped by the next `fix lockfile`. `rules` rides along
+	// verbatim: it is the human's subtree, and the stamp says nothing about it.
 	const existing = await readLockfile(dir)
-	const carried = assets ?? existing?.assets
+	const carried = assets ?? existing?.record.assets
 	const filepath = path.join(dir, LOCKFILE_NAME)
 	const lockfile: Lockfile = {
 		$schema: LOCKFILE_SCHEMA_URL,
 		version: LOCKFILE_VERSION,
-		config,
-		...(carried && Object.keys(carried).length > 0 ? { assets: carried } : {}),
-		...(existing?.aiLoop ? { aiLoop: existing.aiLoop } : {}),
-		...(existing?.requiredSkills ? { requiredSkills: existing.requiredSkills } : {}),
-		...(existing?.mcp ? { mcp: existing.mcp } : {}),
-		...(existing?.exceptions ? { exceptions: existing.exceptions } : {}),
-		writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
-		writtenAt: new Date().toISOString(),
+		record: {
+			config,
+			...(carried && Object.keys(carried).length > 0 ? { assets: carried } : {}),
+			writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
+			writtenAt: new Date().toISOString(),
+		},
+		...(existing?.rules ? { rules: existing.rules } : {}),
 	}
 	await fs.writeJson(filepath, lockfile, { spaces: 2 })
 	// Migrate a pre-rename repo to the new name: now that the canonical file is
@@ -304,7 +379,7 @@ export async function updateLockfileConfig(
 ): Promise<boolean> {
 	const existing = await readLockfile(dir)
 	if (!existing) return false
-	const merged: ProjectConfig = { ...existing.config, ...patch }
+	const merged: ProjectConfig = { ...existing.record.config, ...patch }
 	await writeLockfile(dir, merged)
 	return true
 }
@@ -318,6 +393,6 @@ export async function updateLockfileConfig(
 export async function recordAssetHash(dir: string, preset: string, hash: string): Promise<boolean> {
 	const existing = await readLockfile(dir)
 	if (!existing) return false
-	await writeLockfile(dir, existing.config, { ...existing.assets, [preset]: hash })
+	await writeLockfile(dir, existing.record.config, { ...existing.record.assets, [preset]: hash })
 	return true
 }

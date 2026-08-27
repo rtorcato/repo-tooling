@@ -71,16 +71,19 @@ auto-writes this same install section into your `README.md` — one
 `package.json`'s `repository`. It's a merge-safe delimited block, so your own
 README content is never touched, and repos without a `skills/` dir get nothing.
 
-## `aiLoop`: the agent account for the issue loop
+## `rules.aiLoop`: the agent account for the issue loop
 
 If you run the `ai-issue-loop` / `ai-workflow` skills, `.repo-tooling.json` can
 name the account that in-flight work is assigned to, so `assignee` says whose
-turn it is:
+turn it is. Like everything under `rules`, it's yours to edit by hand — the
+tool carries the subtree forward verbatim and never stamps it:
 
 ```json
 {
-  "aiLoop": {
-    "agentUser": "your-bot-account"
+  "rules": {
+    "aiLoop": {
+      "agentUser": "your-bot-account"
+    }
   }
 }
 ```
@@ -98,13 +101,15 @@ against your repo's own remote (`gh api repos/{owner}/{repo}/assignees/<user>`)
 and reports drift when it isn't assignable. Absent field ⇒ `ok`, not
 applicable.
 
-## `requiredSkills`: catching a *stale* skill, not just a missing one
+## `rules.requiredSkills`: catching a *stale* skill, not just a missing one
 
 A repo whose workflows depend on the shipped skills can say so:
 
 ```json
 {
-  "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
+  "rules": {
+    "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
+  }
 }
 ```
 
@@ -121,22 +126,24 @@ Two rules keep the field safe to commit:
 - **It never fails your build.** The check probes your machine, not the repo, so
   it reports "not configured" and never `drift` or `missing` — a contributor
   without Claude installed doesn't fail this repo's `doctor`. It's also skipped
-  entirely unless the file has an `aiLoop` key.
+  entirely unless the file has a `rules.aiLoop` key.
 - **It only ever hints.** `doctor` names `fix claude-skills`; running it is
   yours. Committed repo config that directs writes into your home directory is
   the shape of a supply-chain attack even when the content is benign.
 
-## `mcp.recommended`: names and reasons, never an install directive
+## `rules.mcp.recommended`: names and reasons, never an install directive
 
 The same file can name the MCP servers a repo's workflow assumes — and only
 name them:
 
 ```json
 {
-  "mcp": {
-    "recommended": [
-      { "name": "some-server", "importance": "important", "why": "edits the design files under design/" }
-    ]
+  "rules": {
+    "mcp": {
+      "recommended": [
+        { "name": "some-server", "importance": "important", "why": "edits the design files under design/" }
+      ]
+    }
   }
 }
 ```

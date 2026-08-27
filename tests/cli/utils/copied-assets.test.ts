@@ -43,7 +43,7 @@ describe('classifyCopiedAssets', () => {
 
 		// The hash landed in the lockfile rather than nowhere.
 		const lock = await readLockfile(dir)
-		expect(lock?.assets?.oxlint).toMatch(/^[0-9a-f]{64}$/)
+		expect(lock?.record.assets?.oxlint).toMatch(/^[0-9a-f]{64}$/)
 
 		expect(stateOf(await classifyCopiedAssets(dir), 'oxlint')).toBe('ok')
 	})
@@ -74,7 +74,7 @@ describe('classifyCopiedAssets', () => {
 		// Strip the record, leaving the pre-#428 shape: the file is there, its
 		// provenance isn't.
 		const lock = await readLockfile(dir)
-		await writeLockfile(dir, lock?.config as ProjectConfig, {})
+		await writeLockfile(dir, lock?.record.config as ProjectConfig, {})
 
 		expect(stateOf(await classifyCopiedAssets(dir), 'oxlint')).toBe('unknown')
 	})
