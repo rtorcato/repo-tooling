@@ -76,6 +76,7 @@ describe('swift fixers', () => {
 			'language',
 			'Monorepo',
 			'Git identity',
+			'Git author history',
 			'AI loop agent',
 			'README badges',
 			'Coverage upload',

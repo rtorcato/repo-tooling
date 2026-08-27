@@ -16,7 +16,7 @@ import { checkAgentUser } from '../../base/agent-user.js'
 import { checkGitHubSettings } from '../../base/github-settings.js'
 import { checkLoopLabels } from '../../base/labels.js'
 import { checkMilestones } from '../../base/milestones.js'
-import { checkGitIdentity } from '../../base/git-identity.js'
+import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
 import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
@@ -294,6 +294,8 @@ async function runBaseChecks(
 	results.push(await checkCopiedAssets(dir))
 	results.push(await checkNestedLanguages(dir, opts.language))
 	results.push(await checkGitIdentity(dir))
+	// The retrospective half (#557): commits already made with a bad identity.
+	results.push(await checkGitIdentityHistory(dir))
 	results.push(await checkEditorConfig(dir))
 	results.push(await checkFile(dir, COMMITLINT_FILE_CHECK))
 	if (opts.hooks) {

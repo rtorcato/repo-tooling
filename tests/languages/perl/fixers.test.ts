@@ -75,6 +75,7 @@ describe('perl fixers', () => {
 			'lockfile',
 			'Monorepo',
 			'Git identity',
+			'Git author history',
 			'AI loop agent',
 			'README badges',
 			'Coverage upload',
