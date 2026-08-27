@@ -53,6 +53,7 @@ import {
 	checkConfigSchemaVersions,
 	checkDocsSite,
 	checkEnginesNode,
+	checkExportsBuildable,
 	checkGitDependencies,
 	checkKnip,
 	checkLintStaged,
@@ -489,6 +490,8 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 	results.push(await checkTypedoc(targetDir, pkg))
 	results.push(await checkAreTheTypesWrong(targetDir, pkg))
 	results.push(await checkPublint(targetDir, pkg))
+	// The setup/doctor-time half of what publint catches at release time (#578).
+	results.push(await checkExportsBuildable(targetDir, pkg))
 	results.push(await checkTreeshakeSetup(targetDir, pkg))
 	results.push(await checkPnpmWorkspace(targetDir, pkg))
 	results.push(await checkBuildApprovals(targetDir, pkg))
