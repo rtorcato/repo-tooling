@@ -39,7 +39,24 @@ describe('parsePackageSwift', () => {
 		expect(parsePackageSwift('// swift-tools-version: 5.9\n')).toEqual({
 			products: [],
 			platforms: [],
+			targets: [],
 		})
+	})
+
+	it('reads target names of every kind, not product names', () => {
+		const pkg = parsePackageSwift(
+			`products: [.library(name: "Lib", targets: ["Core"])],
+			 targets: [
+			     .target(name: "Core"),
+			     .executableTarget(
+			         name: "Tool",
+			         dependencies: ["Core"]
+			     ),
+			     .testTarget(name: "CoreTests", dependencies: ["Core"])
+			 ]`
+		)
+		expect(pkg.targets).toEqual(['Core', 'Tool', 'CoreTests'])
+		expect(pkg.targets).not.toContain('Lib')
 	})
 
 	// `.iOS` also appears in target conditionals — only the platforms: clause

@@ -17,6 +17,7 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { type FileCheck, type GitHooksProfile, checkFile } from '../../base/checks.js'
 import type { CheckResult } from '../../base/types.js'
+import { parsePackageSwift } from './ci.js'
 import { SWIFT_HOOKS_DIR } from './git-hooks.js'
 
 const SWIFT_FILE_CHECKS: FileCheck[] = [
@@ -129,17 +130,86 @@ export async function checkPackageSwift(dir: string): Promise<CheckResult> {
 	}
 }
 
+/** Subdirectory names of `<dir>/<root>`, or none when that root doesn't exist. */
+async function subdirectories(dir: string, root: string): Promise<string[]> {
+	try {
+		const entries = await fs.readdir(path.join(dir, root), { withFileTypes: true })
+		return entries.filter((e) => e.isDirectory()).map((e) => e.name)
+	} catch {
+		return []
+	}
+}
+
 /**
  * Directory names under `Sources/`. For a SwiftPM package these are the target
  * names — a target's sources and its DocC catalogue live in the same folder,
  * so this is where both the check and the `docc` fixer have to look.
  */
 export async function swiftSourceTargets(dir: string): Promise<string[]> {
-	try {
-		const entries = await fs.readdir(path.join(dir, 'Sources'), { withFileTypes: true })
-		return entries.filter((e) => e.isDirectory()).map((e) => e.name)
-	} catch {
-		return []
+	return subdirectories(dir, 'Sources')
+}
+
+/** Where SwiftPM looks for a target's sources when the manifest gives no `path:`. */
+const TARGET_ROOTS = ['Sources', 'Tests']
+
+/**
+ * Sources that belong to no declared target (#575). SwiftPM silently ignores a
+ * directory under `Sources/` that no `.target(` names — so `swift build` and
+ * `swift test` both exit 0 while the code in it is never compiled and the tests
+ * in it are never run. There is no red X anywhere, which is the whole reason
+ * this check exists: a renamed target, a dropped `.target(...)` line, or a
+ * generator that rewrote the manifest all leave the same invisible hole.
+ *
+ * No fixer: repairing it means either adding a target or deleting the
+ * directory, and nothing outside the project can tell which.
+ */
+export async function checkSwiftTargets(dir: string): Promise<CheckResult> {
+	const check = 'Swift targets'
+	const filepath = path.join(dir, 'Package.swift')
+	if (!(await fs.pathExists(filepath))) {
+		return { check, status: 'missing', detail: 'no Package.swift' }
+	}
+
+	const contents = await fs.readFile(filepath, 'utf-8')
+	// A custom `path:` puts a target's sources anywhere, so directory names stop
+	// meaning target names and every comparison below becomes a guess. Bail out
+	// rather than report something we can't stand behind. Deliberately crude:
+	// `.package(path:)` for a local dependency trips this too, which costs a
+	// skipped check on repos that use one — cheaper than a false accusation.
+	if (/\bpath:\s*"/.test(contents)) {
+		return {
+			check,
+			status: 'ok',
+			detail:
+				'not checked — Package.swift uses a custom `path:`, so directories need not match targets',
+		}
+	}
+
+	const declared = new Set(parsePackageSwift(contents).targets)
+	const orphans: string[] = []
+	let scanned = 0
+	for (const root of TARGET_ROOTS) {
+		for (const name of await subdirectories(dir, root)) {
+			scanned++
+			if (!declared.has(name)) orphans.push(`${root}/${name}`)
+		}
+	}
+
+	if (scanned === 0) {
+		return { check, status: 'ok', detail: 'no directories under Sources/ or Tests/' }
+	}
+	if (orphans.length > 0) {
+		return {
+			check,
+			status: 'drift',
+			detail: `no target declares ${orphans.join(', ')} — SwiftPM ignores them, so \`swift build\` passes without building them`,
+			hint: `Add a target named after each directory to Package.swift, or delete the directory: ${orphans.join(', ')}`,
+		}
+	}
+	return {
+		check,
+		status: 'ok',
+		detail: `all ${scanned} source directories are declared as targets`,
 	}
 }
 
@@ -293,6 +363,7 @@ export async function runSwiftChecks(dir: string): Promise<CheckResult[]> {
 		await checkPackageSwift(dir),
 		...(await Promise.all(SWIFT_FILE_CHECKS.map((spec) => checkFile(dir, spec)))),
 		await checkSwiftGitignore(dir),
+		await checkSwiftTargets(dir),
 		await checkSwiftTests(dir),
 		await checkDocC(dir),
 		await checkSwiftRelease(dir),

@@ -80,6 +80,8 @@ const SWIFT_FIX_TARGETS: Record<string, string> = {
 	// `Swift tests` is deliberately absent: when it fails for the manifest half
 	// (no `.testTarget(`) there's nothing to run, and rewriting Package.swift
 	// isn't safe. The check's own hint covers both halves.
+	// `Swift targets` too (#575): the repair is either adding a target or
+	// deleting the directory, and only the project knows which.
 }
 
 /** The same shadowing for the Python module (#290). */

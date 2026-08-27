@@ -6,6 +6,7 @@ import {
 	checkPackageSwift,
 	checkSwiftGitignore,
 	checkSwiftRelease,
+	checkSwiftTargets,
 	checkSwiftTests,
 	runSwiftChecks,
 } from '../../../src/languages/swift/checks.js'
@@ -131,6 +132,67 @@ describe('checkSwiftTests', () => {
 	})
 })
 
+describe('checkSwiftTargets', () => {
+	const manifest = (targets: string) =>
+		`// swift-tools-version: 5.9\nlet package = Package(\n    name: "Demo",\n    targets: [${targets}]\n)\n`
+
+	const pkg = async (dir: string, targets: string, dirs: string[]) => {
+		await fs.writeFile(join(dir, 'Package.swift'), manifest(targets))
+		for (const d of dirs) await fs.outputFile(join(dir, d, 'File.swift'), '')
+	}
+
+	it('is missing without a manifest', async () => {
+		expect((await checkSwiftTargets(newTmpDir())).status).toBe('missing')
+	})
+
+	// The failure this check exists for: SwiftPM ignores Sources/Widget, so
+	// `swift build` exits 0 while nothing in it is ever compiled.
+	it('flags a source directory that no target declares', async () => {
+		const dir = newTmpDir()
+		await pkg(dir, '.target(name: "Demo")', ['Sources/Demo', 'Sources/Widget'])
+		const result = await checkSwiftTargets(dir)
+		expect(result.status).toBe('drift')
+		expect(result.detail).toContain('Sources/Widget')
+		expect(result.detail).not.toContain('Sources/Demo')
+		expect(result.hint).toContain('Sources/Widget')
+	})
+
+	it('flags an orphaned test directory too', async () => {
+		const dir = newTmpDir()
+		await pkg(dir, '.target(name: "Demo")', ['Sources/Demo', 'Tests/DemoTests'])
+		const result = await checkSwiftTargets(dir)
+		expect(result.status).toBe('drift')
+		expect(result.detail).toContain('Tests/DemoTests')
+	})
+
+	it('passes when every directory is declared', async () => {
+		const dir = newTmpDir()
+		await pkg(dir, '.target(name: "Demo"), .testTarget(name: "DemoTests")', [
+			'Sources/Demo',
+			'Tests/DemoTests',
+		])
+		const result = await checkSwiftTargets(dir)
+		expect(result.status).toBe('ok')
+		expect(result.detail).toContain('2')
+	})
+
+	it('passes on a package with no source directories at all', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'Package.swift'), manifest('.target(name: "Demo")'))
+		expect((await checkSwiftTargets(dir)).status).toBe('ok')
+	})
+
+	// A custom `path:` decouples directory names from target names, so the
+	// comparison would be a guess. Skipping beats a false accusation.
+	it('skips a manifest that uses a custom path:', async () => {
+		const dir = newTmpDir()
+		await pkg(dir, '.target(name: "Demo", path: "Sources/Other")', ['Sources/Other'])
+		const result = await checkSwiftTargets(dir)
+		expect(result.status).toBe('ok')
+		expect(result.detail).toContain('path:')
+	})
+})
+
 describe('checkDocC', () => {
 	const PLUGIN = '.package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0")'
 
@@ -220,6 +282,7 @@ describe('runSwiftChecks', () => {
 			'Periphery',
 			'swift-format',
 			'Swift .gitignore',
+			'Swift targets',
 			'Swift tests',
 			'DocC',
 			'Release automation',
