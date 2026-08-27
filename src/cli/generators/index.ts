@@ -113,7 +113,14 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 
 	// Family-wide pnpm settings (#314). Runs last of the workspace writers so it
 	// merges into whatever they wrote rather than racing them for the file.
-	await ensurePnpmSettings(targetDir, bundlerNeedsEsbuild(config), familyGlob(config.projectName))
+	//
+	// The scope is read back off the emitted package.json rather than taken from
+	// config.projectName: under `--preset` that name is only the directory
+	// basename, while generatePackageJson preserves an existing scoped `name`.
+	// doctor derives the glob from that same field, so reading the basename left
+	// the two disagreeing on every scoped repo (#573).
+	const { name } = (await fs.readJson(path.join(targetDir, 'package.json'))) as { name?: unknown }
+	await ensurePnpmSettings(targetDir, bundlerNeedsEsbuild(config), familyGlob(name))
 
 	// Turborepo task pipeline (pnpm-workspace monorepos, when opted-in)
 	if (config.turborepo) {

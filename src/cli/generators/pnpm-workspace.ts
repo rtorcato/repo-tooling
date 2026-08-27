@@ -26,10 +26,16 @@ export const WORKSPACE_FILE = 'pnpm-workspace.yaml'
  *
  * One glob covers a whole scope: pnpm matches these entries with
  * `@pnpm/config.matcher`, so there's no package list to keep in sync.
+ *
+ * The scope is matched against npm's own name charset, not just "anything up
+ * to the slash": the name comes verbatim from a pre-existing `package.json`
+ * and is never validated as an npm name on the way here, so a scope of a lone
+ * wildcard would otherwise be taken as a glob and exempt every scoped package
+ * from the release-age delay. An unparseable scope gets no setting at all.
  */
 export function familyGlob(packageName: unknown): string | null {
 	const name = typeof packageName === 'string' ? packageName : ''
-	const scope = /^(@[^/]+)\//.exec(name)?.[1]
+	const scope = /^(@[a-z0-9-][a-z0-9._-]*)\//i.exec(name)?.[1]
 	return scope ? `${scope}/*` : null
 }
 
