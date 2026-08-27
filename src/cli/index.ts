@@ -44,6 +44,11 @@ program
 	)
 	.option('--dry-run', 'Print the resolved config and file list, write nothing')
 	.option('--config-schema', 'Print the JSON Schema for ProjectConfig and exit')
+	// Seeds the wizard, never skips it (#563) — every answer is still yours.
+	.option(
+		'--from <owner/repo>',
+		"Seed the wizard's defaults from that repo's .repo-tooling.json instead of the built-in ones (read via `gh`)"
+	)
 	.action(setupProject)
 
 program
@@ -348,6 +353,12 @@ program
 	.option(
 		'--skills-dir <path>',
 		'Where `fix claude-skills` installs user-global agent skills (default: ~/.claude/skills). Pass the same path `fix` was given, or the skill reports as not installed'
+	)
+	// Rules are per-repo (#563): this compares them against another repo's, and
+	// only reports. Never drift, never a fixer, never part of the exit code.
+	.option(
+		'--rules-from <owner/repo>',
+		"Report how this repo's config and rules differ from that repo's .repo-tooling.json (informational; read via `gh`)"
 	)
 	.action(doctorCommand)
 

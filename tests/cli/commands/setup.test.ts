@@ -11,7 +11,15 @@ import {
 	validateProjectConfig,
 } from '../../../src/cli/commands/setup-presets.js'
 import { generateConfigs } from '../../../src/cli/generators/index.js'
+import { fetchReferenceLockfile } from '../../../src/cli/utils/reference-rules.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
+
+// `setup --from` is the only thing in this file that would reach the network.
+// The fetch itself is covered in tests/cli/utils/reference-rules.test.ts; what
+// matters here is that a reference config lands on the wizard's defaults.
+vi.mock('../../../src/cli/utils/reference-rules.js', () => ({
+	fetchReferenceLockfile: vi.fn(),
+}))
 
 const newTmpDir = useTmpDir()
 
@@ -737,6 +745,87 @@ describe('setup language prompt', () => {
 		}
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
 		expect(lock.record.config.language).toBe('js')
+	})
+
+	// #563: rules are per-repo, so sharing a guideline means pointing at another
+	// repo. `--from` seeds the wizard from one — seeded, never skipped, so nothing
+	// is written that the user did not see and confirm.
+	it('seeds the wizard defaults from a reference repo without copying its record', async () => {
+		const dir = newTmpDir()
+		vi.mocked(fetchReferenceLockfile).mockResolvedValue({
+			ok: true,
+			lockfile: {
+				version: 4,
+				record: {
+					config: {
+						...buildPresetConfig('node-api', 'reference-repo'),
+						linting: { tool: 'eslint', eslintConfig: 'base' },
+						testing: { framework: 'jest', environment: 'both' },
+						bundler: 'esbuild',
+						gitHooks: false,
+						semanticRelease: false,
+						changesets: true,
+					},
+					assets: { biome: 'a'.repeat(64) },
+					writtenBy: '@rtorcato/repo-tooling@1.2.3',
+					writtenAt: '2026-01-01T00:00:00.000Z',
+				},
+				rules: { aiLoop: { agentUser: 'some-bot' } },
+			},
+		})
+		const spy = mockPrompt({ language: 'js' }, JS_ANSWERS)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, skipInstall: true, from: 'someone/theirs' })
+		} finally {
+			logSpy.mockRestore()
+		}
+		expect(fetchReferenceLockfile).toHaveBeenCalledWith('someone/theirs')
+
+		const [questions] = spy.mock.calls[1] as [Array<{ name: string; default?: unknown }>]
+		const defaults = Object.fromEntries(questions.map((q) => [q.name, q.default]))
+		expect(defaults).toMatchObject({
+			projectType: 'node-api',
+			useTypeScript: true,
+			lintingTool: 'eslint',
+			eslintConfig: 'base',
+			testingFramework: 'jest',
+			testEnvironment: 'both',
+			bundler: 'esbuild',
+			gitHooks: false,
+			// The config stores this as three booleans; the wizard asks it as one pick.
+			releaseTool: 'changesets',
+		})
+		// A new repo is not the reference repo: its name is never seeded.
+		expect(defaults.projectName).not.toBe('reference-repo')
+		// Record-side fields never cross over — this repo stamps its own, and the
+		// reference's rules stay with the repo that argued for them.
+		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
+		expect(lock.record.writtenBy).not.toBe('@rtorcato/repo-tooling@1.2.3')
+		expect(lock.record.assets).toBeUndefined()
+		expect(lock.rules).toBeUndefined()
+	})
+
+	it('ignores --from when --preset already skips the wizard', async () => {
+		const dir = newTmpDir()
+		// vi.restoreAllMocks() leaves a module-factory vi.fn's call log intact.
+		vi.mocked(fetchReferenceLockfile).mockClear()
+		const warnings: string[] = []
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation((m) => warnings.push(String(m)))
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({
+				directory: dir,
+				preset: 'library',
+				skipInstall: true,
+				from: 'someone/theirs',
+			})
+		} finally {
+			logSpy.mockRestore()
+			warnSpy.mockRestore()
+		}
+		expect(fetchReferenceLockfile).not.toHaveBeenCalled()
+		expect(warnings.join('\n')).toContain('ignoring --from')
 	})
 
 	// #463: every test above spies on `inquirer.prompt`, which replaces the

@@ -304,6 +304,25 @@ function migrate(raw: Record<string, unknown>): Lockfile {
 	}
 }
 
+/**
+ * Normalize already-parsed JSON into a Lockfile, or null when it isn't one.
+ * Split out of readLockfile so a lockfile fetched from somewhere other than the
+ * filesystem — a reference repo, over `gh` — goes through the same migration
+ * before anything reads it (#563).
+ */
+export function parseLockfile(raw: unknown): Lockfile | null {
+	if (typeof raw !== 'object' || raw === null) return null
+	const obj = raw as Record<string, unknown>
+	if (typeof obj.version !== 'number') return null
+	// v4+ keeps config under `record`; v1–v3 keep it at the top level (#559).
+	const config =
+		obj.version >= LOCKFILE_VERSION
+			? (obj.record as Record<string, unknown> | undefined)?.config
+			: obj.config
+	if (typeof config !== 'object' || config === null) return null
+	return migrate(obj)
+}
+
 export async function readLockfile(dir: string): Promise<Lockfile | null> {
 	let filepath = path.join(dir, LOCKFILE_NAME)
 	if (!(await fs.pathExists(filepath))) {
@@ -313,17 +332,7 @@ export async function readLockfile(dir: string): Promise<Lockfile | null> {
 		filepath = legacy
 	}
 	try {
-		const raw = (await fs.readJson(filepath)) as unknown
-		if (typeof raw !== 'object' || raw === null) return null
-		const obj = raw as Record<string, unknown>
-		if (typeof obj.version !== 'number') return null
-		// v4+ keeps config under `record`; v1–v3 keep it at the top level (#559).
-		const config =
-			obj.version >= LOCKFILE_VERSION
-				? (obj.record as Record<string, unknown> | undefined)?.config
-				: obj.config
-		if (typeof config !== 'object' || config === null) return null
-		return migrate(obj)
+		return parseLockfile((await fs.readJson(filepath)) as unknown)
 	} catch {
 		return null
 	}

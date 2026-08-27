@@ -8,6 +8,7 @@ import { detectLanguage } from '../utils/detect-language.js'
 import { formatGeneratedFiles } from '../utils/format.js'
 import { installDependencies } from '../utils/install.js'
 import { LOCKFILE_NAME, writeLockfile } from '../utils/lockfile.js'
+import { fetchReferenceLockfile } from '../utils/reference-rules.js'
 import {
 	buildPresetConfig,
 	computeFileList,
@@ -81,6 +82,8 @@ export interface SetupOptions {
 	configSchema?: boolean
 	/** Accept a `--preset` as-is instead of reviewing it in an interactive terminal. */
 	yes?: boolean
+	/** `--from <owner/repo>`: seed the wizard's defaults from that repo's lockfile (#563). */
+	from?: string
 }
 
 /**
@@ -140,10 +143,31 @@ async function reviewPresetConfig(config: ProjectConfig): Promise<ProjectConfig>
 	return reviewed
 }
 
+/**
+ * Read a reference repo's recorded config to seed the wizard (#563). Only
+ * `record.config` — the answers — crosses over: `assets` and the
+ * `writtenBy`/`writtenAt` stamps describe the reference's own history, and this
+ * repo's lockfile gets its own on the first write. `rules` is left behind too,
+ * since an `exceptions` entry excuses a deviation in the repo that wrote it.
+ */
+async function seedFromReference(reference: string): Promise<ProjectConfig> {
+	const result = await fetchReferenceLockfile(reference)
+	if (!result.ok) throw new Error(`Cannot seed from ${reference}: ${result.reason}`)
+	console.log(
+		chalk.cyan(`\n🌱 Seeding defaults from ${reference} — every answer is still yours to change.\n`)
+	)
+	return result.lockfile.record.config
+}
+
 /** `null` means the run was declined, not that it failed — see promptForConfig. */
 async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | null> {
 	if (options.config && options.preset) {
 		console.warn(chalk.yellow('⚠️  Both --config and --preset given; --config wins.\n'))
+	}
+	if (options.from && (options.config || options.preset)) {
+		console.warn(
+			chalk.yellow('⚠️  --from seeds the wizard, which --config/--preset skip; ignoring --from.\n')
+		)
 	}
 	if (options.config) {
 		const configPath = path.resolve(options.config)
@@ -176,7 +200,8 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		if (options.dryRun || options.yes || !isInteractiveTerminal()) return config
 		return reviewPresetConfig(config)
 	}
-	return promptForConfig(path.resolve(options.directory))
+	const seed = options.from ? await seedFromReference(options.from) : undefined
+	return promptForConfig(path.resolve(options.directory), seed)
 }
 
 export async function setupProject(options: SetupOptions) {
@@ -251,7 +276,7 @@ const SCAFFOLDABLE: ReadonlyArray<LanguageModule['id']> = ['js', 'swift']
  * like. Languages setup can't scaffold yet are still offered — hiding them reads
  * as "repo-tooling is JS-only" when the honest answer is "not yet" (#139).
  */
-async function promptForLanguage(targetDir: string): Promise<LanguageModule> {
+async function promptForLanguage(targetDir: string, seed?: ProjectConfig): Promise<LanguageModule> {
 	const detected = await detectLanguage(targetDir)
 	const { language } = await inquirer.prompt([
 		{
@@ -264,8 +289,10 @@ async function promptForLanguage(targetDir: string): Promise<LanguageModule> {
 					: `${module.label} (${module.supported ? 'doctor/fix only — no setup preset yet' : 'setup lands with its module'})`,
 				value: module.id,
 			})),
+			// What this dir already looks like beats the reference's language: the
+			// files on disk are evidence, the reference is only a suggestion.
 			// 'unknown' is a bare dir mid-setup — JS is the historical default.
-			default: detected === 'unknown' ? 'js' : detected,
+			default: detected !== 'unknown' ? detected : (seed?.language ?? 'js'),
 		},
 	])
 	return LANGUAGES[language as LanguageModule['id']]
@@ -292,9 +319,19 @@ function explainNotScaffoldable(module: LanguageModule) {
 	)
 }
 
-/** `null` when the chosen language has no scaffolding yet; nothing is written. */
-async function promptForConfig(targetDir: string): Promise<ProjectConfig | null> {
-	const language = await promptForLanguage(targetDir)
+/**
+ * `null` when the chosen language has no scaffolding yet; nothing is written.
+ *
+ * @param seed A reference repo's recorded config (#563). It moves the *defaults*
+ *   only — every question is still asked, so seeding can never write an answer
+ *   the user did not see. `projectName` is deliberately never seeded: a new repo
+ *   is not the reference repo.
+ */
+async function promptForConfig(
+	targetDir: string,
+	seed?: ProjectConfig
+): Promise<ProjectConfig | null> {
+	const language = await promptForLanguage(targetDir, seed)
 
 	// Gate on SCAFFOLDABLE, not `module.supported` — Swift is supported (#286)
 	// but has no preset yet (#288), and falling through here would write a
@@ -327,6 +364,18 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 	// Turborepo only makes sense in a pnpm-workspace monorepo, so the prompt is
 	// only offered when one is already present in the target dir.
 	const hasWorkspace = await fs.pathExists(path.join(targetDir, 'pnpm-workspace.yaml'))
+	// Two questions ask for something the config stores as a set of booleans, so
+	// their seeded default has to be derived rather than read.
+	const seededReleaseTool = !seed
+		? 'semantic-release'
+		: seed.semanticRelease
+			? 'semantic-release'
+			: seed.changesets
+				? 'changesets'
+				: seed.releasePlease
+					? 'release-please'
+					: 'none'
+	const seededOrchestrator = !seed ? 'turbo' : seed.turborepo ? 'turbo' : seed.nx ? 'nx' : 'none'
 	const answers = await inquirer.prompt([
 		{
 			type: 'input',
@@ -339,6 +388,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			type: 'select',
 			name: 'projectType',
 			message: '🏗️  What type of project are you building?',
+			default: seed?.projectType,
 			choices: [
 				{ name: '📚 Library/Package', value: 'library' },
 				{ name: '🌐 Web Application', value: 'web-app' },
@@ -351,7 +401,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 			type: 'confirm',
 			name: 'useTypeScript',
 			message: '📘 Do you want to use TypeScript?',
-			default: true,
+			default: seed?.typescript.enabled ?? true,
 		},
 		{
 			type: 'select',
@@ -378,6 +428,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 
 				return baseChoices
 			},
+			default: seed?.typescript.config,
 			when: (answers: any) => answers.useTypeScript,
 		},
 		{
@@ -390,7 +441,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				{ name: '🔥 Both Biome + ESLint', value: 'both' },
 				{ name: '❌ None', value: 'none' },
 			],
-			default: 'biome',
+			default: seed?.linting.tool ?? 'biome',
 		},
 		{
 			type: 'select',
@@ -403,13 +454,14 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				}
 				return choices
 			},
+			default: seed?.linting.eslintConfig,
 			when: (answers: any) => answers.lintingTool === 'eslint' || answers.lintingTool === 'both',
 		},
 		{
 			type: 'confirm',
 			name: 'oxlint',
 			message: '🦀 Also run Oxlint alongside (50–100× faster than ESLint)?',
-			default: false,
+			default: seed?.oxlint ?? false,
 			when: (answers: any) => answers.lintingTool !== 'none',
 		},
 		{
@@ -423,7 +475,7 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				{ name: '🌲 Cypress (E2E)', value: 'cypress' },
 				{ name: '❌ None', value: 'none' },
 			],
-			default: 'vitest',
+			default: seed?.testing.framework ?? 'vitest',
 		},
 		{
 			type: 'select',
@@ -435,19 +487,19 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				{ name: '🔄 Both', value: 'both' },
 			],
 			when: (answers: any) => answers.testingFramework === 'jest',
-			default: 'node',
+			default: seed?.testing.environment ?? 'node',
 		},
 		{
 			type: 'confirm',
 			name: 'gitHooks',
 			message: '🪝 Set up Git hooks (Husky + lint-staged)?',
-			default: true,
+			default: seed?.gitHooks ?? true,
 		},
 		{
 			type: 'confirm',
 			name: 'commitLint',
 			message: '📝 Set up conventional commit linting?',
-			default: true,
+			default: seed?.commitLint ?? true,
 			when: (answers: any) => answers.gitHooks,
 		},
 		{
@@ -460,40 +512,40 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				{ name: '🙏 Release Please (Google, release-PR-driven)', value: 'release-please' },
 				{ name: '❌ None', value: 'none' },
 			],
-			default: 'semantic-release',
+			default: seededReleaseTool,
 			when: (answers: any) => answers.projectType === 'library',
 		},
 		{
 			type: 'confirm',
 			name: 'treeshakeCheck',
 			message: '🌳 Add a tree-shake verification check (apps/treeshake-check)?',
-			default: false,
+			default: seed?.treeshakeCheck ?? false,
 			when: (answers: any) => answers.projectType === 'library',
 		},
 		{
 			type: 'confirm',
 			name: 'publint',
 			message: '📦 Add publint to lint your package before publishing?',
-			default: true,
+			default: seed?.publint ?? true,
 			when: (answers: any) => answers.projectType === 'library',
 		},
 		{
 			type: 'confirm',
 			name: 'badges',
 			message: '🔖 Add status badges (CI, npm, coverage, license) to the README?',
-			default: true,
+			default: seed?.badges ?? true,
 		},
 		{
 			type: 'confirm',
 			name: 'securityAutomation',
 			message: '🛡️  Include security automation (Dependabot + CodeQL)?',
-			default: true,
+			default: seed?.securityAutomation ?? true,
 		},
 		{
 			type: 'confirm',
 			name: 'aiSetup',
 			message: '🤖 Add AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill)?',
-			default: true,
+			default: seed?.aiSetup ?? true,
 		},
 		{
 			type: 'select',
@@ -504,14 +556,14 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 				{ name: '🔷 Nx (nx.json)', value: 'nx' },
 				{ name: '❌ None', value: 'none' },
 			],
-			default: 'turbo',
+			default: seededOrchestrator,
 			when: () => hasWorkspace,
 		},
 		{
 			type: 'confirm',
 			name: 'tailwind',
 			message: '🎨 Add Tailwind CSS v4 (PostCSS plugin + globals.css)?',
-			default: true,
+			default: seed?.tailwind ?? true,
 			// Only meaningful for frontend project types.
 			when: (answers: any) =>
 				answers.projectType === 'web-app' ||
@@ -537,13 +589,14 @@ async function promptForConfig(targetDir: string): Promise<ProjectConfig | null>
 
 				return choices
 			},
+			default: seed?.bundler,
 			when: (answers: any) => answers.projectType !== 'nextjs-app', // Next.js has its own bundler
 		},
 		{
 			type: 'confirm',
 			name: 'bun',
 			message: '🥟 Target the Bun runtime (bunfig.toml + Bun-typed tsconfig)?',
-			default: false,
+			default: seed?.bun ?? false,
 			// A runtime flag, not a project type — offer it for Node-compatible
 			// library/API targets, not the browser-framework types.
 			when: (answers: any) =>

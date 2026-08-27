@@ -19,6 +19,7 @@ import { checkMilestones } from '../../base/milestones.js'
 import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
 import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
+import { compareRulesWithReference, type RulesComparison } from '../utils/reference-rules.js'
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import {
 	type BadgeAudience,
@@ -87,6 +88,8 @@ export interface DoctorOptions {
 	json?: boolean
 	/** `--skills-dir`, mirroring `fix` — the read side of the same flag (#485). */
 	skillsDir?: string
+	/** `--rules-from <owner/repo>`: report how this repo's rules differ from that repo's (#563). */
+	rulesFrom?: string
 }
 
 const PACKAGE = '@rtorcato/repo-tooling'
@@ -587,12 +590,54 @@ export function summarize(results: CheckResult[]): {
 	}
 }
 
+/**
+ * Print the `--rules-from` comparison (#563). Deliberately not a CheckResult:
+ * two repos legitimately differ, so a difference is never a finding about either
+ * one, and keeping it out of `results` is what makes "never affects the exit
+ * code" structural rather than a promise the next check has to remember.
+ */
+function printRulesComparison(comparison: RulesComparison) {
+	console.log(
+		chalk.cyan(`\n📐 Rules vs ${comparison.reference}`),
+		chalk.gray('(informational — differences are not drift and do not affect the exit code)\n')
+	)
+	if (!comparison.compared) {
+		console.log(`  ${chalk.gray('➖')} ${chalk.gray(`not compared — ${comparison.reason}`)}\n`)
+		return
+	}
+	const differences = comparison.differences ?? []
+	if (differences.length === 0) {
+		console.log(`  ${chalk.green('✅')} ${chalk.gray('identical — no differences to report')}\n`)
+		return
+	}
+	const show = (v: unknown) => (v === undefined ? chalk.dim('(absent)') : JSON.stringify(v))
+	for (const d of differences) {
+		console.log(`  ${chalk.bold(d.path)}`)
+		console.log(`     ${chalk.gray('here:')} ${show(d.local)}`)
+		console.log(`     ${chalk.gray(`${comparison.reference}:`)} ${show(d.reference)}`)
+	}
+	console.log(chalk.gray(`\n  ${differences.length} difference(s).\n`))
+}
+
 export async function doctorCommand(options: DoctorOptions = {}) {
 	const dir = options.directory ?? process.cwd()
 	const results = await runDoctor(dir, options.skillsDir)
+	const comparison = options.rulesFrom
+		? await compareRulesWithReference(dir, options.rulesFrom)
+		: null
 
 	if (options.json) {
-		console.log(JSON.stringify({ directory: path.resolve(dir), results }, null, 2))
+		console.log(
+			JSON.stringify(
+				{
+					directory: path.resolve(dir),
+					results,
+					...(comparison ? { rulesReference: comparison } : {}),
+				},
+				null,
+				2
+			)
+		)
 	} else {
 		console.log(chalk.cyan(`\n🩺 Diagnosing ${path.resolve(dir)} against ${PACKAGE} presets...\n`))
 		for (const r of results) {
@@ -615,6 +660,7 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 			}
 			console.log()
 		}
+		if (comparison) printRulesComparison(comparison)
 	}
 
 	const summary = summarize(results)

@@ -181,6 +181,60 @@ Three rules keep it from becoming a mute button:
 A bulk `fix` / `fix --yes` skips declared checks; a targeted `fix <target>` still applies,
 since naming the fixer is an explicit override.
 
+## Comparing against another repo
+
+There is **no guideline package**, and there never will be: the rules are unique to each repo,
+and a rule that travels as a dependency stops being the repo's own. Sharing a guideline means
+pointing at a **reference repo** — one whose `.repo-tooling.json` you consider exemplary.
+
+```bash
+# Report how this repo's config and rules differ from another repo's
+npx @rtorcato/repo-tooling doctor --rules-from owner/repo
+```
+
+The reference is read over `gh` (`repos/owner/repo/contents/.repo-tooling.json`), so it works
+for any repo your `gh` login can see, public or private.
+
+Three properties make this safe to point at a repo you do not control:
+
+- **Informational, always.** Differences are printed in their own section, never as check
+  results — they are not `drift`, they do not appear in the summary counts, and they cannot
+  change the exit code. Two repos legitimately differ; the point is seeing where.
+- **Read and report, never apply.** There is no fixer, and nothing from the reference is ever
+  written into your repo.
+- **The reference is untrusted input.** The `owner/repo` string is shape-checked before it
+  reaches an API path, the response is size-capped, and the JSON is validated against the
+  published schema before a single field is read. A missing, malformed, oversized or
+  schema-invalid reference is reported plainly and the comparison is skipped — never as a
+  finding about your repo.
+
+Only the comparable half is diffed: `record.config` and everything under `rules`. The `assets`
+hashes and the `writtenBy`/`writtenAt` stamps are excluded — they differ between any two repos
+by construction, so including them would bury every difference that means something.
+
+With `--json`, the comparison rides alongside the results under `rulesReference`, and only when
+the flag is given.
+
+## Starting a new repo from another one
+
+The same reference, the other direction:
+
+```bash
+npx @rtorcato/repo-tooling setup --from owner/repo -d ./my-new-lib
+```
+
+The wizard is **seeded, not skipped**: every question is still asked, with that repo's answers
+as the defaults instead of the built-in ones. Nothing is written that you did not see.
+
+Only `record.config` crosses over. `projectName` is never seeded (a new repo is not the
+reference repo), the record-side stamps are not copied (the new repo writes its own `writtenBy`
+and starts with no `assets`), and `rules` stays behind — an `exceptions` entry excuses a
+deviation in the repo that argued for it, so copying one would mute a check somewhere it is
+still a real finding.
+
+`--from` seeds the wizard, so it is ignored (with a warning) alongside `--preset` or `--config`,
+which skip the wizard entirely.
+
 ## Version history
 
 | Version | Change |
