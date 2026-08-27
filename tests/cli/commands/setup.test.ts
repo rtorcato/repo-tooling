@@ -11,6 +11,7 @@ import {
 	validateProjectConfig,
 } from '../../../src/cli/commands/setup-presets.js'
 import { generateConfigs } from '../../../src/cli/generators/index.js'
+import { DEFAULT_RULES } from '../../../src/cli/utils/lockfile.js'
 import { fetchReferenceLockfile } from '../../../src/cli/utils/reference-rules.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -825,11 +826,12 @@ describe('setup language prompt', () => {
 		// A new repo is not the reference repo: its name is never seeded.
 		expect(defaults.projectName).not.toBe('reference-repo')
 		// Record-side fields never cross over — this repo stamps its own, and the
-		// reference's rules stay with the repo that argued for them.
+		// reference's rules stay with the repo that argued for them: the new repo
+		// gets the empty scaffold to fill in, not someone else's agentUser (#571).
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
 		expect(lock.record.writtenBy).not.toBe('@rtorcato/repo-tooling@1.2.3')
 		expect(lock.record.assets).toBeUndefined()
-		expect(lock.rules).toBeUndefined()
+		expect(lock.rules).toEqual(DEFAULT_RULES)
 	})
 
 	// The reference is untrusted and remote, so "could not read it" is an ordinary

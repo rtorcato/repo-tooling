@@ -122,6 +122,22 @@ export interface Lockfile {
 }
 
 /**
+ * The empty ruleset a repo with no stated rules gets (#571). `rules` used to
+ * appear only via v1–v3 migration, so the repos this tool creates were exactly
+ * the ones with nothing to edit and nothing to compare. Writing the containers
+ * — with `$schema` stamped alongside — makes the file teach its own shape.
+ *
+ * Values, never defaults: every entry is empty, because a populated one would
+ * be this tool asserting a rule on a repo whose humans have not stated any.
+ */
+export const DEFAULT_RULES: LockfileRules = {
+	aiLoop: {},
+	requiredSkills: [],
+	mcp: { recommended: [] },
+	exceptions: {},
+}
+
+/**
  * JSON Schema for the lockfile, published with the docs site at the exact URL
  * every written lockfile's `$schema` points to (#529). The `satisfies` clauses
  * bind the property lists to the Lockfile interface, so adding or removing a
@@ -368,7 +384,8 @@ export async function writeLockfile(
 			writtenBy: `@rtorcato/repo-tooling@${await getToolVersion()}`,
 			writtenAt: new Date().toISOString(),
 		},
-		...(existing?.rules ? { rules: existing.rules } : {}),
+		// A repo that has stated no rules gets the empty scaffold, not nothing (#571).
+		rules: existing?.rules ?? DEFAULT_RULES,
 	}
 	await fs.writeJson(filepath, lockfile, { spaces: 2 })
 	// Migrate a pre-rename repo to the new name: now that the canonical file is

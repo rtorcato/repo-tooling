@@ -89,8 +89,18 @@ enum-valued records — see the schema for their exact shapes.
 ## `rules` — what the humans wrote
 
 Everything under `rules` is edited by hand and reviewed in PRs. It is deliberately outside
-the `writtenBy`/`writtenAt` stamps: the tool never writes here, so it never claims authorship
-of a rule — a hand edit to `rules` leaves the record's provenance true.
+the `writtenBy`/`writtenAt` stamps: the tool never writes a rule here, so it never claims
+authorship of one — a hand edit to `rules` leaves the record's provenance true.
+
+`setup` does write the **empty containers**, so a new repo has the shape in front of it rather
+than a blank page — and `doctor --rules-from` has something local to compare:
+
+```json
+"rules": { "aiLoop": {}, "requiredSkills": [], "mcp": { "recommended": [] }, "exceptions": {} }
+```
+
+Every value is empty on purpose. A default here would be this tool asserting a rule on a repo
+whose humans have not stated one. An existing `rules` is carried forward untouched.
 
 ### `rules.aiLoop` — ai-issue-loop settings
 
@@ -120,7 +130,7 @@ Two rules make it safe to commit:
 - **Never `drift`, never `missing`.** The check probes your machine, not the repo, so a
   contributor with no Claude installed must not fail its `doctor`. It only ever reports
   "not configured", which leaves the exit code alone. It is also skipped entirely unless the
-  file has a `rules.aiLoop` key — that key is already the "this repo uses the pipeline" signal.
+  file sets `rules.aiLoop.agentUser` — that login is the "this repo uses the pipeline" signal.
 - **Check and hint only.** `doctor` names `fix claude-skills`; it never runs it. Committed
   repo config that directs writes into your home directory is the shape of a supply-chain
   attack even when the content is benign, so that step stays a human's.

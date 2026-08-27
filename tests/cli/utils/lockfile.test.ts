@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import {
+	DEFAULT_RULES,
 	LEGACY_LOCKFILE_NAME,
 	LOCKFILE_NAME,
 	LOCKFILE_VERSION,
@@ -235,10 +236,12 @@ describe('rules survive a rewrite', () => {
 		expect(after.record.config.projectName).toBe('renamed')
 	})
 
-	it('omits the key entirely when nothing set it', async () => {
+	// #571: a greenfield repo used to get `record` only, so there was nothing to
+	// edit and nothing for `doctor --rules-from` to compare against.
+	it('writes the empty scaffold when nothing set it', async () => {
 		const dir = newTmpDir()
 		await writeLockfile(dir, baseConfig())
-		expect(await fs.readJson(join(dir, '.repo-tooling.json'))).not.toHaveProperty('rules')
+		expect((await fs.readJson(join(dir, '.repo-tooling.json'))).rules).toEqual(DEFAULT_RULES)
 	})
 
 	// #559: rewriting a flat v3 file migrates it on disk — the hand-edited fields
