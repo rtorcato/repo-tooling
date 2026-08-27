@@ -1,9 +1,9 @@
 import path from 'node:path'
 import fs from 'fs-extra'
-import packageJson from '../../../package.json' with { type: 'json' }
 import { CONFIG_SCHEMA, validateProjectConfig } from '../commands/setup-presets.js'
 import type { ProjectConfig } from '../commands/setup.js'
 import { SHIPPED_SKILLS } from '../generators/claude-skills.js'
+import { getToolVersion } from './version.js'
 
 export const LOCKFILE_NAME = '.repo-tooling.json'
 // Package and bin name used before the js-tooling→repo-tooling rename (#272).
@@ -365,7 +365,7 @@ export async function writeLockfile(
 		record: {
 			config,
 			...(carried && Object.keys(carried).length > 0 ? { assets: carried } : {}),
-			writtenBy: `@rtorcato/repo-tooling@${packageJson.version}`,
+			writtenBy: `@rtorcato/repo-tooling@${await getToolVersion()}`,
 			writtenAt: new Date().toISOString(),
 		},
 		...(existing?.rules ? { rules: existing.rules } : {}),

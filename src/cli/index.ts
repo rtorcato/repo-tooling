@@ -4,12 +4,12 @@ import path from 'node:path'
 import chalk from 'chalk'
 import { Command } from 'commander'
 import fs from 'fs-extra'
-import packageJson from '../../package.json' with { type: 'json' }
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand } from './commands/fix.js'
 import { loopGuardCommand } from './commands/loop-guard.js'
 import { setupProject } from './commands/setup.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
+import { getToolVersion } from './utils/version.js'
 
 async function isSelfRepo(dir: string): Promise<boolean> {
 	try {
@@ -25,7 +25,7 @@ const program = new Command()
 program
 	.name('@rtorcato/repo-tooling')
 	.description('🛠️  JavaScript and TypeScript tooling setup for modern projects')
-	.version(packageJson.version)
+	.version(await getToolVersion())
 
 program
 	.command('setup')

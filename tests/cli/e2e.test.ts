@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
+import { getToolVersion } from '../../src/cli/utils/version.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const CLI = join(process.cwd(), 'dist', 'cli', 'index.js')
@@ -13,10 +14,13 @@ function cli(args: string[], cwd = process.cwd()) {
 describe.skipIf(!fs.existsSync(CLI))('CLI smoke tests (requires pnpm build)', () => {
 	const newTmpDir = useTmpDir()
 
-	it('prints version', () => {
+	// Not just a shape check: --version and the lockfile's writtenBy have to be
+	// the same number, and once were not (#572).
+	it('prints the one version this package reports', async () => {
 		const { status, stdout } = cli(['--version'])
 		expect(status).toBe(0)
 		expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/)
+		expect(stdout.trim()).toBe(await getToolVersion())
 	})
 
 	it('list prints known configs', () => {
