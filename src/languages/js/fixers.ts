@@ -115,7 +115,7 @@ import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 // The fixer contract moved to src/base/fixers.ts when Swift became the second
 // module (#286) — import it from there.
-import type { Fixer, Pkg } from '../../base/fixers.js'
+import { FixerAbort, type Fixer, type Pkg } from '../../base/fixers.js'
 
 /** Exported so doctor can render the preset ci.yml it compares against (#349). */
 export function inferProjectConfig(pkg: Pkg): ProjectConfig {
@@ -215,14 +215,25 @@ const GH_WORKFLOW_FIXERS: Fixer[] = GH_WORKFLOWS.map((name) => ({
 export const FIXERS: Fixer[] = [
 	{
 		target: 'biome',
-		description: `Scaffold ${BIOME_CONFIG} extending the @rtorcato/repo-tooling preset, plus the scripts that run it`,
+		description: `Point ${BIOME_CONFIG} at the @rtorcato/repo-tooling preset (merged into any existing config), plus the scripts that run it`,
 		appliesTo: ['Biome'],
 		outputs: [BIOME_CONFIG, 'package.json (scripts)'],
+		// safe-merge: only $schema/extends are rewritten, other keys are kept.
+		riskLevel: 'safe-merge',
 		canFixDrift: true,
 		async run({ targetDir }) {
 			// Shares generateBiomeConfig with the setup/resync path — the two used to
 			// scaffold different filenames with different contents (#365).
 			const written = await generateBiomeConfig(targetDir)
+			// null means an existing config that won't parse. Refuse rather than
+			// replace it: its settings are unreadable, so they're unrecoverable (#587).
+			if (!written) {
+				throw new FixerAbort(
+					'biome-unparseable',
+					`refusing to overwrite ${BIOME_CONFIG} — it does not parse as JSON/JSONC, so its settings cannot be merged`,
+					`fix the syntax error in ${BIOME_CONFIG} (or delete it) and re-run \`fix biome\``
+				)
+			}
 			const filesWritten = [written]
 			// A config with no way to run it left `pnpm check` undefined, which the
 			// generated CI called and `fix verify` needed to compose a chain (#364).

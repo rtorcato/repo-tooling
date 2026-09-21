@@ -604,26 +604,58 @@ describe('fix targeted', () => {
 		expect(content).toBe(original)
 	})
 
-	it('fix biome --yes with existing biome.json overwrites', async () => {
+	// #587: the fixer used to replace the file wholesale, dropping every setting
+	// it wasn't asked about. Only `linter.enabled: false` — the drift doctor
+	// flags — goes; everything else the consumer wrote stays.
+	it('fix biome --yes merges into an existing biome.json', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fs.writeFile(join(dir, 'biome.json'), '{"linter": {"enabled": false}}\n')
+		await fs.writeJson(join(dir, 'biome.json'), {
+			$schema: 'https://biomejs.dev/schemas/2.5.14/schema.json',
+			linter: { enabled: false, rules: { correctness: { useUniqueElementIds: 'off' } } },
+			files: { includes: ['!src/routeTree.gen.ts'] },
+			css: { parser: { tailwindDirectives: true } },
+		})
 		await fixCommand('biome', { directory: dir, yes: true })
 		const biome = await fs.readJson(join(dir, 'biome.json'))
-		expect(biome.$schema).toMatch(/biomejs\.dev/)
+		expect(biome.$schema).toBe('https://biomejs.dev/schemas/latest/schema.json')
+		expect(biome.extends).toEqual(['@rtorcato/repo-tooling/biome'])
+		expect(biome.files).toEqual({ includes: ['!src/routeTree.gen.ts'] })
+		expect(biome.css).toEqual({ parser: { tailwindDirectives: true } })
+		expect(biome.linter).toEqual({ rules: { correctness: { useUniqueElementIds: 'off' } } })
 	})
 
-	it('fix biome prompts default false on drift', async () => {
+	it('fix biome prompts with safe-merge wording on drift', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fs.writeFile(join(dir, 'biome.json'), '{}\n')
 		promptMock.mockImplementationOnce(async (questions: unknown) => {
 			const q = Array.isArray(questions) ? questions[0] : questions
-			expect(q.default).toBe(false)
-			expect(q.message).toMatch(/overwrite/i)
+			expect(q.default).toBe(true)
+			expect(q.message).not.toMatch(/overwrite/i)
 			return { confirm: false }
 		})
 		await fixCommand('biome', { directory: dir })
+	})
+
+	// Nothing can merge into a config that doesn't parse, and replacing it would
+	// destroy settings that can't be read back (#587).
+	it('fix biome refuses an unparseable biome.json', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const original = '{ "extends": [ oops\n'
+		await fs.writeFile(join(dir, 'biome.json'), original)
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('biome', { directory: dir, yes: true })).rejects.toThrow('exit')
+			expect(await fs.readFile(join(dir, 'biome.json'), 'utf-8')).toBe(original)
+		} finally {
+			exitSpy.mockRestore()
+			errSpy.mockRestore()
+		}
 	})
 
 	it('fix engines uses safe-merge wording (no overwrite warning)', async () => {

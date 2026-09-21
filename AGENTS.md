@@ -94,11 +94,11 @@ npx @rtorcato/repo-tooling fix claude-skills --yes --json
 
 ## Drift policy (important)
 
-`fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
+`fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
 
 Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `claude-skills`, the one fixer whose blast radius is outside the repo.
 
-A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
+A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422), and `biome` against a `biome.json` that does not parse, whose settings cannot be merged (#587). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
 
 ## Source-of-truth files in the repo
 

@@ -63,7 +63,7 @@ npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-instal
 
 ## Drift policy (don't surprise the user)
 
-- Safe-merge fixers (`engines`, `husky`, `package-json`) never overwrite — they add/merge.
+- Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite — they add/merge.
 - Drift on a config file (`biome`, `tsconfig`, …) is only overwritten with `--yes`.
   Before overwriting drift the user wrote by hand, show `fix <target> --diff` first.
 - `optional-missing` ≠ broken. Don't install opt-in tools (typedoc, size-limit,
