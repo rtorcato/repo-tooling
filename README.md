@@ -92,7 +92,7 @@ See the [Getting Started guide](https://rtorcato.github.io/repo-tooling/guides/g
 | `copy <config>` | Copy a single config file into the current project. | `npx @rtorcato/repo-tooling copy biome` |
 | `doctor` | Diagnose an existing project for missing or drifted tooling. | `npx @rtorcato/repo-tooling doctor` |
 | `fix [target]` | Apply scaffolders for what `doctor` flagged (`--yes`, `--dry-run`, `--diff`). | `npx @rtorcato/repo-tooling fix` |
-| `loop guard` | Repair a main checkout that has gone `core.bare = true`, and gate the `node_modules` rebuild after a worktree removal. Exits `1` if the repair failed and `2` if the root is not a repairable checkout — see `--help`. | `npx @rtorcato/repo-tooling loop guard --root .` |
+| `loop guard` | Repair a main checkout that has gone `core.bare = true`, gate the `node_modules` rebuild after a worktree removal, and halt when `gh` is not authenticated as the `rules.aiLoop.agentUser` the repo declares. Exits `1` if the repair failed and `2` if the root is not a repairable checkout or the identity is wrong — see `--help`. | `npx @rtorcato/repo-tooling loop guard --root .` |
 
 Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
 

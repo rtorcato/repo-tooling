@@ -26,7 +26,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `fix --dry-run` | ✅ | ✅ | Print what each fixer would write without writing. Combine with `--json`. |
 | `list --json` | ✅ | ✅ | Enumerate the library's surface area. Each entry has `{ name, description, exports, fixTarget }`. |
 | `copy <name>` | ✅ | text only | Copy a single preset (`biome`, `tsconfig`) into the current directory. |
-| `loop guard --root <path>` | ✅ | ✅ | Guard an `ai-issue-loop` tick: repair a wrongly-bare main checkout, gate the `node_modules` rebuild (`--removed`). Exit `0` continue, `1` repair failed, `2` root is not a repairable checkout — both non-zero halt the tick. |
+| `loop guard --root <path>` | ✅ | ✅ | Guard an `ai-issue-loop` tick: repair a wrongly-bare main checkout, gate the `node_modules` rebuild (`--removed`), and assert `gh` authenticates as the declared `rules.aiLoop.agentUser`. Exit `0` continue, `1` repair failed, `2` root is not a repairable checkout or the agent identity is wrong — both non-zero halt the tick. |
 
 ## Recommended workflows
 
