@@ -1683,6 +1683,11 @@ function compareFloor(a: [number, number, number], b: [number, number, number]):
 	return a[0] - b[0] || a[1] - b[1]
 }
 
+/** Full major.minor.patch ordering, for comparing an installed version. */
+function compareVersion(a: [number, number, number], b: [number, number, number]): number {
+	return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
+}
+
 /**
  * Config files whose `$schema` URL carries the tool version the config is
  * written for, and the package that reads them. One entry per tool; adding
@@ -1775,6 +1780,62 @@ export async function checkConfigSchemaVersions(
 		status: 'optional-missing',
 		detail: `${mismatches.length} config${mismatches.length === 1 ? '' : 's'} written for a newer tool than declared: ${mismatches.join('; ')}`,
 		hint: 'Raise the dependency floor to the version the config targets, or rewrite the config for the oldest version supported. Anyone resolving below the schema version gets a config-parse error that never mentions the version range.',
+	}
+}
+
+/**
+ * Installed peer versions against the ranges this package declares (#591).
+ *
+ * `checkConfigSchemaVersions` compares *declared* ranges; this compares what is
+ * actually on disk. A consumer scaffolded by an older generator can sit on
+ * `@biomejs/biome` 2.4.5 while the shipped preset uses `linter.rules.preset`,
+ * a 2.5 key — and the only symptom is a parse error pointing inside a file the
+ * consumer never wrote. The peer warning that would have said so scrolled past
+ * at install time.
+ *
+ * ponytail: only the floor is compared. Ranges like `^20.0.0 || ^21.0.0` or
+ * `>=5.0.0` have no single ceiling worth enforcing, and flagging a newer major
+ * would fire on every repo that upgrades ahead of the range. Add a real semver
+ * satisfies() if a peer ever ships a breaking major we must keep out.
+ */
+export async function checkPeerVersions(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+	const check = 'Peer versions'
+	const modules = path.join(dir, 'node_modules')
+	// Running against a consumer, the contract lives in the installed copy;
+	// running against this repo itself, it is the repo's own package.json.
+	const self = pkg?.name === PACKAGE ? pkg : await readPackageJson(path.join(modules, PACKAGE))
+	const peers = (self?.peerDependencies as Record<string, string> | undefined) ?? {}
+
+	const stale: string[] = []
+	let checked = 0
+	for (const [name, range] of Object.entries(peers)) {
+		const floor = rangeFloor(range)
+		if (!floor) continue
+		// Absent means the peer is simply unused — every one of ours is optional.
+		const installed = (await readPackageJson(path.join(modules, name)))?.version
+		const version = typeof installed === 'string' ? rangeFloor(installed) : null
+		if (!version) continue
+		checked++
+		if (compareVersion(version, floor) < 0) {
+			stale.push(`${name} ${installed} installed, ${PACKAGE} requires ${range}`)
+		}
+	}
+
+	if (checked === 0) {
+		return { check, status: 'ok', detail: 'no installed peers to compare' }
+	}
+	if (stale.length === 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `${checked} installed peer${checked === 1 ? '' : 's'} satisfy the declared ranges`,
+		}
+	}
+	return {
+		check,
+		status: 'drift',
+		detail: `${stale.length} peer${stale.length === 1 ? '' : 's'} installed below the declared range: ${stale.join('; ')}`,
+		hint: 'Upgrade the named packages — a preset written for a newer version fails inside a file you cannot edit, with an error that never mentions the version.',
 	}
 }
 

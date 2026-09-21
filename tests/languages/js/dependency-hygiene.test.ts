@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	checkConfigSchemaVersions,
 	checkGitDependencies,
+	checkPeerVersions,
 	isGitSpecifier,
 	rangeFloor,
 	schemaUrlVersion,
@@ -184,5 +185,51 @@ describe('checkGitDependencies', () => {
 		expect(r.detail).toContain('a (github:o/a)')
 		expect(r.detail).toContain('c (gitlab:o/c)')
 		expect(r.detail).not.toContain('b (')
+	})
+})
+
+describe('checkPeerVersions', () => {
+	/** A consumer repo with repo-tooling and the given peers installed. */
+	function consumer(peers: Record<string, string>, installed: Record<string, string>): string {
+		const dir = newTmpDir()
+		fs.outputJsonSync(join(dir, 'node_modules/@rtorcato/repo-tooling/package.json'), {
+			name: '@rtorcato/repo-tooling',
+			peerDependencies: peers,
+		})
+		for (const [name, version] of Object.entries(installed)) {
+			fs.outputJsonSync(join(dir, `node_modules/${name}/package.json`), { name, version })
+		}
+		return dir
+	}
+
+	it('passes when no peer is installed', async () => {
+		const r = await checkPeerVersions(consumer({ '@biomejs/biome': '^2.5.0' }, {}), {})
+		expect(r.status).toBe('ok')
+	})
+
+	// The actual #591 defect: Biome 2.4.5 under a ^2.5.0 peer range, which
+	// surfaces only as an unknown-key error inside the shipped preset.
+	it('flags a peer installed below the declared floor', async () => {
+		const dir = consumer({ '@biomejs/biome': '^2.5.0' }, { '@biomejs/biome': '2.4.5' })
+		const r = await checkPeerVersions(dir, {})
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('@biomejs/biome 2.4.5 installed')
+	})
+
+	it('accepts a newer major and an or-range above its floor', async () => {
+		const dir = consumer(
+			{ typescript: '>=5.0.0', '@commitlint/cli': '^20.0.0 || ^21.0.0' },
+			{ typescript: '6.1.0', '@commitlint/cli': '21.2.0' }
+		)
+		expect((await checkPeerVersions(dir, {})).status).toBe('ok')
+	})
+
+	it('reads its own package.json when run against this package', async () => {
+		const dir = consumer({}, { '@biomejs/biome': '2.4.5' })
+		const r = await checkPeerVersions(dir, {
+			name: '@rtorcato/repo-tooling',
+			peerDependencies: { '@biomejs/biome': '^2.5.0' },
+		})
+		expect(r.status).toBe('drift')
 	})
 })
