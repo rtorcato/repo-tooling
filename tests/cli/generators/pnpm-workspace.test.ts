@@ -98,6 +98,44 @@ minimumReleaseAgeExclude:
 		expect(upsertPnpmSettings('', false, ACME)).not.toContain('allowBuilds')
 	})
 
+	// #588: allowBuilds is the key pnpm 11 reads, so seeding it from a constant
+	// over a file that already approved more packages narrows the allowlist and
+	// breaks the install it exists to fix.
+	it('mirrors onlyBuiltDependencies into allowBuilds rather than replacing it', () => {
+		const before = `onlyBuiltDependencies:
+  - esbuild
+  - lightningcss
+  - '@prisma/client'
+`
+		const after = upsertPnpmSettings(before, true, ACME)
+		expect(after).toContain('esbuild: true')
+		expect(after).toContain('lightningcss: true')
+		expect(after).toContain("'@prisma/client': true")
+		expect(missingPnpmSettings(after, true, ACME)).toEqual([])
+		expect(upsertPnpmSettings(after, true, ACME)).toBe(after)
+	})
+
+	it('mirrors the list even when no bundler needs esbuild', () => {
+		const after = upsertPnpmSettings('onlyBuiltDependencies:\n  - lightningcss\n', false, ACME)
+		expect(after).toContain('lightningcss: true')
+		expect(after).not.toContain('esbuild: true')
+	})
+
+	// A hand-vetted decision is a decision — mirroring must not flip it to true.
+	it('keeps an existing false decision while adding the undecided ones', () => {
+		const before = `allowBuilds:
+  lightningcss: false
+
+onlyBuiltDependencies:
+  - esbuild
+  - lightningcss
+`
+		const after = upsertPnpmSettings(before, true, ACME)
+		expect(after).toContain('lightningcss: false')
+		expect(after).not.toContain('lightningcss: true')
+		expect(after).toContain('esbuild: true')
+	})
+
 	it('is idempotent', () => {
 		const once = upsertPnpmSettings('', true, ACME)
 		expect(upsertPnpmSettings(once, true, ACME)).toBe(once)
