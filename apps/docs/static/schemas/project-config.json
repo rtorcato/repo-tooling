@@ -58,6 +58,7 @@
 					"enum": [
 						"base",
 						"react",
+						"vite-app",
 						"next",
 						"node",
 						"express"

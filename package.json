@@ -158,6 +158,7 @@
 		"./typescript/node": "./tooling/typescript/tsconfig.node.json",
 		"./typescript/bun": "./tooling/typescript/tsconfig.bun.json",
 		"./typescript/react": "./tooling/typescript/tsconfig.react.json",
+		"./typescript/vite-app": "./tooling/typescript/tsconfig.vite-app.json",
 		"./typescript/test": "./tooling/typescript/tsconfig.test.json",
 		"./typescript/reset": "./tooling/typescript/reset.d.ts",
 		"./typescript/base@1": "./tooling/typescript/v1/tsconfig.base.json",

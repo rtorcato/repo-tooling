@@ -89,6 +89,20 @@ describe('setup-presets', () => {
 		const config = buildPresetConfig('react-app', 'demo')
 		expect(config.bundler).toBe('vite')
 		expect(config.testing.environment).toBe('browser')
+		// Not 'react': that preset is library-shaped, so `import.meta.env` wouldn't
+		// compile and the tests would go unchecked (#592).
+		expect(config.typescript.config).toBe('vite-app')
+	})
+
+	it('the vite-app tsconfig preset types vite/client and checks the tests', async () => {
+		// Read as text, not JSON: the shipped presets are JSONC.
+		const preset = await fs.readFile(
+			join(process.cwd(), 'tooling/typescript/tsconfig.vite-app.json'),
+			'utf8'
+		)
+		expect(preset).toContain('"vite/client"')
+		expect(preset).toContain('"tests"')
+		expect(preset).not.toContain('*.test.ts')
 	})
 
 	it('nextjs-app preset uses eslint + no bundler', () => {

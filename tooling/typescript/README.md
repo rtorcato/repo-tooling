@@ -23,7 +23,10 @@ These are base shared `tsconfig.json` files from which all other `tsconfig.json`
    Replace the path with the config that matches your project type:
    - `tsconfig.base.jsonc`: General base config
    - `tsconfig.build.jsonc`: For npm package/library builds
-   - `tsconfig.react.jsonc`: For React apps
+   - `tsconfig.react.jsonc`: For React component libraries
+   - `tsconfig.vite-app.jsonc`: For React apps built with Vite — adds `vite/client`
+     to `types` (so `import.meta.env` and `?url` imports compile) and type-checks the
+     tests, both of which the library-shaped react preset leaves out
    - `tsconfig.next.jsonc`: For Next.js apps
    - `tsconfig.node.jsonc`: For Node.js/Express APIs
    - `tsconfig.express.jsonc`: (If used) For Express APIs
