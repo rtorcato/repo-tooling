@@ -381,7 +381,7 @@ dependency names are reported. It computes that from the checked-out manifests,
 where the reviewer had to infer it from a PR body GitHub truncates at 65535
 characters — the same policy, derived more reliably.
 
-**Adopt agent-opened PRs the same way.** A PR an agent opens outside Pass 4 — one
+**Adopt agent-opened PRs.** A PR an agent opens outside Pass 4 — one
 with no `ai-ready` issue behind it — carries no `ai-*` label, so it matches no pass
 and is therefore assigned by nothing: it never reaches *Assigned to you*, which is
 the view where merges actually happen. Observed on #548, which passed all five
