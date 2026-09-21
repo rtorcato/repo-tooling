@@ -4,12 +4,13 @@ model: sonnet
 description: |
   **The engine behind `/ai-workflow` — normally you do not invoke this
   directly.** One stateless tick over the GitHub label state: answer
-  `ai-changes` with a fix round, merge Dependabot PRs, hand passed issue PRs to
-  the human, clean up merged worktrees, reap stalled agents, and pick up any
-  remaining `ai-ready` issues. `/ai-workflow` is the entry point and schedules
-  this itself via `/loop 15m /ai-issue-loop`; reach for it directly only to
-  force a tick early — "run one tick", "babysit the AI PRs" — or when the user
-  invokes `/ai-issue-loop`. Only Dependabot PRs ever merge unattended.
+  `ai-changes` with a fix round, hand passed issue PRs to the human, clean up
+  merged worktrees, reap stalled agents, and pick up any remaining `ai-ready`
+  issues. `/ai-workflow` is the entry point and schedules this itself via
+  `/loop 15m /ai-issue-loop`; reach for it directly only to force a tick early —
+  "run one tick", "babysit the AI PRs" — or when the user invokes
+  `/ai-issue-loop`. It never merges; Dependabot PRs are handled by their own
+  workflow, outside this loop.
   GitHub only (`gh`) — not GitLab.
 ---
 
@@ -17,9 +18,10 @@ description: |
 
 One **tick** of an unattended pipeline: `ai-ready` issue → worktree → PR → two
 agent reviews → **assigned to you to merge** → worktree removed on the next tick.
-Only Dependabot PRs merge themselves, plus — on a repo whose `release` environment
-requires reviewers — a fully-passed issue PR. See Pass 1. Whenever the loop
-declines to merge, it says why in a comment on the PR.
+Nothing merges here except, on a repo whose `release` environment requires
+reviewers, a fully-passed issue PR. See Pass 1. Dependabot PRs are outside this
+loop entirely — their own workflow merges them (#593). Whenever the loop declines
+to merge, it says why in a comment on the PR.
 
 **All state lives in GitHub labels.** A tick is a stateless, idempotent pass over
 that state, so a missed tick, a crash, or a restart costs nothing. Never keep
@@ -82,7 +84,7 @@ drift with a second copy to maintain.
 | `ai-reviewing-sec` | PR | `security-expert` claimed and running. Cleared with its verdict. |
 | `ai-ok-code` | PR | `code-reviewer` passed. In-flight only — Pass 1 strips it at handoff. |
 | `ai-ok-sec` | PR | `security-expert` passed. In-flight only — Pass 1 strips it at handoff. |
-| `ai-changes` | PR | A reviewer requested changes, **or** Pass 1 sent the PR back over CI. Reviewers never apply it to a Dependabot PR. |
+| `ai-changes` | PR | A reviewer requested changes, **or** Pass 1 sent the PR back over CI. Issue PRs only — this loop does not label Dependabot PRs. |
 | `ai-fixing` | PR | Fix-round implementer claimed and running. Cleared with its push. |
 | `ai-notes` | PR | Passed, but a reviewer left something to read before merging. |
 | `merge-ready` | PR | Both agent reviews passed and the PR is mergeable — waiting on a human. Derived state; Pass 1 applies and strips it, and it **supersedes** the `ai-ok-*` pair rather than joining it. |
@@ -91,9 +93,7 @@ drift with a second copy to maintain.
 
 **`ai-notes` is advisory and never blocks.** It rides *alongside* a pass label,
 never instead of one, and it never sends a PR back — a finding that should block
-an issue PR is `ai-changes`. On a Dependabot PR there is nothing to send back to,
-so `ai-notes` is the hold itself: it suppresses auto-merge and routes the PR to
-the human. It exists because a pass label currently means both "clean" and
+an issue PR is `ai-changes`. It exists because a pass label currently means both "clean" and
 "I found something real but would not hold the PR over it", and those two are
 indistinguishable in the *Assigned to you* view where merges actually happen.
 The bar is a finding that **changes what a human would do at merge time**: a
@@ -152,10 +152,8 @@ grep -qxF '.claude/ai-loop-status' .gitignore || echo '.claude/ai-loop-status' >
 
 ```
 issue: ai-ready ─pickup─> ai-wip ─> PR opened, labelled ai-review
-PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ─┬─ issue PR  ─> merge-ready, assigned to you (ai-review + both ai-ok-* dropped)
-                                 │        (± ai-notes)       │              ─> YOU merge ─> worktree removed
-                                 │                           └─ dependabot ─┬─ no ai-notes ─> auto-merge ─> worktree removed
-                                 │                                          └─ ai-notes ───> merge-ready, assigned to you
+PR: ai-review ─> ai-reviewing-* ─┬─> ai-ok-code + ai-ok-sec ──> merge-ready, assigned to you (ai-review + both ai-ok-* dropped)
+                                 │        (± ai-notes)          ─> YOU merge ─> worktree removed
                                  └─> ai-changes (issue PRs only) ─> ai-fixing (max 2) ─> ai-review
                                      ▲                                         └─ round 3 ─> ai-blocked
                                      └─ Pass 1 sends back: not CLEAN, or a required check FAILED
@@ -167,10 +165,11 @@ alongside the label it ends on — a verdict for a reviewer, `ai-review` for the
 round. They are transient — a claim outliving its agent means it died, which is
 Pass 2's stall reaping, not a state of the PR.
 
-Only the Dependabot arm merges itself, and only when no reviewer left `ai-notes`.
-The one exception is a repo gated by a `release` environment with
-`required_reviewers`, where the issue arm may also auto-merge under the same
-conditions — see Pass 1.
+Nothing in this diagram merges itself. Dependabot PRs are absent from it on
+purpose — their own workflow merges them, outside this loop entirely (#593). The
+one arm that can merge unattended is a repo gated by a `release` environment with
+`required_reviewers`, where a human still stands between the merge and the
+registry — see Pass 1.
 On an ungated repo an issue PR ends at *assigned to you* and waits there —
 `merge-ready` is the loop's way of saying done. Add `ai-notes` and it means
 done, but open the comments first.
@@ -361,27 +360,28 @@ from an earlier session. Call `ExitWorktree({action: "keep"})` — **`keep`, nev
 `remove`**, an implementer may still be working in there — and carry on with the rest
 of the tick.
 
-**Adopt unlabelled Dependabot PRs.** Any open PR authored by `dependabot[bot]`
-carrying no `ai-*` label joins the pipeline — label it `ai-review` so Pass 3
-reviews it:
+**Leave Dependabot PRs alone.** They are not adopted, not labelled, not reviewed
+and not merged by this loop.
 
-```bash
-gh pr list --state open --json number,author,labels \
-  --jq '.[] | select(.author.login=="app/dependabot")
-            | select([.labels[].name] | any(startswith("ai-")) | not) | .number'
-```
+**Why, because it reads as a gap:** `dependabot-automerge.yml` arms auto-merge when
+the PR *opens*, and GitHub merges the moment checks go green. A tick runs up to 15
+minutes later, so on any repo where CI beats the next tick the merge already
+happened — the review arm was decorative on every repo that scaffolds the workflow
+(#593, observed on `js-common` #271).
 
-**Order is load-bearing.** Review only gates a merge if nothing armed auto-merge
-first — GitHub merges the moment checks go green, labels be damned. Observed on
-`js-common` #148: auto-merge was armed by hand at 15:54, so a review would have had
-to beat CI to matter at all. If a Dependabot PR already has `autoMergeRequest != null`
-and lacks either `ai-ok-*`, disarm it before labelling:
+Arming auto-merge from this loop instead would fix the race and cost more than it
+buys: dependency updates would then only land while the loop is alive, and a loop
+that is merely unscheduled would stall every bump with nothing reporting why.
 
-```bash
-gh pr merge <N> --disable-auto
-```
+The gate that remains is stronger than the reviewer was. The workflow's own
+predicate refuses anything appearing in a non-private package's `dependencies`,
+`optionalDependencies` or `peerDependencies`, allows only the `dev-minor` group or
+the `github-actions` ecosystem at patch or minor, and fails closed when no
+dependency names are reported. It computes that from the checked-out manifests,
+where the reviewer had to infer it from a PR body GitHub truncates at 65535
+characters — the same policy, derived more reliably.
 
-**Adopt agent-opened PRs the same way.** A PR an agent opens outside Pass 4 — one
+**Adopt agent-opened PRs.** A PR an agent opens outside Pass 4 — one
 with no `ai-ready` issue behind it — carries no `ai-*` label, so it matches no pass
 and is therefore assigned by nothing: it never reaches *Assigned to you*, which is
 the view where merges actually happen. Observed on #548, which passed all five
@@ -432,12 +432,11 @@ leaks is disk, an issue list that reads as though agents are still working, and 
 
 ### Pass 1 — merge
 
-**Only Dependabot PRs merge unattended, unless the repo has a real publish gate.**
-Everything else — every PR this loop opened from an `ai-ready` issue — stops here
-for a human even when both reviewers pass, because merging `main` fires
-semantic-release and publishes to npm. A `chore(deps)` squash subject cuts no
-release, which is what makes the Dependabot case safe. Count human-gated PRs as
-`ready` for Pass 5.
+**Nothing merges unattended here, unless the repo has a real publish gate.**
+Every PR this loop opened from an `ai-ready` issue stops for a human even when
+both reviewers pass, because merging `main` fires semantic-release and publishes
+to npm. Count human-gated PRs as `ready` for Pass 5. (Dependabot PRs do merge
+unattended, but by their own workflow — this pass does not touch them.)
 
 **The exception is a `release` environment with `required_reviewers`.** There a
 human still stands between the merge and npm, so an unattended merge costs a
@@ -552,7 +551,7 @@ reviews passed **and** `CLEAN`), so the pair carries no information once it is
 applied — a ready PR's whole vocabulary is the two-row table below.
 
 Consequently **`merge-ready` satisfies every later test for the `ai-ok-*` pair** —
-the gated-repo auto-merge arm above, the Dependabot arm below, and this pass's own
+the gated-repo auto-merge arm above and this pass's own
 selector on the next tick. The pair stays the in-flight signal Pass 3 writes and
 reads; it is only at the handoff that it stops being the thing anyone looks at.
 
@@ -627,10 +626,11 @@ gh pr edit <N> --add-label ai-changes \
 
 Count it as `rev`, not `ready`. A merge conflict (`DIRTY`) takes the same route.
 
-**Assign any Dependabot PR carrying `ai-changes`.** Pass 3 never spawns a fix
-round for one, so it is waiting on a human from the moment the label lands — and
-no other branch of this pass assigns it, which leaves it in no *Assigned to you*
-view at all:
+**Assign any Dependabot PR carrying `ai-changes`.** Nothing produces that state
+any more — this loop stopped labelling bot PRs (#593) — but a tick from before
+that change can have stranded one, and it is waiting on a human from the moment
+the label landed, in no *Assigned to you* view at all. A legacy sweep, cheap to
+keep and self-retiring once the last one is handled:
 
 ```bash
 gh pr edit <N> --add-assignee @me ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
@@ -638,23 +638,12 @@ gh pr edit <N> --add-assignee @me ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
 
 Count it as `rev`. Idempotent, so it also picks up ones an earlier tick stranded.
 
-So: every open PR **authored by `dependabot[bot]`**, labelled both `ai-ok-code`
-and `ai-ok-sec` (or `merge-ready`), **not** `ai-changes`, **not** `ai-notes`, that
-has no `autoMergeRequest` yet:
-
-```bash
-gh pr merge <N> --auto --squash --delete-branch
-```
-
-GitHub holds it until the required checks pass. Do not poll CI — a later tick
-picks up the merged state.
-
-A Dependabot PR carrying `ai-notes` is **not** auto-merged — assign it to the
-human exactly like an issue PR, `merge-ready` included (same `CLEAN` gate), and
-count it as `ready`, not `merge`. An auto-merge-armed one never needs the label —
-no human picks it up. Merging
-unattended when a reviewer flagged something for a human writes the note into the
-void, which is the one way this label can be worse than useless.
+**This pass never merges a Dependabot PR.** `dependabot-automerge.yml` arms
+auto-merge at PR-open for the bumps its predicate allows — dev-only, non-shipping,
+patch or minor. Everything it declines (a major, anything reaching consumers) is
+declined *because* a human should look, so a second unattended merger here would
+only re-open the hole the predicate exists to close. Count a Dependabot PR as
+`merge` when a later tick finds it merged; otherwise leave it for the human.
 
 **CI red on an issue PR is a send-back, not a wait.** Reviewers are diff-scoped
 and never see CI, so both arms happily pass a PR whose `build` failed two minutes
@@ -723,11 +712,11 @@ if telling a review-rejected PR from a CI-rejected one in the list view ever
 matters, add a `ci-failing` rider on top of `ai-changes` then, not speculatively
 now.
 
-**A Dependabot PR is the exception — flag it, never send it back.** There is no
-fix round for one (Pass 3 treats `ai-changes` on a bot PR as terminal), so a red
-one that already armed auto-merge will sit queued forever and only a human can
-choose between a fix and a close. Count these as `ci-red` too; take no other
-action:
+**A Dependabot PR is the exception — flag it, never send it back.** This loop
+does not review, label or merge bot PRs, but a red one that its own workflow
+already armed will sit queued forever, and only a human can choose between a fix
+and a close. Reporting it is the one thing this loop still does for Dependabot.
+Count these as `ci-red`; take no other action:
 
 ```bash
 gh pr list --state open --json number,autoMergeRequest,statusCheckRollup \
@@ -1192,117 +1181,26 @@ Reviewer prompt template:
 > the question stated in `### Before merging`.
 >
 > That is not a weaker gate than blocking. An issue PR never auto-merges, so the
-> human is already the merge gate, and `ai-notes` is what reaches them there. On
-> a Dependabot PR it suppresses auto-merge outright. Use `ai-changes` only when
-> you can name a concrete change an agent could make.
+> human is already the merge gate, and `ai-notes` is what reaches them there.
+> Use `ai-changes` only when you can name a concrete change an agent could make.
 >
 > Say nothing else, and **do not restate your verdict in your reply** — the
 > marker in the posted comment is the only place it is read from, so a reply that
 > disagreed with it would be a second source for one fact. One line back to the
 > orchestrator is plenty; the comment body is capped separately, above.
 
-**Dependabot PRs use a different prompt** — the one above would burn the tick on a
-lockfile. `js-common` #148 bumps 20 packages and its *entire* diff is
-`pnpm-lock.yaml`: thousands of lines that tell a reviewer nothing. The signal lives
-in the PR body, where Dependabot writes a package/from/to table at the top and
-per-package `update-type:`/`dependency-type:` trailers at the bottom.
-
-**Never judge from the trailers alone — they are the first thing GitHub truncates.**
-A PR body caps at 65535 characters, and a group update large enough to be worth
-gating is exactly the one that blows the cap. #148 measured 65535 bytes on the nose,
-ended in `_Description has been truncated_`, and contained **zero** `dependency-type`
-lines. A reviewer told to judge the trailers finds nothing to trip on and applies the
-*pass* label — the rule fails open, in the one direction that matters. The
-package/from/to table survives because it sits at the top; classify from that.
-
-> Review Dependabot PR #`<N>` in `<OWNER_REPO>`. Read `gh pr view <N>` — the body
-> only. **Do not run `gh pr diff`**; the diff is a lockfile and reading it wastes
-> the budget without informing the verdict. You may run
-> `gh pr checks <N>` to see whether CI is green.
->
-> The body is very likely **truncated** — check whether it ends in
-> `_Description has been truncated_`, and never assume an absent
-> `updated-dependencies:` trailer block means "nothing to flag". Work from the
-> package/from/to table at the top of the body, which is not truncated, and
-> resolve each package's type yourself:
->
-> ```bash
-> gh api "repos/<OWNER_REPO>/contents/package.json" --jq '.content' | base64 -d \
->   | jq '{ships: ((.dependencies // {}) + (.optionalDependencies // {}) + (.peerDependencies // {}) | keys),
->           dev: (.devDependencies // {} | keys)}'
-> ```
->
-> **`dependencies` is not the whole of what ships.** npm installs
-> `optionalDependencies` for consumers too, so they are production by any
-> meaningful definition — in `js-common` that is `figlet`, `@inquirer/prompts`,
-> `chalk`, and three more sitting outside `.dependencies`. Reading only
-> `.dependencies` misses them and passes the PR.
->
-> In a workspace repo, a package in some `apps/*/package.json` only counts if that
-> workspace is actually published — check its `private` field. `js-common`'s
-> `apps/docs` is `private: true`, so its Docusaurus and React bumps reach no
-> consumer and must not trip the rule; flagging them trains the reader to ignore
-> the label. If you cannot tell whether a workspace publishes, treat it as
-> production.
->
-> Apply your **pass** label *plus* `ai-notes` if **either** holds:
-> - a package's major version differs between the `from` and `to` columns
-> - a package ships to consumers — it appears in `dependencies`,
->   `optionalDependencies`, or `peerDependencies` of a **non-private** package
->
-> Those wait for a human — a runtime dependency of the published package, or a
-> major, is not something an automated verdict should wave through. `ai-notes` is
-> the gate that holds them: it suppresses auto-merge outright and gets the PR
-> assigned to the human, so nothing production-facing lands unattended. Dev-only
-> minor/patch bumps with green CI get the pass label alone. **If you cannot
-> determine a package's type, treat it as production and note it**; failing
-> closed is correct here.
->
-> **Never apply `ai-changes` to a Dependabot PR.** It dispatches an implementer
-> agent, and there is no change an agent could make — rewriting a bot's lockfile
-> is not its business, and the decision here is a human's either way. That is the
-> same rule as the generic prompt above: `ai-changes` only when you can name a
-> concrete change an agent could make.
->
-> State in your comment which rule fired, name the packages that tripped it, and say
-> whether the body was truncated so the reader knows what you could and couldn't see.
-> Same `<!-- ai-issue-loop:verdict:… -->` marker and `🤖 *Automated review — …*`
-> header line opening the body — `PASS-NOTES` when you apply `ai-notes`, `PASS`
-> otherwise, never `CHANGES` on this arm — and posted the same way, with
-> `gh pr review <N> --comment` rather than `gh pr comment`, or Pass 3 cannot read
-> the marker back. Same closing `### Before merging`
-> section, same ≤600-character cap and no-negative-findings rule on the body, and same
-> one-verdict-label rule as above — **including clearing your
-> `<ai-reviewing-code|ai-reviewing-sec>` claim label in the same `gh pr edit`**.
-> Pass 3 claimed you with it before spawning you, and a claim left behind wedges
-> your half of the review until Pass 2 reaps it.
->
-> Keep `ai-notes` load-bearing here: it suppresses auto-merge, so a *decorative*
-> note on a bump you would otherwise wave through wedges the one path that runs
-> unattended. A major, a package that ships to consumers, or a truncated body you
-> could not fully read **is** worth a note; restating the version table on a
-> routine dev-only patch bump is not.
->
-> **Follow-up work is an issue here too** — same `gh issue create --label
-> ai-suggested` as the generic prompt, same `Follow-up: #<new>` one-liner in the
-> body, never in `### Before merging`. That separation matters more on this arm
-> than the other: a note here costs a human the merge, so routing "someone should
-> pin this transitive dep one day" to an issue is what keeps auto-merge usable.
-
-Be honest about what this buys: an agent reading a version table catches majors,
-production-dependency creep, and a renamed or newly-added package. It does **not**
-audit the packages themselves. The repo's own `dependencies` job already verifies
-the lockfile against supply-chain policies (`✓ Lockfile passes supply-chain
-policies (1859 entries)`) — that check, not the reviewer, is the real supply-chain
-gate. This pass is a *policy* gate: nothing major or production-facing merges
-unattended.
+**Dependabot PRs get no reviewer.** Pass 0 does not adopt them and this pass
+spawns no arm for them: the scaffolded `dependabot-automerge.yml` decides which
+bumps merge, and it decides before a tick could run. See Pass 0 for why a
+reviewer racing that workflow never gated anything (#593).
 
 **A Dependabot PR labelled `ai-changes` is terminal — never spawn a fix round for
-it.** Reviewers no longer produce that state, but Pass 1's non-`CLEAN` check
-still does, so the guard stays. There is no linked issue to mark `ai-blocked` and
-no worktree to enter, and an agent has no business rewriting a bot's lockfile.
-Pass 1 assigns it and counts it as `rev`; here it simply waits for a human.
-Everything below applies only to PRs this loop opened from an `ai-ready` issue.
+it.** Nothing produces that state any more (#593), so this is a guard against a
+label an older tick left behind. There is no linked issue to mark `ai-blocked`
+and no worktree to enter, and an agent has no business rewriting a bot's
+lockfile. Pass 1 assigns it and counts it as `rev`; here it simply waits for a
+human. Everything below applies only to PRs this loop opened from an `ai-ready`
+issue.
 
 **PRs labelled `ai-changes`, and not already `ai-fixing`** — that claim means an
 implementer is mid-round; skip the PR entirely. Count prior `ai-changes`
