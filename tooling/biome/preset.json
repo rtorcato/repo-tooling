@@ -54,6 +54,12 @@
       "semicolons": "asNeeded"
     }
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true,
+      "cssModules": true
+    }
+  },
   "json": {
     "formatter": {
       "indentStyle": "space",

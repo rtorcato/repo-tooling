@@ -274,6 +274,31 @@ describe.skipIf(!fs.existsSync(join(process.cwd(), 'node_modules', '.bin', 'biom
 			expect(out).not.toContain('noExplicitAny')
 		})
 
+		// #589: Tailwind v4's CSS-first syntax (`@theme`, `@custom-variant`) is a
+		// hard parse error under Biome's default CSS parser, so every Tailwind
+		// consumer of the preset had a red `biome check` until they found the flag.
+		it('parses Tailwind v4 CSS instead of erroring on its directives', async () => {
+			const dir = await project()
+			await generateBiomeConfig(dir)
+			await fs.outputFile(
+				join(dir, 'src', 'styles.css'),
+				'@import "tailwindcss";\n@custom-variant dark (&:is(.dark *));\n@theme inline {\n\t--color-x: red;\n}\n'
+			)
+
+			// Naming `css.parser` at all resets the keys it leaves out, so the
+			// preset has to restate `cssModules` — without it, `:global(...)` in a
+			// `*.module.css` starts reporting noUnknownPseudoClass.
+			await fs.outputFile(
+				join(dir, 'src', 'page.module.css'),
+				'.a :global(.b) {\n\tcolor: red;\n}\n'
+			)
+
+			const out = check(dir)
+			expect(out).toContain('Checked')
+			expect(out).not.toContain('Tailwind-specific syntax is disabled')
+			expect(out).not.toContain('noUnknownPseudoClass')
+		})
+
 		// `root` is not inherited through `extends`, so the thin pointer
 		// `generateBiomeConfig` writes is still read as a root of its own. Loud
 		// rather than silent, but a scaffolded package inside someone else's
