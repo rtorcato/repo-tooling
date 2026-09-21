@@ -1483,12 +1483,30 @@ do the linking here:
 
 ```bash
 DIRS=$(jq -r '.worktree.symlinkDirectories[]? // empty' "$ROOT/.claude/settings.json" 2>/dev/null)
-for d in $DIRS; do
+printf '%s\n' "$DIRS" | while IFS= read -r d; do
+  [ -n "$d" ] || continue
   [ -d "$ROOT/$d" ] || continue          # an entry pointing at nothing links nothing
   mkdir -p "$(dirname "$WT_ROOT/$SLUG/$d")"
   ln -s "$ROOT/$d" "$WT_ROOT/$SLUG/$d"
 done
+
+# assert it happened — an unlinked worktree must never reach an implementer
+MISSING=$(printf '%s\n' "$DIRS" | while IFS= read -r d; do
+  [ -n "$d" ] && [ -d "$ROOT/$d" ] && [ ! -L "$WT_ROOT/$SLUG/$d" ] && printf '%s ' "$d"
+done)
+[ -z "$MISSING" ] || echo "FATAL: $SLUG has no symlink for: $MISSING"
 ```
+
+**Iterate line by line — never `for d in $DIRS`.** Your shell may be zsh, which
+does not word-split an unquoted expansion: `$DIRS` arrives as *one* word with
+embedded newlines, `[ -d ]` fails against that nonsense path, and the loop links
+**nothing** (#585). Same class as the Pass 2 glob hazard below, and just as
+silent — the `pnpm install` fallback is gated on `$DIRS` being *empty*, which it
+is not, so the worktree gets neither links nor an install, and the implementer
+meets `Cannot find module` on its first test run, reading as the issue's fault
+rather than the harness's. That is what the `MISSING` assertion is for: if it
+prints, do **not** spawn an implementer — run `pnpm install` in the worktree, or
+return the issue to `ai-ready`, drop `ai-wip`, and move on.
 
 **Read the setting, do not rely on it.** `worktree.symlinkDirectories` is a
 **Claude Code** setting, honoured by `EnterWorktree` — which this pipeline
