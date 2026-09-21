@@ -1382,7 +1382,7 @@ gh api "repos/$OWNER_REPO/issues?labels=ai-ready&state=open" \
             | select([.labels[].name] | index("holding") == null)
             | select([.labels[].name] | index("ai-suggested") == null)
             | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
-            | {number, title}'
+            | {number, title, body}'
 ```
 
 Both filters matter. The `ai-ready` label is the hard gate (on a public repo only
@@ -1463,8 +1463,25 @@ with nothing on the timeline saying why. `.author.login` here, not `.user.login`
 — `gh issue view --json` is GraphQL and names the field differently from the REST
 payload the upsert reads.
 
-Take the first `slots` issues. For each, **claim it first** so a concurrent tick
-can't double-pick:
+**Then drop any candidate that overlaps a file with one already picked this
+tick** — the same rule `ai-workflow` step 2 applies, and it matters more here
+because nobody is watching. Two agents branch off the same `origin/main`, both
+rewrite one file, and the second PR to merge hands a human two agent-authored
+diffs to reconcile hours later (#594).
+
+Read each candidate's body for the paths it names — that is what the `body` field
+in the query above is for — and skip one naming a path a higher-placed candidate
+already names. An issue body is not a file list, so this is a heuristic, not a
+proof; it costs nothing and catches the common case. Count generated files, too:
+on a repo where editing a skill regenerates `AGENTS.md`, two issues touching
+different modules still collide there.
+
+A skipped candidate is **waiting its turn, not declined** — leave `ai-ready` on
+it, post no comment, and let the next tick take it. The decline shape above is
+for issues no agent should ever start.
+
+Take the first `slots` of what survives. For each, **claim it first** so a
+concurrent tick can't double-pick:
 
 ```bash
 gh issue edit <N> --add-label ai-wip --remove-label ai-ready \
