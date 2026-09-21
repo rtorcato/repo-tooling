@@ -649,8 +649,12 @@ the label landed, in no *Assigned to you* view at all. A legacy sweep, cheap to
 keep and self-retiring once the last one is handled:
 
 ```bash
-gh pr edit <N> ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} \
-  ${AGENT_USER:+--remove-assignee "$AGENT_USER"}   # skip when both are empty
+# Both empty (org repo, no agentUser) would leave `gh pr edit <N>` with no flags,
+# which errors — so guard the call rather than trusting the reader to skip it.
+if [ -n "$HUMAN_USER" ] || [ -n "$AGENT_USER" ]; then
+  gh pr edit <N> ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} \
+    ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+fi
 ```
 
 Count it as `rev`. Idempotent, so it also picks up ones an earlier tick stranded.

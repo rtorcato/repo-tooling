@@ -34,4 +34,29 @@ describe('ai loop skills never assign @me (#606)', () => {
 		expect(unguarded).toEqual(['  gh issue edit <N> --add-assignee "$HUMAN_USER"'])
 		expect(skill).toContain('if [ -n "$HUMAN_USER" ] && [ "$(gh issue view <N>')
 	})
+
+	/**
+	 * The `${VAR:+…}` guard keeps an *empty* name out of the flag, but says
+	 * nothing about the command as a whole: a `gh … edit <N>` whose only flags
+	 * are conditional collapses to zero flags when every one of them is empty,
+	 * and gh exits non-zero on that. A trailing "# skip when both are empty"
+	 * comment is not enforcement — the reader is an agent following prose.
+	 */
+	it('no gh edit snippet can collapse to zero flags', () => {
+		const lines = fs.readFileSync(skills[0], 'utf8').split('\n')
+		const bare = lines.filter((line, i) => {
+			if (!/^\s*gh (pr|issue) edit <[NM]>/.test(line)) return false
+			// Join the snippet's continuation lines into one logical command.
+			let cmd = line
+			for (let j = i; cmd.trimEnd().endsWith('\\') && j + 1 < lines.length; j++) {
+				cmd = `${cmd.trimEnd().slice(0, -1)} ${lines[j + 1].trim()}`
+			}
+			const withoutConditionals = cmd.replace(/\$\{[A-Z_]+:\+[^}]*\}/g, '')
+			const hasUnconditionalFlag = /\s--[a-z-]+/.test(withoutConditionals)
+			if (hasUnconditionalFlag) return false
+			// Otherwise it must sit inside an `if [ -n … ]` guard.
+			return !lines.slice(Math.max(0, i - 4), i).some((l) => /if \[ -n "\$[A-Z_]+"/.test(l))
+		})
+		expect(bare).toEqual([])
+	})
 })
