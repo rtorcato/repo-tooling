@@ -4,6 +4,7 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
 	classifyRoot,
+	configuredAgentUser,
 	decideRebuild,
 	defaultWorktreeRoot,
 	type InstallExec,
@@ -11,6 +12,7 @@ import {
 	runLoopGuard,
 } from '../../../src/cli/commands/loop-guard.js'
 import type { GitExec } from '../../../src/base/git-identity.js'
+import type { GhExec } from '../../../src/base/github-settings.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 /**
@@ -267,6 +269,85 @@ describe('runLoopGuard — node_modules rebuild gating', () => {
 		expect(await decideRebuild({ root, removed: true, exitCode: 0, live: ['/x/ai-1'] })).toBe(
 			'deferred'
 		)
+	})
+})
+
+describe('runLoopGuard — bot-identity preflight (#601)', () => {
+	/** `gh api user --jq .login` answering as `login`; '' = unauthenticated. */
+	const ghAs =
+		(login: string): GhExec =>
+		async () =>
+			login === ''
+				? { ok: false, stdout: '', stderr: 'gh: not authenticated', code: 1 }
+				: { ok: true, stdout: `${login}\n`, stderr: '', code: 0 }
+
+	const withAgent = (agentUser?: string): string => {
+		const root = healthyCheckout(newTmpDir())
+		if (agentUser !== undefined) {
+			fs.writeJsonSync(join(root, '.repo-tooling.json'), { rules: { aiLoop: { agentUser } } })
+		}
+		return root
+	}
+
+	it('skips the check when no agentUser is declared, whatever gh reports', async () => {
+		const result = await runLoopGuard({
+			root: withAgent(),
+			gh: ghAs('someone-else'),
+			install: neverInstalls,
+		})
+		expect(result.identity).toBe('not-configured')
+		expect(result.exitCode).toBe(0)
+	})
+
+	it('continues when gh authenticates as the configured agent', async () => {
+		const result = await runLoopGuard({
+			root: withAgent('some-bot'),
+			gh: ghAs('Some-Bot'), // logins are case-insensitive
+			install: neverInstalls,
+		})
+		expect(result.identity).toBe('match')
+		expect(result.exitCode).toBe(0)
+	})
+
+	it('halts and names both accounts when gh is a different login', async () => {
+		const result = await runLoopGuard({
+			root: withAgent('some-bot'),
+			gh: ghAs('the-owner'),
+			install: neverInstalls,
+		})
+		expect(result.identity).toBe('mismatch')
+		expect(result.exitCode).toBe(2)
+		expect(result.messages.join('\n')).toContain('agentUser is some-bot')
+		expect(result.messages.join('\n')).toContain('the-owner')
+	})
+
+	it('halts when gh cannot say who it is', async () => {
+		const result = await runLoopGuard({
+			root: withAgent('some-bot'),
+			gh: ghAs(''),
+			install: neverInstalls,
+		})
+		expect(result.identity).toBe('mismatch')
+		expect(result.exitCode).toBe(2)
+	})
+
+	it('reads the flat pre-v4 aiLoop key too, and nothing at all without a lockfile', async () => {
+		const root = healthyCheckout(newTmpDir())
+		fs.writeJsonSync(join(root, '.repo-tooling.json'), { aiLoop: { agentUser: 'some-bot' } })
+		expect(await configuredAgentUser(root)).toBe('some-bot')
+		expect(await configuredAgentUser(newTmpDir())).toBeUndefined()
+	})
+
+	it('leaves a failed repair reporting exit 1 — the more specific verdict', async () => {
+		const failingConfig: GitExec = async (args) => (args[0] === 'config' ? null : 'false')
+		const result = await runLoopGuard({
+			root: withAgent('some-bot'),
+			git: failingConfig,
+			gh: ghAs('the-owner'),
+			install: neverInstalls,
+		})
+		expect(result.identity).toBe('mismatch')
+		expect(result.exitCode).toBe(1)
 	})
 })
 

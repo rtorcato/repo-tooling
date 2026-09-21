@@ -3,9 +3,10 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { type GitExec, realGitExec } from '../../base/git-identity.js'
+import { type GhExec, realGhExec } from '../../base/github-settings.js'
 
 /**
- * `repo-tooling loop guard` — the two most dangerous mechanics of the
+ * `repo-tooling loop guard` — the most dangerous mechanics of the
  * ai-issue-loop skill, moved out of prose-with-shell into code a test can hold
  * (#519). Prose drifts and nothing fails when it does; PR #500 (a
  * `0 additions, 67703 deletions` commit) happened in exactly that gap.
@@ -17,6 +18,11 @@ import { type GitExec, realGitExec } from '../../base/git-identity.js'
  * 2. **`node_modules` rebuild gating.** Removing a worktree can destroy the
  *    main checkout's `node_modules/.bin`, because a pnpm run from inside a
  *    worktree anchors the main checkout's shims at the worktree path.
+ * 3. **Bot-identity preflight.** A repo declaring `rules.aiLoop.agentUser`
+ *    means the tick to run as that account. Nothing checked who `gh` actually
+ *    authenticates as, so an unconfigured machine ran the whole tick as the
+ *    owner — commits, PRs, reviews — and the split only surfaced in `git log`
+ *    after the work landed (#601).
  *
  * Exit codes — the loop's shell snippets are one line each and branch on these:
  *
@@ -24,7 +30,7 @@ import { type GitExec, realGitExec } from '../../base/git-identity.js'
  * |---|---|---|
  * | `0` | Root is a usable work tree — healthy, or repaired in place. | Continue the tick. |
  * | `1` | Repair was attempted and failed; the root is still bare. | **Halt the tick.** |
- * | `2` | Root is not a repairable main checkout (genuinely bare, a linked worktree, or not a repo). | **Halt the tick**; needs a human. |
+ * | `2` | Root is not a repairable main checkout (genuinely bare, a linked worktree, or not a repo), or `gh` is not authenticated as the configured `agentUser`. | **Halt the tick**; needs a human. |
  *
  * A deferred or failed `node_modules` rebuild never changes the exit code — it
  * cannot corrupt a commit, so it is reported, not fatal. Read `rebuild` from
@@ -69,6 +75,62 @@ export function classifyRoot(insideWorkTree: string | null, gitEntry: GitEntry):
 	return 'genuinely-bare'
 }
 
+/**
+ * `not-configured` is the default and stays silent: no `agentUser`, no declared
+ * intent, and a consumer running the loop under a single identity is
+ * unaffected. `mismatch` covers both halves of the failure — a different login,
+ * and a `gh` that cannot say who it is — because either means the tick would
+ * not run as the declared account.
+ */
+export type IdentityVerdict = 'not-configured' | 'match' | 'mismatch'
+
+const LOCKFILE = '.repo-tooling.json'
+
+/**
+ * `rules.aiLoop.agentUser`, with the flat pre-v4 fallback — the same pair the
+ * skill's `jq` reads. Read raw rather than through `readLockfile`, whose parser
+ * requires a `record.config`: a hand-written rules-only lockfile is exactly the
+ * file this has to see.
+ */
+export async function configuredAgentUser(root: string): Promise<string | undefined> {
+	const raw = await fs.readJson(path.join(root, LOCKFILE)).catch(() => null)
+	const user = raw?.rules?.aiLoop?.agentUser ?? raw?.aiLoop?.agentUser
+	return typeof user === 'string' && user.trim() !== '' ? user.trim() : undefined
+}
+
+/**
+ * Declared intent that is not met is a misconfiguration, not a degraded mode —
+ * so this halts, unlike the assignability check in `base/agent-user.ts`, which
+ * warns and carries on. That check can never catch this: `agentUser` is
+ * assignable regardless of who is calling.
+ */
+export async function checkAgentIdentity(
+	configured: string | undefined,
+	gh: GhExec
+): Promise<{ verdict: IdentityVerdict; message: string }> {
+	if (!configured) {
+		return {
+			verdict: 'not-configured',
+			message: `no aiLoop.agentUser in ${LOCKFILE} — identity check skipped`,
+		}
+	}
+	const r = await gh(['api', 'user', '--jq', '.login'])
+	const effective = r.ok ? r.stdout.trim() : ''
+	// GitHub logins are case-insensitive, so a case difference is one account.
+	if (effective !== '' && effective.toLowerCase() === configured.toLowerCase()) {
+		return {
+			verdict: 'match',
+			message: `gh is authenticated as ${effective} — the configured agent account`,
+		}
+	}
+	return {
+		verdict: 'mismatch',
+		message: `⚠ agentUser is ${configured} but gh authenticates as ${
+			effective || '(gh could not say — unauthenticated or missing)'
+		} — the tick would commit, push and review as the wrong account`,
+	}
+}
+
 export type BareVerdict = 'healthy' | 'repaired' | 'repair-failed' | 'unrepairable'
 
 export type RebuildOutcome =
@@ -84,6 +146,7 @@ export interface LoopGuardResult {
 	worktreeRoot: string
 	state: RootState
 	bare: BareVerdict
+	identity: IdentityVerdict
 	rebuild: RebuildOutcome
 	/** Absolute paths of `ai-*` worktrees still on disk. */
 	live: string[]
@@ -100,6 +163,7 @@ export interface LoopGuardOptions {
 	json?: boolean
 	/** Test seams. */
 	git?: GitExec
+	gh?: GhExec
 	install?: InstallExec
 }
 
@@ -179,6 +243,7 @@ export async function runLoopGuard(options: LoopGuardOptions = {}): Promise<Loop
 		? path.resolve(options.worktreeRoot)
 		: defaultWorktreeRoot(root)
 	const git: GitExec = options.git ?? ((args) => realGitExec(args, root))
+	const gh: GhExec = options.gh ?? ((args, stdin) => realGhExec(args, stdin, root))
 	const install = options.install ?? realInstall
 	const messages: string[] = []
 
@@ -210,6 +275,14 @@ export async function runLoopGuard(options: LoopGuardOptions = {}): Promise<Loop
 		messages.push('main checkout is a work tree')
 	}
 
+	const { verdict: identity, message: identityMessage } = await checkAgentIdentity(
+		await configuredAgentUser(root),
+		gh
+	)
+	messages.push(identityMessage)
+	// A failed repair (1) is the more specific verdict, so it keeps the code.
+	if (identity === 'mismatch' && exitCode === 0) exitCode = 2
+
 	const live = await findLive([worktreeRoot, path.join(root, '.claude', 'worktrees')])
 	const rebuild = await decideRebuild({ root, removed: options.removed === true, exitCode, live })
 
@@ -229,7 +302,7 @@ export async function runLoopGuard(options: LoopGuardOptions = {}): Promise<Loop
 		}
 	}
 
-	return { root, worktreeRoot, state, bare, rebuild: outcome, live, exitCode, messages }
+	return { root, worktreeRoot, state, bare, identity, rebuild: outcome, live, exitCode, messages }
 }
 
 /**

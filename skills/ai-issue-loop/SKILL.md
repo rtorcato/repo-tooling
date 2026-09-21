@@ -232,6 +232,23 @@ AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.rules.aiLoop.agentUser // .aiLoop.agentUs
   AGENT_USER=""; }; }
 ```
 
+**Then prove `gh` is *authenticating as* that account — this one halts the
+tick.** Assignability passes no matter who is calling, so on a machine where the
+agent identity was never configured both checks above are green while `gh` is
+the owner: worktrees, commits, PRs and reviews all land under the owner's
+account, and the split only shows up in `git log` afterwards (#601).
+
+```bash
+# Exit 0 continue, non-zero halt — also covers the bare-checkout repair. The
+# identity check is skipped entirely when no agentUser is declared.
+npx @rtorcato/repo-tooling loop guard --root "$ROOT" || exit 1
+```
+
+Configured intent that is not met is a misconfiguration, not a degraded mode —
+which is why this halts where the assignability check merely warns. Fix it by
+pointing `gh` at the agent account on this machine, or by removing
+`rules.aiLoop.agentUser`.
+
 **It lives in the repo, not a shell profile.** The agent account is a
 collaborator on *this* repo, so a machine-wide env var is both the wrong
 granularity and invisible — forgotten on a new laptop, with the only symptom
