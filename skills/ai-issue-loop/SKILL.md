@@ -1472,7 +1472,7 @@ diffs to reconcile hours later (#594).
 Read each candidate's body for the paths it names — that is what the `body` field
 in the query above is for — and skip one naming a path a higher-placed candidate
 already names. An issue body is not a file list, so this is a heuristic, not a
-proof; it costs nothing and catches the common case. Count generated files in:
+proof; it costs nothing and catches the common case. Count generated files, too:
 on a repo where editing a skill regenerates `AGENTS.md`, two issues touching
 different modules still collide there.
 
