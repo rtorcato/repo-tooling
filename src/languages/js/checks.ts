@@ -16,6 +16,7 @@ import {
 	missingPnpmSettings,
 } from '../../cli/generators/pnpm-workspace.js'
 import type { CheckResult } from '../../base/types.js'
+import { parseJsonc } from '../../cli/utils/jsonc.js'
 
 const PACKAGE = '@rtorcato/repo-tooling'
 
@@ -61,26 +62,6 @@ export function evaluateNodeVersion(version: string): CheckResult {
 		check: 'Node',
 		status: 'ok',
 		detail: display,
-	}
-}
-
-/**
- * JSONC → object, or null when it genuinely won't parse. `biome.jsonc` is a
- * declared candidate and the format allows comments and trailing commas, so
- * bare `JSON.parse` would reject configs Biome itself accepts.
- *
- * The first alternative consumes whole string literals, so a `//` or `/*`
- * inside one (a `$schema` URL, most obviously) is never mistaken for a comment.
- */
-function parseJsonc(text: string): Record<string, any> | null {
-	const withoutComments = text.replace(
-		/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
-		(_, str: string | undefined) => str ?? ''
-	)
-	try {
-		return JSON.parse(withoutComments.replace(/,(\s*[}\]])/g, '$1')) as Record<string, any>
-	} catch {
-		return null
 	}
 }
 

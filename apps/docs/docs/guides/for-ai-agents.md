@@ -114,7 +114,7 @@ npx @rtorcato/repo-tooling fix --yes --dry-run --json
 
 Action statuses: `applied` (fixer ran, files written), `dry-run` (would have written), `skipped` (user declined or fixer chose to skip), `already-ok` (no action needed), `unsupported` (no fixer registered for this check).
 
-**Drift policy:** without `--yes`, drift cases default to "No" in the confirm prompt — your customisations are preserved. With `--yes`, drift IS overwritten. Safe-merge fixers (`engines`, `husky`, `package-json`) never overwrite even with `--yes` — they only add/merge.
+**Drift policy:** without `--yes`, drift cases default to "No" in the confirm prompt — your customisations are preserved. With `--yes`, drift IS overwritten. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite even with `--yes` — they only add/merge.
 
 ### `list` — enumerate the library's surface area
 
