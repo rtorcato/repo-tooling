@@ -67,9 +67,10 @@ Tailwind v4, exclude your stylesheet in `biome.json`:
 ```jsonc
 {
   "extends": ["@rtorcato/repo-tooling/biome"],
-  // `includes` replaces the preset's list rather than extending it — restate
-  // the exclusions you still want alongside the CSS one.
-  "files": { "includes": ["**", "!**/node_modules", "!**/dist", "!**/*.css"] }
+  // List only the extra negations — Biome merges them into the preset's
+  // `includes`. Do NOT repeat the leading `"**"`: that is a lint error,
+  // `lint/suspicious/noBiomeFirstException`.
+  "files": { "includes": ["!**/*.css"] }
 }
 ```
 
