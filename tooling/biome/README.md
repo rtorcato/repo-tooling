@@ -46,6 +46,7 @@ you land in your repo must still be named `biome.json`.
 - **Formatter**: Tab indentation, 100 character line width, single quotes
 - **Linter**: Recommended rules with sensible overrides
 - **JavaScript**: ES5 trailing commas, semicolons as needed
+- **CSS**: `css.parser.tailwindDirectives` on (with `cssModules` restated, since naming `parser` resets what it omits), so Tailwind v4's `@theme` / `@custom-variant` / `@utility` parse instead of erroring (#589). Harmless without Tailwind — it only widens what the parser accepts.
 - **Import organization**: Disabled to prevent conflicts
 - **File patterns**: Excludes common build/config directories
 
