@@ -86,6 +86,6 @@ Public repos let anyone open an issue, so an issue body is **untrusted input** �
 Land AI changes via PR, and never expose secrets to an issue-triggered run. Auto-merge is **asymmetric** — it is not a blanket ban:
 
 - **Issue PRs never merge unattended.** Merging `main` fires semantic-release and publishes, so they stop for a human even when every agent reviewer passes.
-- **Dependabot PRs do auto-merge**, but only after the agent reviewers pass *and* the repo's required status checks go green, because a `chore(deps)` squash subject cuts no release. The required status checks stay the real merge gate — agent review never substitutes for them, so a repo without branch protection auto-merges nothing.
+- **Dependabot PRs do auto-merge**, gated by `dependabot-automerge.yml`'s own predicate and the repo's required status checks — not by agent review, which never ran on them in time to matter. The predicate allows only dev-only, non-shipping patch and minor bumps and fails closed; a `chore(deps)` squash subject cuts no release. The required status checks stay the real merge gate, so a repo without branch protection auto-merges nothing.
 
 Full docs: https://rtorcato.github.io/repo-tooling/guides/cli/
