@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.react.json",
+  "compilerOptions": {
+    // `vite/client` is what makes `import.meta.env` and the `?url` / `?raw`
+    // import suffixes typecheck. It lives here rather than in the react preset
+    // because every `types` entry must resolve: adding it there would fail with
+    // TS2688 on any React project that doesn't install Vite — the same trap that
+    // got "tailwindcss" dropped from the react preset.
+    "types": ["react", "react-dom", "vitest", "vite/client"]
+  },
+  // An app's `typecheck` is a CI gate, not a build, so the tests are checked
+  // too — they're the code most likely to drift after a signature change. The
+  // react preset excludes them because a library's tsc run emits dist/.
+  "include": ["src", "index.d.ts", "types", "tests"],
+  "exclude": ["node_modules", "dist", "build", "out"]
+}

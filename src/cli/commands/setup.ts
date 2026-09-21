@@ -29,7 +29,7 @@ export interface ProjectConfig {
 	projectType: 'library' | 'web-app' | 'node-api' | 'nextjs-app' | 'react-app'
 	typescript: {
 		enabled: boolean
-		config: 'base' | 'react' | 'next' | 'node' | 'express'
+		config: 'base' | 'react' | 'vite-app' | 'next' | 'node' | 'express'
 	}
 	linting: {
 		tool: 'biome' | 'eslint' | 'both' | 'none'
@@ -431,7 +431,13 @@ async function promptForConfig(
 					return [{ name: '⚡ Next.js', value: 'next' }, ...baseChoices]
 				}
 				if (answers.projectType === 'react-app' || answers.projectType === 'web-app') {
-					return [{ name: '⚛️  React', value: 'react' }, ...baseChoices]
+					return [
+						// First, so it's the default: most React projects are apps, and the
+						// react preset is library-shaped — no vite/client, tests excluded.
+						{ name: '⚛️  React + Vite app', value: 'vite-app' },
+						{ name: '📦 React library', value: 'react' },
+						...baseChoices,
+					]
 				}
 				if (answers.projectType === 'node-api') {
 					return [

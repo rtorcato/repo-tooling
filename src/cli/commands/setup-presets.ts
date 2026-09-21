@@ -105,7 +105,10 @@ export function buildPresetConfig(name: PresetName, projectName: string): Projec
 				...BASE,
 				projectName,
 				projectType: 'react-app',
-				typescript: { enabled: true, config: 'react' },
+				// vite-app, not react: this preset ships a Vite bundler, so
+				// `import.meta.env` has to typecheck, and typecheck is the app's CI
+				// gate rather than a build, so its tests are checked too (#592).
+				typescript: { enabled: true, config: 'vite-app' },
 				testing: { framework: 'vitest', environment: 'browser' },
 				bundler: 'vite',
 			}
@@ -178,7 +181,7 @@ export const CONFIG_SCHEMA = {
 			required: ['enabled', 'config'],
 			properties: {
 				enabled: { type: 'boolean' },
-				config: { type: 'string', enum: ['base', 'react', 'next', 'node', 'express'] },
+				config: { type: 'string', enum: ['base', 'react', 'vite-app', 'next', 'node', 'express'] },
 			},
 		},
 		linting: {
