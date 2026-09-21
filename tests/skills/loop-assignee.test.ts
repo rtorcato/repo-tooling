@@ -45,11 +45,19 @@ describe('ai loop skills never assign @me (#606)', () => {
 	it('no gh edit snippet can collapse to zero flags', () => {
 		const lines = fs.readFileSync(skills[0], 'utf8').split('\n')
 		const bare = lines.filter((line, i) => {
-			if (!/^\s*gh (pr|issue) edit <[NM]>/.test(line)) return false
+			// Match anywhere on the line, not just at its start: these commands also
+			// appear inside markdown table cells (`| … |`) and blockquoted prompts
+			// (`> …`), where a start-anchored pattern would silently skip them.
+			const at = /gh (pr|issue) edit <[NM]>/.exec(line)
+			if (!at) return false
+			// A `#` before the match means prose about the command, not the command.
+			if (line.slice(0, at.index).includes('#')) return false
+			let cmd = line.slice(at.index)
+			const inlineEnd = cmd.indexOf('`')
+			if (inlineEnd !== -1) cmd = cmd.slice(0, inlineEnd)
 			// Join the snippet's continuation lines into one logical command.
-			let cmd = line
 			for (let j = i; cmd.trimEnd().endsWith('\\') && j + 1 < lines.length; j++) {
-				cmd = `${cmd.trimEnd().slice(0, -1)} ${lines[j + 1].trim()}`
+				cmd = `${cmd.trimEnd().slice(0, -1)} ${lines[j + 1].replace(/^[\s>|]*/, '').trim()}`
 			}
 			const withoutConditionals = cmd.replace(/\$\{[A-Z_]+:\+[^}]*\}/g, '')
 			const hasUnconditionalFlag = /\s--[a-z-]+/.test(withoutConditionals)
