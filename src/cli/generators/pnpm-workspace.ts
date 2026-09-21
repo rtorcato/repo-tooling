@@ -68,8 +68,6 @@ function section(yaml: string, key: string): string[] | null {
 interface Setting {
 	/** How doctor names this setting when it's missing. */
 	label: string
-	/** Only managed when this returns true for the repo. */
-	applies: (needsEsbuild: boolean) => boolean
 	satisfied: (yaml: string) => boolean
 	/** Merged in when absent: appended as a new block, or inserted under an existing key. */
 	key: string
@@ -82,14 +80,14 @@ interface Setting {
  * the release-age exemption is scope-derived, and a repo with no scope to
  * derive doesn't get that setting at all.
  */
-function settingsFor(glob: string | null): Setting[] {
-	return glob ? [...BASE_SETTINGS, releaseAgeSetting(glob)] : BASE_SETTINGS
+function settingsFor(glob: string | null, yaml: string, needsEsbuild: boolean): Setting[] {
+	const builds = allowBuildsSetting(yaml, needsEsbuild)
+	return [...BASE_SETTINGS, ...(builds ? [builds] : []), ...(glob ? [releaseAgeSetting(glob)] : [])]
 }
 
 function releaseAgeSetting(glob: string): Setting {
 	return {
 		label: `minimumReleaseAgeExclude: ${glob}`,
-		applies: () => true,
 		satisfied: (yaml) =>
 			(section(yaml, 'minimumReleaseAgeExclude') ?? []).some((l) => l.includes(glob)),
 		key: 'minimumReleaseAgeExclude',
@@ -105,7 +103,6 @@ minimumReleaseAgeExclude:
 const BASE_SETTINGS: Setting[] = [
 	{
 		label: 'verifyDepsBeforeRun: false',
-		applies: () => true,
 		// Any explicit value counts — a repo that deliberately opted into
 		// verification shouldn't be nagged back to the family default.
 		satisfied: (yaml) => /^verifyDepsBeforeRun:/m.test(yaml),
@@ -116,19 +113,58 @@ verifyDepsBeforeRun: false
 `,
 		item: '',
 	},
-	{
-		label: 'allowBuilds: esbuild',
-		applies: (needsEsbuild) => needsEsbuild,
-		satisfied: (yaml) => (section(yaml, 'allowBuilds') ?? []).some((l) => /^\s*esbuild:/.test(l)),
+]
+
+/** A YAML scalar used as a map key: quoted unless it is plainly safe bare. */
+function asKey(name: string): string {
+	return /^[a-z0-9][a-z0-9._-]*$/i.test(name) ? name : `'${name}'`
+}
+
+/** Package names listed under `onlyBuiltDependencies:`, quotes stripped. */
+function onlyBuiltDependencies(yaml: string): string[] {
+	return (section(yaml, 'onlyBuiltDependencies') ?? [])
+		.map((line) => /^\s+-\s*['"]?([^'"\s#]+)/.exec(line)?.[1])
+		.filter((name): name is string => Boolean(name))
+}
+
+/** True when `name` already carries a decision under `allowBuilds:`. */
+function approved(yaml: string, name: string): boolean {
+	const key = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+	return (section(yaml, 'allowBuilds') ?? []).some((l) =>
+		new RegExp(`^\\s*['"]?${key}['"]?\\s*:`).test(l)
+	)
+}
+
+/**
+ * pnpm 11 reads build approvals from `allowBuilds` and ignores the older
+ * `onlyBuiltDependencies` list, so that list is *mirrored* into the map rather
+ * than replaced by a fixed baseline: writing only `esbuild: true` over a file
+ * that already approved more packages would narrow the allowlist and break the
+ * install on the very pnpm version the map exists for (#588). Null when there
+ * is nothing to approve.
+ */
+function allowBuildsSetting(yaml: string, needsEsbuild: boolean): Setting | null {
+	const packages = [
+		...new Set([...(needsEsbuild ? ['esbuild'] : []), ...onlyBuiltDependencies(yaml)]),
+	]
+	if (packages.length === 0) return null
+	const entry = (name: string) => `  ${asKey(name)}: true`
+	return {
+		label: `allowBuilds: ${packages.join(', ')}`,
+		satisfied: (y) => packages.every((name) => approved(y, name)),
 		key: 'allowBuilds',
 		block: `# pnpm 11 reads build-script approvals from this map, not the older
 # onlyBuiltDependencies list, and fails the install outright without them.
 allowBuilds:
-  esbuild: true
+${packages.map(entry).join('\n')}
 `,
-		item: '  esbuild: true',
-	},
-]
+		// Only the undecided ones — a hand-vetted `false` is a decision and stays.
+		item: packages
+			.filter((name) => !approved(yaml, name))
+			.map(entry)
+			.join('\n'),
+	}
+}
 
 /** Managed settings absent from `yaml`, named as doctor reports them. */
 export function missingPnpmSettings(
@@ -136,8 +172,8 @@ export function missingPnpmSettings(
 	needsEsbuild: boolean,
 	glob: string | null
 ): string[] {
-	return settingsFor(glob)
-		.filter((s) => s.applies(needsEsbuild) && !s.satisfied(yaml))
+	return settingsFor(glob, yaml, needsEsbuild)
+		.filter((s) => !s.satisfied(yaml))
 		.map((s) => s.label)
 }
 
@@ -156,8 +192,8 @@ export function upsertPnpmSettings(
 	glob: string | null
 ): string {
 	let next = yaml
-	for (const setting of settingsFor(glob)) {
-		if (!setting.applies(needsEsbuild) || setting.satisfied(next)) continue
+	for (const setting of settingsFor(glob, yaml, needsEsbuild)) {
+		if (setting.satisfied(next)) continue
 		if (setting.item && section(next, setting.key)) {
 			next = insertUnder(next, setting.key, setting.item)
 		} else {
