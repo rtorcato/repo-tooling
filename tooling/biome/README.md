@@ -75,6 +75,30 @@ After copying the configuration, you can customize it for your project:
 }
 ```
 
+## Extending the preset
+
+Instead of copying, you can extend it and keep only your deltas:
+
+```json
+{
+  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
+  "extends": ["@rtorcato/repo-tooling/biome"],
+  "files": { "includes": ["!**/.tanstack", "!src/routeTree.gen.ts"] }
+}
+```
+
+**`files.includes` must be negations only.** The instinct is to mirror the preset
+and restate `"**"` first — that fails:
+
+```
+biome.json:6:7 lint/suspicious/noBiomeFirstException
+  × Biome detected that at least one of your extended packages starts with **.
+```
+
+An extending config's negation-only list merges into the preset's `includes`, so
+the preset's exclusions (`node_modules`, `dist`, `coverage`, …) still apply —
+you only add to them.
+
 ## VS Code Integration
 
 Add to your `.vscode/settings.json`:
@@ -90,6 +114,6 @@ Add to your `.vscode/settings.json`:
 }
 ```
 
-## Why Biome Can't Extend Configurations
+## Copy or extend?
 
-Unlike ESLint or TypeScript, Biome doesn't support configuration inheritance/extending. Each project needs its own complete `biome.json` file. This package provides a well-tested base configuration that you can copy and customize.
+Both work. `copy` gives you a self-contained `biome.json` you own outright; `extends` keeps your file to just the deltas and picks up preset updates on `npm update`. Extending is the smaller file — mind the `files.includes` rule above.
