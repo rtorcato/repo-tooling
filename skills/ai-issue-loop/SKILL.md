@@ -35,31 +35,18 @@ approval is impossible**. Approval is therefore a *label*, and the repo's requir
 status checks stay the real merge gate.
 
 Never run `gh pr review --approve`. Never set `required_pull_request_reviews` on
-the protected branch — it would deadlock every PR.
-
-**If you ever switch to real approvals** — a second GitHub account reviewing as
-someone else, so `--approve` works and the `ai-ok-*` labels become unnecessary —
-first check what else writes your branch protection. Any repo-settings tool that
-treats `required_pull_request_reviews` as drift will PUT it back to `null` on its
-next run, because required review deadlocks solo Dependabot auto-merge. Your
-approval rule vanishes, merges hand themselves back to the labels, and nothing in
-that tool's output ties the change to this pipeline. `@rtorcato/repo-tooling`,
-which ships this skill, is one such tool — its repo-settings standard asserts
-`required_pull_request_reviews: null`, so change that standard before you rely on
-real approvals.
+the protected branch — it would deadlock every PR. (`repo-tooling`'s repo-settings
+standard asserts `required_pull_request_reviews: null`, so switching to real
+approvals means changing that standard first.)
 
 The same constraint makes everything an agent posts *look* hand-written by the
 owner. So **every comment any agent leaves — review, blocked, gave-up, declined —
 opens with a `🤖 *Automated …*` italic header line naming which agent wrote it**,
-then a blank line. Name the agent and stop there: a detailed security review
-under a human's avatar misrepresents who reviewed the code, but *why* it wears
-that avatar is read once and then reread on every comment forever.
+then a blank line. Name the agent and stop there.
 
 `🤖 *Automated — <which agent> via ai-issue-loop.*`
 
-**Comment budget: ≤10 lines, and a clean outcome gets no comment at all.** A
-40-line comment on every PR trains the reader to skip all of them, including the
-one that matters — the same failure mode as `ai-notes` on every PR, below. Link
+**Comment budget: ≤10 lines, and a clean outcome gets no comment at all.** Link
 the reviewer's `### Before merging` rather than restating it; a paraphrase is
 drift with a second copy to maintain.
 
@@ -93,22 +80,17 @@ drift with a second copy to maintain.
 
 **`ai-notes` is advisory and never blocks.** It rides *alongside* a pass label,
 never instead of one, and it never sends a PR back — a finding that should block
-an issue PR is `ai-changes`. It exists because a pass label currently means both "clean" and
-"I found something real but would not hold the PR over it", and those two are
-indistinguishable in the *Assigned to you* view where merges actually happen.
-The bar is a finding that **changes what a human would do at merge time**: a
-semver implication, a deliberate omission, a question only they can answer. Not
-observations, not praise, not restating the diff. `ai-notes` on every PR is the
-failure mode — it trains the reader to ignore it, which is worse than not having
-it.
+an issue PR is `ai-changes`. The bar is a finding that **changes what a human
+would do at merge time**: a semver implication, a deliberate omission, a
+question only they can answer. Not observations, not praise, not restating the
+diff. `ai-notes` on every PR is the failure mode — it trains the reader to
+ignore it.
 
 **Follow-up work is an issue, not a note.** A finding that clears that bar *and*
 is work someone would plausibly do gets filed as its own issue labelled
 `ai-suggested`, by the reviewer that found it; the PR comment keeps one line and
 a link. It does **not** earn `ai-notes` — later work does not decide this merge.
-An observation is not a follow-up. Prose in a merged PR's comments is
-archaeology, which is how every follow-up left there so far has died on merge.
-The checkable test: writing "optional", "residual" or "non-blocking" in a
+An observation is not a follow-up. The checkable test: writing "optional", "residual" or "non-blocking" in a
 `### Before merging` section means that finding belongs in an issue instead.
 
 First run in a repo, create any that are missing (`gh label create` is a no-op
@@ -131,18 +113,13 @@ gh label create merge-ready -c '#8250df' -d 'Both agent reviews passed and the P
 gh label create ai-suggested -c '#c2e0c6' -d 'Follow-up surfaced by an agent review — triage queue, never auto-picked'
 ```
 
-Bootstrap only. `gh label create` **cannot repair a label that already exists** —
-re-running this block against a hand-created `ai-ready` leaves whatever colour
-the web picker gave it, which is how six repos ended up with `ai-ready` rendering
-identically to `ai-blocked` (rtorcato/repo-tooling#446). To repair drift:
+Bootstrap only — `gh label create` **cannot repair a label that already
+exists**. To repair colour/description drift:
 
 ```bash
 npx @rtorcato/repo-tooling doctor --json   # "AI loop labels" reports colour/description drift
 npx @rtorcato/repo-tooling fix labels      # repairs it with `gh label edit`
 ```
-
-`src/base/labels.ts` in repo-tooling owns the canonical table and a test asserts
-this block matches it, so the two cannot diverge.
 
 Also once per repo, keep the status file out of git:
 
@@ -165,12 +142,9 @@ alongside the label it ends on — a verdict for a reviewer, `ai-review` for the
 round. They are transient — a claim outliving its agent means it died, which is
 Pass 2's stall reaping, not a state of the PR.
 
-Nothing in this diagram merges itself. Dependabot PRs are absent from it on
-purpose — their own workflow merges them, outside this loop entirely (#593). The
-one arm that can merge unattended is a repo gated by a `release` environment with
-`required_reviewers`, where a human still stands between the merge and the
-registry — see Pass 1.
-On an ungated repo an issue PR ends at *assigned to you* and waits there —
+Nothing in this diagram merges itself, and Dependabot PRs are absent from it on
+purpose. The one arm that can merge unattended is a repo gated by a `release`
+environment with `required_reviewers` — see Pass 1. On an ungated repo an issue PR ends at *assigned to you* and waits there —
 `merge-ready` is the loop's way of saying done. Add `ai-notes` and it means
 done, but open the comments first.
 
@@ -182,7 +156,6 @@ These exist because the loop runs unattended against a monthly usage cap.
 - **Reviewers see the diff only** — `gh pr view` + `gh pr diff` + the issue body.
   No repo-wide exploration, no Explore agents.
 - **2 fix rounds per PR.** On the 3rd `ai-changes`, stop and mark `ai-blocked`.
-  Reviewer↔implementer ping-pong is the one unbounded token sink here.
 - **An idle tick spawns zero agents.** Bail out early and say one line.
 
 ---
@@ -211,18 +184,15 @@ repos are fine for checking a dependency; writes are not. GitHub only —
 bail in one line if the remote is GitLab.
 
 **`ROOT` is load-bearing — resolve it first and use it for every path in every
-pass.** A session can be pinned to a worktree, so the orchestrator can find itself
-inside one it did not choose. `--git-common-dir` resolves to the main checkout's
-`.git` from anywhere, including a worktree, so `ROOT` is correct either way.
+pass.** `--git-common-dir` resolves to the main checkout's `.git` from anywhere,
+including a worktree the session may be pinned to, so `ROOT` is correct either way.
 
 **Resolve `AGENT_USER` — the account in-flight work is assigned to.** Optional:
-unset, every step below that would assign it simply does nothing, and assignment
-behaves exactly as it did before this existed.
+unset, every step below that would assign it simply does nothing.
 
 ```bash
-# Repo config first — committed, so it travels with the repo and survives a new
-# machine. `AI_LOOP_AGENT` overrides it for a repo with no lockfile. The flat
-# `.aiLoop` fallback reads a pre-v4 lockfile that hasn't migrated yet (#559).
+# Repo config first; `AI_LOOP_AGENT` overrides it for a repo with no lockfile.
+# The flat `.aiLoop` fallback reads a pre-v4 lockfile (#559).
 AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.rules.aiLoop.agentUser // .aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
 # A typo would fail every `gh` edit for the whole tick, so prove it is assignable
 # once, here. 204 = yes, 404 = no; push access is what qualifies an account.
@@ -231,32 +201,30 @@ AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.rules.aiLoop.agentUser // .aiLoop.agentUs
   AGENT_USER=""; }; }
 ```
 
-**Then prove `gh` is *authenticating as* that account — this one halts the
-tick.** Assignability passes no matter who is calling, so on a machine where the
-agent identity was never configured both checks above are green while `gh` is
-the owner: worktrees, commits, PRs and reviews all land under the owner's
-account, and the split only shows up in `git log` afterwards (#601).
-
-```bash
-# Exit 0 continue, non-zero halt — also covers the bare-checkout repair. The
-# identity check is skipped entirely when no agentUser is declared.
-npx @rtorcato/repo-tooling loop guard --root "$ROOT" || exit 1
-```
-
-Configured intent that is not met is a misconfiguration, not a degraded mode —
-which is why this halts where the assignability check merely warns. Fix it by
-pointing `gh` at the agent account on this machine, or by removing
-`rules.aiLoop.agentUser`.
-
-**It lives in the repo, not a shell profile.** The agent account is a
-collaborator on *this* repo, so a machine-wide env var is both the wrong
-granularity and invisible — forgotten on a new laptop, with the only symptom
-being that assignment quietly stops. In `.repo-tooling.json` it is committed,
-reviewable, and carried forward by `fix lockfile`:
+It lives in `.repo-tooling.json`, not a shell profile — committed, reviewable,
+and carried forward by `fix lockfile`:
 
 ```json
 { "rules": { "aiLoop": { "agentUser": "your-bot-account" } } }
 ```
+
+**Then run `loop guard` — it halts the tick on failure.** It repairs a main
+checkout that has gone `core.bare = true` (which corrupts every worktree commit
+into a whole-repo deletion), refuses to touch a genuinely bare clone or a linked
+worktree, and — when `agentUser` is declared — proves `gh` is *authenticating
+as* that account, which the assignability check above cannot. It ignores an
+exported `GIT_DIR` / `GIT_WORK_TREE`.
+
+```bash
+# Exit 0 continue; 1 = bare repair failed, 2 = root unrepairable or wrong gh identity.
+npx @rtorcato/repo-tooling loop guard --root "$ROOT" || exit 1
+```
+
+**A non-zero exit halts the whole tick, not the command.** The `exit 1` only
+ends one shell call; you are an agent reading a doc, not a shell honouring an
+exit code. Run **no further passes** — report the failure via Pass 5 and stop.
+An identity mismatch is fixed by pointing `gh` at the agent account on this
+machine (`fix ai-loop-identity`), or by removing `rules.aiLoop.agentUser`.
 
 Every later use is `${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}`, which expands
 to nothing when it is empty — so there is one code path, not two. **Keep the flag
@@ -265,10 +233,9 @@ and the value in separate expansions.** The one-expansion form
 in zsh, where `gh` receives `--add-assignee bot` as a single argument and
 rejects it.
 
-**Resolve `HUMAN_USER` too — the person work is handed back to.** Needs no
-config: on a personal repo the owner *is* the person. On an organisation repo
-`.owner.login` is the org, which is not a human, so it resolves to empty and
-every handoff below assigns nobody rather than something meaningless.
+**Resolve `HUMAN_USER` too — the person work is handed back to.** On a personal
+repo the owner *is* the person; on an organisation repo it resolves to empty and
+every handoff below assigns nobody.
 
 ```bash
 HUMAN_USER=$(gh api "repos/$OWNER_REPO" --jq 'if .owner.type == "User" then .owner.login else "" end')
@@ -279,10 +246,7 @@ Later uses are `${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"}`, the
 errors — skip the call entirely in that case** rather than letting it fail the
 tick.
 
-**The point is that assignee answers "whose turn is it", which no label does
-well.** Today an issue an agent is mid-way through and an issue nobody has
-touched are both assigned to no one, so the *Assigned to you* view is only ever
-half the story:
+Assignee answers "whose turn is it":
 
 | State | Assignee |
 |---|---|
@@ -292,122 +256,35 @@ half the story:
 | PR passed both reviews, waiting to merge | the human |
 | `ai-blocked`, declined, or held | the human |
 
-`@me` cannot express either end: it resolves to whichever token is running, and
-the identity check above *requires* that token to be `AGENT_USER` whenever an
-agent account is declared — so `@me` is the agent precisely where the last two
-rows want the human (#606). Both are therefore named explicitly, and `@me`
-appears nowhere in this skill.
-
-Note the web UI's assignee picker can show a stale list that omits a
-freshly-added collaborator; `repos/{repo}/assignees` is the authority.
-
-**Check the main checkout is not bare before anything else uses `ROOT`.** It has gone
-`core.bare = true` on its own, repeatedly — four times in one session, some occurrences
-immediately after a `worktree remove` and some with nothing removed at all. The trigger
-is unidentified, so this is detection and repair only:
-
-```bash
-if [ "$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
-  echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
-  env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" config core.bare false || {
-    echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
-fi
-```
-
-**It corrupts commits — this is not a cosmetic error message.** A bare main checkout
-wipes a worktree's index while every file sits untouched on disk, and the next commit
-faithfully records the whole repository as deleted. PR #500 died that way: a diff of
-`0 additions, 67703 deletions` across 359 files, not one of which had moved.
-
-**Test stdout, not the exit code.** `rev-parse --is-inside-work-tree` exits `0` either
-way and only *prints* the answer, so an exit-code probe is dead code. Verified on git
-2.55.0:
-
-| repo state | `--is-inside-work-tree` | `.git` |
-|---|---|---|
-| healthy checkout | `true`, exit 0 | directory |
-| **wrongly bare** | `false`, **exit 0** | directory |
-| genuinely bare | `false`, exit 0 | absent |
-| linked worktree | `true`, exit 0 | file |
-
-**`.git` must be a directory before repairing.** A genuinely bare repo prints `false`
-too, and nothing else separates the two — this skill ships to users' `~/.claude/skills/`,
-where "repairing" someone's real bare clone is the damage rather than the fix. The same
-check skips a linked worktree, whose `.git` is a file.
-
-**`GIT_DIR` and `GIT_WORK_TREE` beat `-C`, so unset them.** When either is exported —
-some tooling wrappers do — git ignores `-C "$ROOT"` and operates on whatever they
-point at, so the probe would diagnose a *different* repo and the repair would write
-that repo's `.git/config`. Both failures are silent, and both are worse than the bug
-being guarded against. This skill installs into arbitrary users' `~/.claude/skills/`,
-so the caller's environment is not ours to assume; `env -u` scopes the unset to the
-one command rather than to the tick.
-
-**Fail loudly.** The repair writes `$ROOT/.git/config`, which a restrictive sandbox
-refuses with `error: could not lock config file .git/config: Operation not permitted` —
-observed. Aborting beats reporting a healthy repo while it stays broken.
-
-**A failed repair halts the tick — the whole tick, not the command.** The `exit 1`
-only ends one shell call; you are an agent reading a doc, not a shell honouring an
-exit code. If the repair fails, run **no further passes** — report the failure via
-Pass 5 and stop. Carrying on into Pass 4 branches every new worktree off a broken
-`ROOT`, which is exactly the state that produced the #500 mass-deletion commit.
+`@me` appears nowhere in this skill: it resolves to whichever token is running,
+which `loop guard` requires to be `AGENT_USER` whenever one is declared — the
+agent precisely where the last two rows want the human (#606).
+`repos/{repo}/assignees` is the authority on who is assignable; the web UI's
+picker can be stale.
 
 Never use a relative path like `ai-*`. From inside a worktree it matches nothing, and
-the failure is **silent**: Pass 2 concludes there is nothing to clean, every worktree
-survives, `ai-wip` is never cleared, and slots leak until the loop reports `idle`
-forever while being wedged. Nothing in the report looks wrong. Always `"$WT_ROOT/..."`.
+the failure is **silent**: Pass 2 concludes there is nothing to clean and slots leak
+while the loop reports `idle`. Always `"$WT_ROOT/..."`.
 
 **Worktrees live in `WT_ROOT`, a sibling of the repo — never inside it.** A worktree
 under `$ROOT/.claude/worktrees/…` sits on a path most repos exclude from their own
-tooling, and it fails silently rather than loudly. Observed on `js-common`, whose
-`biome.json` carries `"!**/.claude"`:
-
-```
-worktree at .claude/worktrees/ai-82-…        → biome: Checked 0 files
-same repo at ../js-common-worktrees/issue-76 → biome: Checked 141 files
-```
-
-So the pre-commit hook linted **nothing** in any agent worktree — failing with a
-misleading "No files were processed" that reads like a tooling glitch rather than a
-disabled gate. Every agent commit landed unchecked. A sibling directory sits outside
-the repo, where no `.gitignore`, Biome `includes`, ESLint ignore, or `tsconfig`
-exclude can accidentally swallow it.
+tooling (e.g. Biome's `"!**/.claude"`), so the pre-commit hook silently lints
+nothing there. A sibling directory sits outside the repo, where no `.gitignore`,
+Biome `includes`, ESLint ignore, or `tsconfig` exclude can swallow it.
 
 If any command is refused with *"this session is isolated in the worktree …"*, this
-session is pinned to a worktree — a tick started from inside one, or a pin left over
-from an earlier session. Call `ExitWorktree({action: "keep"})` — **`keep`, never
+session is pinned to a worktree. Call `ExitWorktree({action: "keep"})` — **`keep`, never
 `remove`**, an implementer may still be working in there — and carry on with the rest
 of the tick.
 
 **Leave Dependabot PRs alone.** They are not adopted, not labelled, not reviewed
-and not merged by this loop.
+and not merged by this loop — `dependabot-automerge.yml` arms auto-merge at PR-open
+and its own predicate is the gate (#593).
 
-**Why, because it reads as a gap:** `dependabot-automerge.yml` arms auto-merge when
-the PR *opens*, and GitHub merges the moment checks go green. A tick runs up to 15
-minutes later, so on any repo where CI beats the next tick the merge already
-happened — the review arm was decorative on every repo that scaffolds the workflow
-(#593, observed on `js-common` #271).
-
-Arming auto-merge from this loop instead would fix the race and cost more than it
-buys: dependency updates would then only land while the loop is alive, and a loop
-that is merely unscheduled would stall every bump with nothing reporting why.
-
-The gate that remains is stronger than the reviewer was. The workflow's own
-predicate refuses anything appearing in a non-private package's `dependencies`,
-`optionalDependencies` or `peerDependencies`, allows only the `dev-minor` group or
-the `github-actions` ecosystem at patch or minor, and fails closed when no
-dependency names are reported. It computes that from the checked-out manifests,
-where the reviewer had to infer it from a PR body GitHub truncates at 65535
-characters — the same policy, derived more reliably.
-
-**Adopt agent-opened PRs.** A PR an agent opens outside Pass 4 — one
-with no `ai-ready` issue behind it — carries no `ai-*` label, so it matches no pass
-and is therefore assigned by nothing: it never reaches *Assigned to you*, which is
-the view where merges actually happen. Observed on #548, which passed all five
-required checks and read *Able to merge* while its assignees read *No one—assign
-yourself*. Label it `ai-review` and Pass 1 hands it over on the existing path once
-both arms pass — no second assignment rule is needed:
+**Adopt agent-opened PRs.** A PR an agent opens outside Pass 4 — one with no
+`ai-ready` issue behind it — carries no `ai-*` label, so no pass ever assigns it
+and it never reaches *Assigned to you*. Label it `ai-review` and Pass 1 hands it
+over on the existing path once both arms pass:
 
 ```bash
 ME=$(gh api user --jq .login)   # the identity every loop agent opens PRs as
@@ -419,15 +296,11 @@ gh pr list --state open --json number,author,labels,body \
            | .number'
 ```
 
-**The `🤖` header is the discriminator, not the login.** Every agent authenticates as
-the owner's own `gh`, so author login alone cannot tell a PR an agent opened from one
-the owner wrote by hand — and a PR the owner wrote themselves must not be swept in,
-which would put two reviewers on work nobody asked to have reviewed. The header is
-wire format, the same as the `<!-- ai-issue-loop:* -->` markers: every PR body this
-pipeline writes opens with `🤖 *Automated …*` or `🤖 *Opened by …*`, so match it and
-do not redefine it. `(.body // "")` is load-bearing for the reason Pass 1's upsert
-spells out — a null body throws and empties the whole filter, here adopting nothing
-rather than everything.
+**The `🤖` header is the discriminator, not the login** — every agent authenticates
+as the owner, so login alone would sweep in PRs the owner wrote by hand. The header
+is wire format, like the `<!-- ai-issue-loop:* -->` markers: every PR body this
+pipeline writes opens with `🤖 *Automated …*` or `🤖 *Opened by …*`. `(.body // "")`
+is load-bearing: a null body throws and empties the whole filter.
 
 If there are no open PRs carrying any `ai-*` label, no eligible `ai-ready` issues
 (Pass 4's query), **and** no `ai-*` worktree left on disk, skip straight to Pass 5
@@ -438,17 +311,9 @@ find "$WT_ROOT" "$ROOT/.claude/worktrees" -maxdepth 1 -name 'ai-*' -type d 2>/de
 ```
 
 **The third condition is not implied by the other two.** Pass 2's cleanup is keyed
-off worktrees *on disk*, never off open PRs, so the moment the last open PR is merged
-by hand both of the other conditions go true while its worktree is still present and
-its issue still carries `ai-wip` — the label only Pass 2 ever clears. Every later tick
-meets the same two conditions, so the worktree and the label survive indefinitely
-while the loop reports `idle`. The two leaks also protect each other: the
-orphan-worktree rule that would otherwise reap it matches only a worktree *whose issue
-is not `ai-wip`*, and the stale label is exactly what stops it. Observed 2026-08-26 —
-#541 and #542 closed and their PRs merged, both worktrees still on disk, both issues
-still `ai-wip`. No concurrency slot leaks (the cap counts *open* `ai-wip` issues); what
-leaks is disk, an issue list that reads as though agents are still working, and Pass
-2's `node_modules` rebuild, which is gated on `REMOVED=1` and so never runs.
+off worktrees *on disk*, and only Pass 2 clears `ai-wip` — so once the last open PR
+is merged by hand, skipping on the first two conditions alone would leave its
+worktree and `ai-wip` label in place forever while the loop reports `idle`.
 
 ### Pass 1 — merge
 
@@ -497,19 +362,11 @@ Three things the gate does **not** change:
   the review. Nowhere but this arm does the loop let an issue PR auto-merge, and
   only after both verdicts, so one found already armed without both `ai-ok-*`
   labels was armed by someone else — run `gh pr merge <N> --disable-auto` before anything
-  else touches it. (#605 removed the Pass 0 disarm step this line used to point
-  at, along with the Dependabot arm it served.)
+  else touches it.
 
-Be plain about the residual risk: even gated, this lands code on `main` unattended,
-and the only quality signal is two reviewers that — per the limits above — see the
-diff only, with no repo-wide exploration. For `chore(deps)` that is proportionate.
-For feature code it means a bad merge is a revert on `main`, not a caught mistake.
-That, and not the npm publish, is the trade actually being made here.
-
-**Every comment this pass leaves goes through one idempotent marker comment.** The
-loop is stateless and ticks every 15 minutes, so a naive `gh pr comment` puts a
-*duplicate* on the PR every tick — a PR left over a weekend collects ~200. Write
-it behind a hidden marker and upsert:
+**Every comment this pass leaves goes through one idempotent marker comment.** A
+naive `gh pr comment` puts a *duplicate* on the PR every tick. Write it behind a
+hidden marker and upsert:
 
 ```bash
 MARKER='<!-- ai-issue-loop:decision -->'
@@ -527,34 +384,22 @@ $TEXT"
 fi
 ```
 
-**The author gate is the same one Pass 3's verdict read uses, and for the same
-reason.** Anyone can comment on a public PR, so selecting by marker prefix alone
-lets a stranger who posts `<!-- ai-issue-loop:decision -->` first own the slot
-forever: `.[0]` takes the *oldest* match, the token has repo-write so the `PATCH`
-succeeds, and every decision this loop ever reaches lands inside a
-stranger-authored comment while the loop never posts one of its own. `.user.login`
-against `gh api user`, not `author_association`, for the reason spelled out in
-Pass 3.
+Load-bearing details, keep all of them:
 
-`// empty` is load-bearing: `.[0].id` on an empty array is `null`, which `jq -r`
-prints as the four characters `null` — a non-empty string that passes `[ -n ]` and
-sends the `PATCH` to comment id `null`. The upsert would then never post anything,
-silently, which is the one failure mode worse than duplicates. `(.body // "")` is
-load-bearing for the mirror-image reason: a null body throws, aborting the filter
-and emptying `ID`, which re-enters the duplicate-comment branch this whole section
-exists to prevent. Both values come in through `--arg` rather than shell
-interpolation, so the marker and login are jq *data* and cannot be parsed as
-filter syntax.
+- **The author gate** (`.user.login == $me`) — anyone can comment on a public PR,
+  so matching the marker alone lets a stranger's comment own the slot and swallow
+  every later decision. Login, not `author_association` — see Pass 3.
+- **`// empty`** — `jq -r` prints a missing id as the string `null`, which passes
+  `[ -n ]` and PATCHes comment id `null`, so nothing is ever posted.
+- **`(.body // "")`** — a null body throws, empties `ID`, and re-enters the
+  duplicate branch.
+- **`--arg`, not shell interpolation** — the marker and login stay jq *data*.
 
-One comment per PR, edited in place, so the timeline shows the *current* reason
-rather than a log of every tick that ever ran. What it says — and whether to say
-anything at all — is the comment-budget table at the top of this file; the marker
-is only the *how*. `$TEXT` opens with the standard `🤖 *Automated …*` header and
-leads with what to do.
+What it says — and whether to say anything at all — is the comment-budget table
+at the top of this file. `$TEXT` opens with the standard `🤖 *Automated …*` header
+and leads with what to do.
 
-**Hand a ready PR over properly.** "Merge it yourself" is only actionable if the user
-can find it, and a PR sitting in a list of open PRs looks identical to one still being
-worked. So for every non-Dependabot PR carrying both `ai-ok-code` and `ai-ok-sec` —
+**Hand a ready PR over properly.** For every non-Dependabot PR carrying both `ai-ok-code` and `ai-ok-sec` —
 or `merge-ready` already, from an earlier tick — and not `ai-changes`, assign it,
 label it, and clear the labels the handoff supersedes — **but only
 after the `mergeStateStatus` probe below reports `CLEAN`**. That ordering is what
@@ -567,50 +412,30 @@ gh pr edit <N> ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} --add-
   ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
-**`merge-ready` replaces the pass pair — it does not join it.** A handed-off PR
-wearing `ai-ok-code`, `ai-ok-sec` *and* `merge-ready` says one thing three times,
-and the reader has to know which of the three is the strongest before they can
-act on any of them. `merge-ready` asserts strictly more than the pair (both
-reviews passed **and** `CLEAN`), so the pair carries no information once it is
-applied — a ready PR's whole vocabulary is the two-row table below.
-
-Consequently **`merge-ready` satisfies every later test for the `ai-ok-*` pair** —
-the gated-repo auto-merge arm above and this pass's own
-selector on the next tick. The pair stays the in-flight signal Pass 3 writes and
-reads; it is only at the handoff that it stops being the thing anyone looks at.
-
-Dropping `AGENT_USER` is half the signal: leaving the agent assigned alongside
-you says you both owe it something, which is the one thing never true here.
-
-It lands in the user's *Assigned to you* view, and the labels then read as state rather
-than noise — `merge-ready` means **waiting on you**, filterable at a glance where an
-absence never was. Every removal
-matters: Pass 3 only ever *adds* its labels, so without them a finished PR keeps
-wearing `ai-review` forever and looks mid-review while three green-ish labels
-argue about who passed what. Idempotent, so re-running a tick is harmless.
+**`merge-ready` replaces the pass pair — it does not join it.** It asserts
+strictly more (both reviews passed **and** `CLEAN`), so **`merge-ready`
+satisfies every later test for the `ai-ok-*` pair** — the gated-repo auto-merge
+arm above and this pass's own selector on the next tick. The pair stays the
+in-flight signal Pass 3 writes and reads. Every removal in that edit matters:
+Pass 3 only ever *adds* labels, so without them a finished PR keeps wearing
+`ai-review` forever, and a still-assigned agent reads as still owing work.
+Idempotent, so re-running a tick is harmless.
 
 **`merge-ready` is derived state — reconcile it every tick.** `CLEAN` stays the
 source the loop computes from; the label only mirrors it. A PR carrying
 `merge-ready` while no longer `CLEAN`, or carrying `ai-changes`, gets it stripped
 (`gh pr edit <N> --remove-label merge-ready`) — and the two send-back blocks
-below strip it as part of the same edit. That is
-what keeps a stateless 15-minute loop from letting the label lie after `main`
-moves. Take no other action — do not merge, and **post no
-comment on a clean handoff**: nothing is wrong, so that one label is the
-whole message. A comment is how the loop records what a label cannot; a clean PR
-has nothing to record. An `ai-notes` handoff is the exception per the budget
-table — ≤10 lines through the marker upsert, linking the reviewer's
+below strip it as part of the same edit. Take no other action — do not merge, and
+**post no comment on a clean handoff**. An `ai-notes` handoff is the exception per
+the budget table — ≤10 lines through the marker upsert, linking the reviewer's
 `### Before merging` rather than restating it.
 
 **Reconcile on `CLEAN` only — never on a missing `ai-ok-*`.** The handoff strips
-that pair itself, so a rule that stripped `merge-ready` whenever a pass label was
-absent would undo the tick before it on every handed-off PR, leaving it with no
-labels at all, matching no selector in any pass, and assigned to a human with
-nothing saying why it is theirs.
+that pair itself, so a rule keyed on the pair would undo the previous tick's
+handoff and leave the PR with no labels, matching no selector in any pass.
 
-**Never strip `ai-notes` here.** It is the whole point of the handoff: it has to
-survive to the moment of merging, which is the moment it is for. A ready PR reads
-one of two ways, and the difference must be legible without opening anything:
+**Never strip `ai-notes` here.** It has to survive to the moment of merging. A
+ready PR reads one of two ways:
 
 | Labels | Means |
 |---|---|
@@ -618,29 +443,19 @@ one of two ways, and the difference must be legible without opening anything:
 | `merge-ready`, `ai-notes` | Passed, but open the comments first. |
 
 **Check it can actually merge before calling it ready.** The `ai-ok-*` labels
-report the *agent review* verdict and nothing more — they say nothing about
-whether GitHub will accept the merge. The two are independent, and a PR that
-passed both reviews can still be unmergeable:
+report the *agent review* verdict and nothing more — a PR that passed both
+reviews can still be unmergeable (e.g. blocked by a ruleset that is not a
+required check):
 
 ```bash
 gh pr view <N> --json mergeStateStatus,mergeable --jq '{state:.mergeStateStatus, mergeable}'
 ```
 
-`BLOCKED`, `DIRTY` (conflicts), or `BEHIND` means handing it over as "ready" is a
-lie the human only discovers when the merge button refuses. Observed on
-`js-common` #197: it carried `ai-ok-code, ai-ok-sec, ai-notes` and read as ready,
-while the active `code-scanning-main` ruleset
-(`security_alerts_threshold: high_or_higher`) blocked it — the PR had introduced
-a high CodeQL alert **in a test file it added**. Every *required* check was green
-(`lint`, `typecheck`, `build`, `test (22)`, `test (24)`), and the ruleset is not
-a required check, so nothing in the check list looked wrong either.
-
-Diff-scoped reviewers cannot catch this — they never see CI. So when a
-both-passed PR is not `CLEAN`, do not assign it as ready. Send it back, and
-**comment why** through the marker upsert — ≤10 lines, leading with what must
-change, then the failing check and its error. The reviewers passed it, so the
-fix-round implementer would otherwise read the comments and find no instruction
-to act on. Name what unblocks it — `BEHIND` wants a rebase, `DIRTY` wants the
+When a both-passed PR is `BLOCKED`, `DIRTY` (conflicts), or `BEHIND`, do not
+assign it as ready. Send it back, and **comment why** through the marker upsert —
+≤10 lines, leading with what must change, then the failing check and its error;
+the fix-round implementer otherwise finds no instruction to act on. Name what
+unblocks it — `BEHIND` wants a rebase, `DIRTY` wants the
 conflict resolved, `BLOCKED` wants the specific check or ruleset named.
 
 ```bash
@@ -650,11 +465,8 @@ gh pr edit <N> --add-label ai-changes \
 
 Count it as `rev`, not `ready`. A merge conflict (`DIRTY`) takes the same route.
 
-**Assign any Dependabot PR carrying `ai-changes`.** Nothing produces that state
-any more — this loop stopped labelling bot PRs (#593) — but a tick from before
-that change can have stranded one, and it is waiting on a human from the moment
-the label landed, in no *Assigned to you* view at all. A legacy sweep, cheap to
-keep and self-retiring once the last one is handled:
+**Assign any Dependabot PR carrying `ai-changes`.** A legacy sweep — nothing
+produces that state any more (#593), but an older tick can have stranded one:
 
 ```bash
 # Both empty (org repo, no agentUser) would leave `gh pr edit <N>` with no flags,
@@ -667,20 +479,14 @@ fi
 
 Count it as `rev`. Idempotent, so it also picks up ones an earlier tick stranded.
 
-**This pass never merges a Dependabot PR.** `dependabot-automerge.yml` arms
-auto-merge at PR-open for the bumps its predicate allows — dev-only, non-shipping,
-patch or minor. Everything it declines (a major, anything reaching consumers) is
-declined *because* a human should look, so a second unattended merger here would
-only re-open the hole the predicate exists to close. Count a Dependabot PR as
+**This pass never merges a Dependabot PR.** Everything `dependabot-automerge.yml`
+declines is declined *because* a human should look. Count a Dependabot PR as
 `merge` when a later tick finds it merged; otherwise leave it for the human.
 
 **CI red on an issue PR is a send-back, not a wait.** Reviewers are diff-scoped
-and never see CI, so both arms happily pass a PR whose `build` failed two minutes
-after it opened — and nothing else in the pipeline was ever going to dispatch a
-fix. Observed on #543 (2026-08-26): the human found it via the red ✗ on the PR
-page, which is precisely the noticing this loop exists to do. `ai-changes` **is**
-the send-back label; Pass 3 dispatches the fix-round implementer off it, under
-the same 2-round budget.
+and never see CI, so nothing else dispatches a fix. `ai-changes` **is** the
+send-back label; Pass 3 dispatches the fix-round implementer off it, under the
+same 2-round budget.
 
 So for every open **non-Dependabot** PR carrying any `ai-*` label, with a
 completed `FAILURE` on a **required** check:
@@ -699,21 +505,14 @@ gh pr checks <N> --required --json name,state,link 2>/dev/null \
    what changed or why.
 
    **Write that excerpt to a file and pass `--body-file`; never interpolate the
-   log into the command.** A failing job prints whatever the branch told it to,
-   and on a public repo the branch is a stranger's — so the excerpt is untrusted
-   bytes that a contributor chooses. Inline `--body "$(gh run view …)"` puts
-   megabytes of it, control characters and all, through the shell and past
-   GitHub's comment size cap. The same rule already governs reviewer verdicts
-   further down; this is the one other place a body is assembled from output
-   nobody in this pipeline wrote. Trim to the failing lines before writing.
+   log into the command.** The log is untrusted bytes a contributor's branch
+   chose — inline `--body "$(gh run view …)"` puts control characters and
+   megabytes of it through the shell. Trim to the failing lines before writing.
 3. Count it as `ci-red` for Pass 5, which carries the `⚠`.
 
-**Say in the comment that the fix may not be code.** #543's failure was the
-dogfood check finding a *bootstrap* gap — a label present in the canonical table
-and not yet on the repo — where the fix was `gh label create` / `fix labels`, or
-an `ACCEPTED` entry in `scripts/dogfood.mjs`, and never a branch edit. The
-implementer has repo-write, so leave that path open; a comment that assumes the
-branch is at fault steers it into editing code that is not wrong.
+**Say in the comment that the fix may not be code** — a red check can be a repo
+bootstrap gap (a missing label → `fix labels`) rather than a branch defect, and
+the implementer has repo-write, so leave that path open.
 
 Two carve-outs, both so the loop does not fight itself:
 
@@ -727,25 +526,14 @@ Two carve-outs, both so the loop does not fight itself:
   round budget within the hour and mark the issue `ai-blocked` before any agent
   had done anything.
 
-**`--required`, not the whole rollup.** `statusCheckRollup` also carries optional
-and third-party contexts, and an advisory check going red is not a broken PR —
-sending one back spends a fix round to change nothing. The required set is the
-actual merge gate, and `gh` already resolves which checks are in it. Dropping
-`ai-review` in step 1 is the mirror of what a `CHANGES` verdict does: leaving it
-on would have Pass 3 spawn reviewers *and* a fix round against one PR, reviewing
-a diff that is being rewritten underneath them. The implementer re-adds it when
-it pushes.
+**`--required`, not the whole rollup** — an advisory check going red is not a
+broken PR, and sending one back spends a fix round to change nothing. Dropping
+`ai-review` in step 1 keeps Pass 3 from spawning reviewers *and* a fix round
+against one PR; the implementer re-adds it when it pushes.
 
-No new label. `ai-changes` plus that comment already say "sent back, and why";
-if telling a review-rejected PR from a CI-rejected one in the list view ever
-matters, add a `ci-failing` rider on top of `ai-changes` then, not speculatively
-now.
-
-**A Dependabot PR is the exception — flag it, never send it back.** This loop
-does not review, label or merge bot PRs, but a red one that its own workflow
-already armed will sit queued forever, and only a human can choose between a fix
-and a close. Reporting it is the one thing this loop still does for Dependabot.
-Count these as `ci-red`; take no other action:
+**A Dependabot PR is the exception — flag it, never send it back.** A red one its
+own workflow already armed sits queued forever, and only a human can choose
+between a fix and a close. Count these as `ci-red`; take no other action:
 
 ```bash
 gh pr list --state open --json number,autoMergeRequest,statusCheckRollup \
@@ -763,13 +551,8 @@ and globbing only the new root would find nothing and leak every one of them sil
 WT_DIRS=$(find "$WT_ROOT" "$ROOT/.claude/worktrees" -maxdepth 1 -name 'ai-*' -type d 2>/dev/null)
 ```
 
-**Use `find`, not `ls` with globs.** Under zsh a glob that matches nothing aborts the
-whole command before `ls` ever runs — so with one root still empty, `ls -d "$WT_ROOT"/ai-*
-"$ROOT"/.claude/worktrees/ai-*` returns *nothing at all* and every worktree in the other
-root leaks. `2>/dev/null` does not save you; the failure happens at expansion. `find`
-tolerates a missing directory and does its own matching.
-
-Drop the legacy path once that `find` stops returning anything under the repo.
+**Use `find`, not `ls` with globs** — under zsh a glob that matches nothing aborts
+the whole command at expansion, so one empty root leaks every worktree in the other.
 
 For each directory found, get its issue number from the `ai-<N>-<slug>` name and find
 the PR:
@@ -781,12 +564,8 @@ PR=$(gh pr list --head "$SLUG" --state all --json number,state --jq '.[0]')
 [ -z "$PR" ] && PR=$(gh pr list --head "worktree-$SLUG" --state all --json number,state --jq '.[0]')
 ```
 
-The `worktree-` fallback is legacy. `EnterWorktree({name})` sometimes prefixed the
-branch while the directory kept the plain name, so a single `--head` lookup would
-intermittently find nothing and leak the worktree — PR #151 came out as
-`worktree-ai-85-…` this way. Pass 4 now creates the branch itself with an explicit
-name, so new worktrees can't drift; keep the fallback until no pre-existing ones
-remain.
+The `worktree-` fallback is legacy (branches `EnterWorktree` once prefixed); keep
+it until no pre-existing ones remain.
 
 If the PR is merged or closed, **confirm the work is actually on `main` before
 removing anything.** A squash-merged branch always looks like it has unmerged
@@ -816,19 +595,14 @@ fi
 A closed-unmerged PR is the exception: there is no squash to find, so skip the
 confirmation and remove — the work was abandoned deliberately.
 
-The issue itself closes from the PR body's `Closes #N`, so both edits are normally
-no-ops on a closed issue. A PR that said only `Refs #N` leaves it **open**, which is
-what the state check catches. The work has landed, so it must not go back in
-the queue; pickup already dropped `ai-ready`, and assigning it is what stops a
-merged issue sitting unowned instead (#429 had to be moved to `holding` by hand).
-This pass is what frees concurrency slots, so it must run before Pass 4.
+A PR that said only `Refs #N` leaves the issue **open**, which is what the state
+check catches: the work has landed, so it must not go back in the queue — it goes
+to the human instead. This pass is what frees concurrency slots, so it must run
+before Pass 4.
 
-**Then reap the stalled.** Nothing can time out an agent: the Agent tool takes no
-timeout, and an agent whose session died leaves its labels behind with no process
-to finish them. Six of those and the loop is permanently full while looking
-merely busy. So instead of a timeout, check how long a label has sat without its
-expected transition — GitHub timestamps every application, so this needs no state
-of our own:
+**Then reap the stalled.** Nothing can time out an agent, and one whose session
+died leaves its labels behind. So check how long a label has sat without its
+expected transition — GitHub timestamps every application:
 
 ```bash
 gh api "repos/$OWNER_REPO/issues/<N>/timeline" --paginate \
@@ -845,12 +619,10 @@ work must never be reaped out from under itself.
 | Fix implementer died | PR `ai-fixing` ≥45min and still `ai-changes` — it never got as far as relabelling to `ai-review` | `gh pr edit <N> --remove-label ai-fixing`, which is what lets Pass 3 dispatch the round again. If `ai-fixing` has been applied ≥3 times, `ai-blocked` on the linked issue instead — a round that dies every time is not one more spawn away from working. Leave the worktree: it holds whatever the dead implementer committed |
 | Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch (and set `REMOVED=1`) |
 
-The **no PR exists** condition on the first row is what makes reaping safe. An
-agent that got as far as opening a PR has handed off to the label state machine
-and is no longer the thing being waited on; only a run that produced nothing is
-presumed dead. Reaping deliberately does **not** restore `ai-ready` — `ai-blocked`
-means a human decides when the issue re-enters the queue, and the removed worktree
-means their re-label starts clean. The other two `ai-blocked` exits, Pass 3's
+The **no PR exists** condition on the first row is what makes reaping safe: an
+agent that opened a PR has handed off to the label state machine. Reaping
+deliberately does **not** restore `ai-ready` — `ai-blocked` means a human decides
+when the issue re-enters the queue. The other two `ai-blocked` exits, Pass 3's
 ping-pong stop and an implementer handing back, leave it off for the same reason.
 
 **Every `ai-blocked` must say why, and land in front of a human.** So reaping always
@@ -859,26 +631,19 @@ does three things together — label, assign, comment — and the comment opens 
 `🤖 *Automated — \`ai-issue-loop\` Pass 2 (stall reaping).*`
 
 then a blank line. State which stall rule fired, how long the label sat, and whether a
-worktree was removed. A bare `ai-blocked` with no explanation is worse than no label:
-it reads as a considered judgement when it was actually a timeout. Pass 5's `⚠` then
-puts it in the statusline and fires a notification with a sound.
+worktree was removed.
 
-**Reaping is not always the right call — say so when it isn't.** The rule assumes a
-dead agent, but a stale `ai-wip` can also come from a run that was cancelled
-deliberately, in which case the work is fine and only the claim is stale. If you know
-the cause and it is benign, **return it to the queue** — `gh issue edit <N> --add-label
-ai-ready --remove-label ai-wip`, no `ai-blocked` — so Pass 4 picks it straight back up,
-and say in the comment that you re-queued it, that you deviated, and why. Re-adding
-`ai-ready` is not optional: pickup cleared it, so clearing `ai-wip` alone drops the
-issue out of the queue silently, which is the worse failure. `ai-blocked` means *a
-human must look*; do not spend it on a claim you already understand.
+**Reaping is not always the right call — say so when it isn't.** A stale `ai-wip`
+can also come from a run cancelled deliberately. If you know the cause and it is
+benign, **return it to the queue** — `gh issue edit <N> --add-label ai-ready
+--remove-label ai-wip`, no `ai-blocked` — and say in the comment that you
+re-queued it, that you deviated, and why. Re-adding `ai-ready` is not optional:
+pickup cleared it, so clearing `ai-wip` alone drops the issue out of the queue
+silently.
 
-**Then decay the triage queue.** `ai-suggested` is the one queue nothing ever
-removes from — no pass picks it up, so it only grows, and a queue that only grows
-is a guilt list that makes Pass 5's digest unreadable. So it expires: any
-`ai-suggested` issue **untouched for 30 days** is closed here. "Untouched" is the
-issue's `updatedAt` — a comment, a label change, or a reopen all bump it, so
-anything a human has engaged with survives another 30 days for free.
+**Then decay the triage queue.** Any `ai-suggested` issue **untouched for 30
+days** is closed here. "Untouched" is the issue's `updatedAt` — a comment, a
+label change, or a reopen all bump it.
 
 ```bash
 gh issue list --label ai-suggested --state open --limit 100 --json number,updatedAt,labels \
@@ -887,11 +652,9 @@ gh issue list --label ai-suggested --state open --limit 100 --json number,update
 ```
 
 `fromdateiso8601`/`now` inside jq on purpose — `date -d '30 days ago'` is GNU-only
-and silently wrong on macOS's BSD `date`, which is exactly the class of bug that
-would expire the whole queue in one tick. The label filter is the other guard: an
-item a human promoted still carries `ai-suggested`, and closing a queued
-`ai-ready` issue because nobody commented on it is the one unrecoverable mistake
-this rule can make.
+and silently wrong on macOS. The label filter matters too: a promoted item still
+carries `ai-suggested`, and closing a queued `ai-ready` issue is the one
+unrecoverable mistake this rule can make.
 
 Close each with the reason attached, in one call:
 
@@ -900,87 +663,38 @@ gh issue close <N> --comment '🤖 *Automated — `ai-issue-loop` Pass 2.* Uncla
 ```
 
 Closing is cheap and reversible: the issue keeps its body and its label, so
-reviving one is a click. That is what makes an automatic close proportionate here
-where `ai-blocked` would not be — nothing is lost, only the queue is honest.
+reviving one is a click.
 
-**Then re-check `core.bare`** — the same probe as Pass 0, against the same `ROOT`:
+#### Last thing in the pass — `loop guard` again
 
-```bash
-if [ "$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != true ] && [ -d "$ROOT/.git" ]; then
-  echo "⚠ main checkout bare at $(date -u +%FT%TZ) — repairing"
-  env -u GIT_DIR -u GIT_WORK_TREE git -C "$ROOT" config core.bare false || {
-    echo "⚠ repair FAILED — main checkout still bare"; exit 1; }
-fi
-```
-
-The `env -u` prefix carries the same weight here as in Pass 0, and for the same
-reason — keep it on both lines.
-
-This is the last pass that *removes* worktrees, not the tick's last touch on the main
-checkout — Pass 4 still runs `git -C "$ROOT" worktree add` against it. That is exactly
-why the re-check belongs here: it catches a flip after this pass's removals and before
-Pass 4 branches every new worktree off a broken `ROOT`. Keep the timestamp in both log
-lines; which pass emitted one, and when, is the only instrumentation likely to pin the
-trigger down. Pass 0's halt rule applies unchanged: a failed repair ends the tick.
-
-#### Last thing in the pass — rebuild the main checkout's `node_modules`
-
-**Removing a worktree can destroy the main checkout's `node_modules/.bin`.** Its
-modules dir is a symlink into the main checkout, so a pnpm run from *inside* a
-worktree anchors the **main checkout's** `.bin` shims at the **worktree** path.
-`worktree remove --force` then deletes them, leaving `$ROOT/node_modules/.bin`
-with zero entries and the repo unbuildable:
-
-```
-Error: Cannot find module '/…/browser-common-worktrees/ai-145-…/node_modules/.pnpm/typescript@7.0.2/node_modules/typescript/bin/tsc'
-husky - pre-push script failed (code 1)
-```
-
-The give-away is the path: a binary in the main checkout resolving into a
-worktree that no longer exists. Nothing in the loop notices — no pass runs the
-toolchain — so it surfaces arbitrarily later, in the human's next `git push`, as
-a broken repo with no visible connection to the loop. Observed on
-`browser-common` #145 → PR #147, where the implementer had been explicitly warned
-in its prompt not to run a bare `pnpm install`. **It happened anyway**, and any
-pnpm invocation that touches the store is enough — so agent discipline is the
-wrong place for this guard. So is a dangling-link probe: `.bin` shims sit *below*
-`node_modules`, and a `-maxdepth 1` scan reports a clean tree while every binary
-is gone.
-
-So run it after the removals, **once per tick, as the last thing in this pass**,
-and only when nothing else is using the shared tree:
+Run it once more, after every removal above and before Pass 4 branches new
+worktrees off `ROOT`:
 
 ```bash
-LIVE=$(find "$WT_ROOT" "$ROOT/.claude/worktrees" -maxdepth 1 -name 'ai-*' -type d 2>/dev/null)
-if [ "$REMOVED" = 1 ] && [ -f "$ROOT/pnpm-lock.yaml" ]; then
-  if [ -z "$LIVE" ]; then
-    (cd "$ROOT" && pnpm install --frozen-lockfile --config.confirmModulesPurge=false)
-  else
-    echo "rebuild deferred — $(echo "$LIVE" | wc -l | tr -d ' ') worktree(s) still live"
-  fi
-fi
+GUARD=$(npx @rtorcato/repo-tooling loop guard --root "$ROOT" ${REMOVED:+--removed} --json) || exit 1
+printf '%s' "$GUARD" | jq -r '.messages[]'
+REBUILD=$(printf '%s' "$GUARD" | jq -r .rebuild)
 ```
 
-Three conditions, each load-bearing:
+It does two things:
 
-- **`$REMOVED`** — set by every removal path above, merged-PR cleanup *and* stall
-  reaping. A reaped worktree needs this most: its agent died mid-command, so it is
-  the likeliest to have left the main checkout anchored at a path about to vanish.
-- **`pnpm-lock.yaml`** — non-pnpm repos skip the whole thing.
-- **`$LIVE` empty** — the repair *purges* the shared modules dir, which would be
-  yanked out from under any agent still running in a surviving worktree. Deferring
-  costs a broken main checkout until the last worktree clears; not deferring costs
-  a live implementer run. Both flags are needed once it does run:
-  `--frozen-lockfile` forbids re-resolution, so neither `pnpm-lock.yaml` nor a
-  `pnpm-workspace.yaml` carve-out moves as a side effect of a cleanup, and
-  `--config.confirmModulesPurge=false` gets past
-  `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` — which is why a bare
-  `pnpm install` cannot repair this, and why a human hitting it needs this exact
-  command.
+- **Re-checks `core.bare`** — the flip has been seen right after a
+  `worktree remove`. Pass 0's halt rule applies unchanged: a non-zero exit ends
+  the tick.
+- **Rebuilds the main checkout's `node_modules` when `--removed`.** Removing a
+  worktree can empty `$ROOT/node_modules/.bin` (a pnpm run inside a worktree
+  anchors the main checkout's shims at the worktree path), surfacing later as
+  `Cannot find module '…-worktrees/ai-…'` in the human's `git push`. It runs
+  `pnpm install --frozen-lockfile --config.confirmModulesPurge=false` only when
+  `pnpm-lock.yaml` exists **and** no `ai-*` worktree is still live — the rebuild
+  purges the shared modules dir out from under any running agent — and defers
+  otherwise.
 
-**Report a deferral — never swallow it.** Carry it into Pass 5 as a `⚠rebuild`
-segment. A skipped repair that says nothing is the same silent breakage this
-section exists to end, just moved one step later.
+Set `REMOVED=1` on **every** removal path — merged-PR cleanup *and* stall reaping.
+
+**Report a deferral or failure — never swallow it.** `REBUILD` of `deferred` or
+`rebuild-failed` carries into Pass 5 as a `⚠rebuild` segment; neither changes the
+exit code.
 
 ### Pass 3 — review
 
@@ -999,10 +713,9 @@ only adds its own system prompt on top. Never skip a review because the named
 type is missing (#611).
 
 **Before spawning either, check whether it already posted.** A missing verdict
-label does not mean the review is missing: on #497 both reviewers posted
-complete reviews and then went idle, labelling nothing. Every review comment
-carries a hidden verdict marker, so read that back instead of re-spawning over a
-review that already exists — `<ARM>` is `code` or `sec`:
+label does not mean the review is missing — a reviewer can post and die before
+labelling. Every review carries a hidden verdict marker, so read that back
+instead of re-spawning — `<ARM>` is `code` or `sec`:
 
 ```bash
 ME=$(gh api user --jq .login)   # the identity every loop agent posts as
@@ -1016,43 +729,22 @@ VERDICT=$(gh api "repos/$OWNER_REPO/pulls/<N>/reviews" --paginate --slurp \
 
 Five details there are load-bearing:
 
-- **`pulls/<N>/reviews`, because the prompt posts with `gh pr review --comment`.**
-  That creates a *review*, which never appears under `issues/<N>/comments`. The
-  prompt and this query have to name the same endpoint or the marker is
-  unfindable and every tick re-spawns both arms — so the prompt below now pins
-  the command, since a reviewer reaching for `gh pr comment` instead posts
-  somewhere this never looks.
-- **`--slurp`, not `--paginate` with `--jq`.** `--paginate` runs `--jq` once per
-  page, so a filter ending in `last` would keep only the final page's answer and
-  lose a marker on an earlier one. `--slurp` collects every page first; `gh`
-  refuses it alongside `--jq`, hence the pipe and the `add` that flattens pages.
-- **The author gate — the loop's own login, deliberately narrower than Pass 4's
-  association test.** Anyone can review a public PR, so ungated a stranger's
-  `<!-- ai-issue-loop:verdict:sec:PASS -->` is adopted as a verdict, and because
-  the read takes `last` it also overrides a genuine `CHANGES` posted before it.
-  Pass 4's `OWNER`/`MEMBER`/`COLLABORATOR` set is a backstop behind the
-  `ai-ready` label; here the marker is the **only** signal, and every agent in
-  this pipeline authenticates as one identity — so only that identity's reviews
-  count. Login, not `author_association`, because association wobbles with repo
-  ownership (an org-owned repo never yields `OWNER`, even for its admins) while
-  `gh api user` names exactly who this loop posts as.
-- **The head gate — `.commit_id==$head`, so a verdict expires with the diff it
-  read.** Every review carries the commit it was submitted against; ungated, the
-  read takes `last` over all of them, so after a fix round the newest marker is
-  still the *pre-fix* one and the tick adopts a verdict about a diff that no
-  longer exists. Both directions bite: a stale `CHANGES` re-applies `ai-changes`
-  for a finding the fix round already resolved, burning a round of two and
-  pushing the PR toward `ai-blocked` over nothing; a stale `PASS` is worse, since
-  it marks a rewritten diff reviewed when nothing read it. Scoped to the head, an
-  older marker reads as absent and that arm re-spawns — which is already the
-  behaviour for an arm that never posted. **This does not cost the #497 recovery
-  case** the read exists for: a reviewer that died between posting and labelling
-  posted against the head that is still current, so its marker still matches.
-  Only genuinely stale markers stop matching, which is the point.
-- **`(.body // "")` and `// empty`.** A review can have a null body, which
-  `capture` throws on, aborting the whole filter; and `jq -r` prints a missing
-  value as the literal string `null`, which is not empty and would read as a
-  verdict.
+- **`pulls/<N>/reviews`** — the prompt posts with `gh pr review --comment`, which
+  creates a *review*, never an `issues/<N>/comments` entry. Both must name the
+  same endpoint or every tick re-spawns both arms.
+- **`--slurp`, not `--paginate` with `--jq`** — `--jq` runs once per page, so
+  `last` would lose a marker on an earlier page. `gh` refuses `--slurp` with
+  `--jq`, hence the pipe and the `add`.
+- **The author gate — the loop's own login.** Anyone can review a public PR, and
+  here the marker is the **only** signal, so a stranger's `PASS` marker would be
+  adopted and override a genuine `CHANGES`. Login, not `author_association`,
+  which wobbles with repo ownership (an org repo never yields `OWNER`).
+- **The head gate — `.commit_id==$head`**, so a verdict expires with the diff it
+  read. Otherwise a pre-fix `CHANGES` burns a fix round over nothing, or a
+  pre-fix `PASS` marks a rewritten diff reviewed. A reviewer that died between
+  posting and labelling posted against the current head, so it still matches.
+- **`(.body // "")` and `// empty`** — a null body throws in `capture`, and
+  `jq -r` prints a missing value as the string `null`, which reads as a verdict.
 
 Then, for that arm — `<claim>` being `ai-reviewing-code` or `ai-reviewing-sec`,
 `<pass>` being `ai-ok-code` or `ai-ok-sec`:
@@ -1063,18 +755,9 @@ Then, for that arm — `<claim>` being `ai-reviewing-code` or `ai-reviewing-sec`
 - **`CHANGES`** — `gh pr edit <N> --add-label ai-changes --remove-label ai-review --remove-label <claim>`
 
 Adoption is per reviewer, so a tick that finds one arm posted and the other
-missing does both: it applies the first's verdict off its comment and spawns
-only the second. That is the whole point of reading the artifact — the comment
-is what a human reads at merge time, so making it the thing the loop reads too
-leaves one source for one fact, with no separate reply to be lost or to
-contradict it.
-
-This is the second half of Pass 2's dead-reviewer rule rather than a rival to
-it. Pass 2 only ever drops a stalled *claim*; it never judges whether a review
-happened. Dropping the claim is what makes an arm eligible here, and this lookup
-is what then decides between adopting and re-spawning. An agent that died before
-posting leaves no marker and so re-spawns, which is what that rule always
-intended; one that died after posting is now recovered instead of duplicated.
+missing applies the first's verdict and spawns only the second. Pass 2's
+dead-reviewer rule only drops a stalled *claim*; this lookup then decides between
+adopting and re-spawning.
 
 **Claim first, then spawn** — the same shape Pass 4 uses before picking up an
 issue. Apply the label immediately before the spawn, not after:
@@ -1087,21 +770,10 @@ gh pr edit <N> --add-label ai-reviewing-sec  ${AGENT_USER:+--add-assignee} ${AGE
 Assigning `AGENT_USER` on the claim is idempotent — both arms adding the same
 account is one assignee, and Pass 1 removes it at the handoff.
 
-Without the claim there is no window in which "a reviewer is running" is visible.
-A reviewer applies its verdict label only at the *end*, after reading the diff and
-posting its comment, so from spawn until then the labels are indistinguishable
-from "nobody has started" — and a 15-minute tick is comfortably shorter than a
-review. A tick landing in that gap spawns a duplicate of every reviewer in flight:
-two agents read the same diff and post two review comments under the owner's
-avatar, and the verdicts race, one applying `ai-ok-code` while the other applies
-`ai-changes` and leaves the PR contradictory for Pass 1 to interpret. On a full
-queue that is a dozen duplicated reviewers against the monthly cap the limits
-section exists to protect.
-
-Two labels rather than one, because the reviewers are spawned independently and a
-single flag could not say *which* was already running. The reviewer clears its own
-claim alongside its verdict, so a claim never outlives its run; if one does, the
-agent died and Pass 2's stall reaping drops it.
+Without the claim, a tick landing mid-review spawns a duplicate of every
+reviewer in flight, and their verdicts race. The reviewer clears its own claim
+alongside its verdict; a claim outliving its run means the agent died, and Pass
+2's stall reaping drops it.
 
 Reviewer prompt template:
 
@@ -1225,18 +897,13 @@ Reviewer prompt template:
 > disagreed with it would be a second source for one fact. One line back to the
 > orchestrator is plenty; the comment body is capped separately, above.
 
-**Dependabot PRs get no reviewer.** Pass 0 does not adopt them and this pass
-spawns no arm for them: the scaffolded `dependabot-automerge.yml` decides which
-bumps merge, and it decides before a tick could run. See Pass 0 for why a
-reviewer racing that workflow never gated anything (#593).
+**Dependabot PRs get no reviewer** — `dependabot-automerge.yml` decides which
+bumps merge (#593).
 
 **A Dependabot PR labelled `ai-changes` is terminal — never spawn a fix round for
-it.** Nothing produces that state any more (#593), so this is a guard against a
-label an older tick left behind. There is no linked issue to mark `ai-blocked`
-and no worktree to enter, and an agent has no business rewriting a bot's
-lockfile. Pass 1 assigns it and counts it as `rev`; here it simply waits for a
-human. Everything below applies only to PRs this loop opened from an `ai-ready`
-issue.
+it.** There is no linked issue and no worktree, and an agent has no business
+rewriting a bot's lockfile. Pass 1 assigns it; here it simply waits for a human.
+Everything below applies only to PRs this loop opened from an `ai-ready` issue.
 
 **PRs labelled `ai-changes`, and not already `ai-fixing`** — that claim means an
 implementer is mid-round; skip the PR entirely. Count prior `ai-changes`
@@ -1270,12 +937,8 @@ and for the same reason. Apply the label immediately before the spawn, not after
 gh pr edit <N> --add-label ai-fixing ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn the implementer
 ```
 
-A fix round runs longer than a 15-minute tick — on #565, `ai-changes` at 17:35 and
-the push at 17:38 — and until that push the PR reads `ai-changes` with no claim,
-which is exactly this selector. A tick landing in the gap spawns a second
-implementer, and that is worse than a duplicated reviewer: the two share one
-worktree and one branch, so they race each other's commits and `git -C`
-operations rather than merely posting two comments.
+Without it, a tick landing before the push spawns a second implementer into the
+same worktree and branch, racing the first's commits.
 
 Then spawn one background implementer agent:
 
@@ -1321,25 +984,17 @@ gh api "repos/$OWNER_REPO/issues?labels=ai-ready&state=open" \
 Both filters matter. The `ai-ready` label is the hard gate (on a public repo only
 collaborators can apply labels); the author-association check is the backstop.
 
-`holding` marks a gate issue — one that closes on a human judgement call rather
-than on work landing, so there is nothing for an agent to implement. It is
-excluded here as belt-and-braces: such an issue should not carry `ai-ready` in
-the first place, but then mislabelling it costs nothing. Unlike `ai-blocked` (an
-agent tried and got stuck), `holding` says *no agent should ever start*, and it
-shows up in the issue list so a human triaging does not re-litigate it either.
+`holding` marks a gate issue — one that closes on human judgement, so *no agent
+should ever start* it. Excluded here as belt-and-braces.
 
-`ai-suggested` is deliberately *not* filtered. An agent's own suggestion carries
-only `ai-suggested`, so it never matches `labels=ai-ready` — the loop cannot feed
-itself work. Promoting one is a human adding `ai-ready`, and the item keeps
-`ai-suggested` (Pass 2 relies on that), so excluding the label here would strand
-every promoted issue in the queue forever (#608).
+`ai-suggested` is deliberately *not* filtered: a promoted suggestion keeps the
+label alongside the `ai-ready` a human added, and excluding it would strand every
+promoted issue forever (#608).
 
 **Declining an issue is a visible act — comment, never just skip.** Whenever an
 agent decides an issue should *not* go to the pipeline — triaging which issues to
 label `ai-ready`, or dropping one that is already labelled — say so on the issue
-itself. A silent skip is indistinguishable from an issue nobody looked at, so the
-same issue gets re-triaged from scratch every time, and the reasoning that took
-real work to reach is lost.
+itself, or it gets re-triaged from scratch every time.
 
 The comment opens with the standard `🤖 *Automated …*` header — see the top of this
 file. Then, in the body — **this is the one comment exempt from the ≤10-line
@@ -1347,10 +1002,7 @@ budget, and only this one.** Declining is a hard handoff whose whole value is th
 reasoning; do not reach for this shape on a PR handoff.
 
 **Lead with a `## To lift this hold` section, before anything else.** It must be
-readable in five seconds — the reasoning that follows is *why*; this is *what to
-do*. A decline that buries the action under three paragraphs leaves the reader
-knowing an agent declined but not what is now expected of them, which is the same
-dead end as not commenting at all. Make it executable without reading further:
+readable in five seconds and executable without reading further:
 
 - **Enumerate the options as a table**, one row each, with what an agent would do
   once that option is chosen. Two to four rows. Genuinely one path → one sentence.
@@ -1375,10 +1027,8 @@ The lead-with-the-action shape (not the length exemption) applies to every
 comment that hands a decision back — `ai-blocked` from a stall or a ping-pong
 stop included. What to do first; justification underneath.
 
-If the issue was already labelled, drop `ai-ready` in the same breath; leaving it
-means the next tick picks it straight back up. Do **not** use `ai-blocked` for
-this — that label means *an agent tried and got stuck*, and spending it on an
-issue no agent ever started makes the blocked queue meaningless.
+If the issue was already labelled, drop `ai-ready` in the same breath. Do **not**
+use `ai-blocked` for this — that label means *an agent tried and got stuck*.
 
 Check for an existing decline comment before posting, so a repeated triage pass
 does not stack duplicates:
@@ -1391,25 +1041,15 @@ gh issue view <N> --json comments \
        | length'
 ```
 
-Gated on the loop's own login for the same reason as the decision upsert above,
-inverted: anyone can comment on a public issue, so ungated a stranger who opens
-with that header *suppresses* the decline comment and the issue is left labelled
-with nothing on the timeline saying why. `.author.login` here, not `.user.login`
-— `gh issue view --json` is GraphQL and names the field differently from the REST
-payload the upsert reads.
+Gated on the loop's own login so a stranger's comment opening with that header
+cannot *suppress* the decline. `.author.login` here, not `.user.login` — `gh issue
+view --json` is GraphQL and names the field differently from REST.
 
 **Then drop any candidate that overlaps a file with one already picked this
-tick** — the same rule `ai-workflow` step 2 applies, and it matters more here
-because nobody is watching. Two agents branch off the same `origin/main`, both
-rewrite one file, and the second PR to merge hands a human two agent-authored
-diffs to reconcile hours later (#594).
-
-Read each candidate's body for the paths it names — that is what the `body` field
-in the query above is for — and skip one naming a path a higher-placed candidate
-already names. An issue body is not a file list, so this is a heuristic, not a
-proof; it costs nothing and catches the common case. Count generated files, too:
-on a repo where editing a skill regenerates `AGENTS.md`, two issues touching
-different modules still collide there.
+tick** (#594). Read each candidate's body for the paths it names and skip one
+naming a path a higher-placed candidate already names — a heuristic, not a proof.
+Count generated files, too: on a repo where editing a skill regenerates
+`AGENTS.md`, two issues touching different modules still collide there.
 
 A skipped candidate is **waiting its turn, not declined** — leave `ai-ready` on
 it, post no comment, and let the next tick take it. The decline shape above is
@@ -1423,16 +1063,10 @@ gh issue edit <N> --add-label ai-wip --remove-label ai-ready \
   ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
-Assigning here is what makes the issue list honest: from this moment an agent
-owns the work, and an unassigned `ai-ready` issue is genuinely untouched.
-
-Dropping `ai-ready` is half the claim, not tidiness — the diagram above is a
-transition, not an accumulation. An issue left carrying both re-enters the queue
-the instant `ai-wip` clears for any reason other than the PR closing it, and the
-next tick spawns an agent to re-implement work already sitting in an open PR
-(#458, #467, #461, #452, all in one session). Every path that legitimately returns
-an issue to the queue therefore re-adds `ai-ready` explicitly; Pass 2's benign-stall
-path is the only one, and a human does the rest.
+Dropping `ai-ready` is half the claim, not tidiness — an issue carrying both
+re-enters the queue the instant `ai-wip` clears, and the next tick re-implements
+work already in an open PR. Every path that returns an issue to the queue re-adds
+`ai-ready` explicitly; Pass 2's benign-stall path is the only one.
 
 **Then create the worktree yourself**, before spawning anything. `<slug>` is 3–4
 kebab-case words from the title:
@@ -1445,10 +1079,9 @@ git -C "$ROOT" worktree add "$WT_ROOT/$SLUG" -b "$SLUG" origin/main
 
 **Then give it dependencies — from the repo's own symlink list.** `fix ai` writes
 `worktree.symlinkDirectories` into `.claude/settings.json`: the root
-`node_modules`, plus one entry per workspace package that has one, globbed from
-the repo's *own* `pnpm-workspace.yaml` / `package.json` `workspaces` (#406). That
-list is the single source of truth for what a worktree needs linked. Read it and
-do the linking here:
+`node_modules`, plus one entry per workspace package that has one. That list is
+the single source of truth for what a worktree needs linked. Read it and do the
+linking here:
 
 ```bash
 DIRS=$(jq -r '.worktree.symlinkDirectories[]? // empty' "$ROOT/.claude/settings.json" 2>/dev/null)
@@ -1466,25 +1099,14 @@ done)
 [ -z "$MISSING" ] || echo "FATAL: $SLUG has no symlink for: $MISSING"
 ```
 
-**Iterate line by line — never `for d in $DIRS`.** Your shell may be zsh, which
-does not word-split an unquoted expansion: `$DIRS` arrives as *one* word with
-embedded newlines, `[ -d ]` fails against that nonsense path, and the loop links
-**nothing** (#585). Same class as the Pass 2 glob hazard above, and just as
-silent — the `pnpm install` fallback is gated on `$DIRS` being *empty*, which it
-is not, so the worktree gets neither links nor an install, and the implementer
-meets `Cannot find module` on its first test run, reading as the issue's fault
-rather than the harness's. That is what the `MISSING` assertion is for: if it
-prints, do **not** spawn an implementer — run `pnpm install` in the worktree, or
-return the issue to `ai-ready`, drop `ai-wip`, and move on.
+**Iterate line by line — never `for d in $DIRS`.** zsh does not word-split an
+unquoted expansion, so that loop silently links **nothing** (#585). If the
+`MISSING` assertion prints, do **not** spawn an implementer — run `pnpm install`
+in the worktree, or return the issue to `ai-ready`, drop `ai-wip`, and move on.
 
-**Read the setting, do not rely on it.** `worktree.symlinkDirectories` is a
-**Claude Code** setting, honoured by `EnterWorktree` — which this pipeline
-forbids outright (see below) and replaces with a raw `git worktree add`. So the
-setting is *inert for exactly the worktrees this loop creates*: `doctor` can
-report `Claude worktree settings: ok` while every agent worktree gets its
-dependencies by some other path, which is how #511/PR #526 ended up hand-installed.
-Taking the list as data and doing the `ln -s` here is what makes that check mean
-something for loop worktrees too, without either subsystem owning the other.
+`worktree.symlinkDirectories` is a Claude Code setting honoured only by
+`EnterWorktree`, which this pipeline forbids — so it is inert for loop worktrees
+unless read and linked here.
 
 **No list, or no `.claude/settings.json` → install for real instead:**
 
@@ -1492,42 +1114,20 @@ something for loop worktrees too, without either subsystem owning the other.
 [ -z "$DIRS" ] && (cd "$WT_ROOT/$SLUG" && pnpm install)
 ```
 
-That fallback is safe precisely because nothing was symlinked — the hazard below
-is `pnpm install` against a *symlinked* tree, not a real install in an isolated
-one. It costs a duplicate `node_modules` and about ten seconds, since pnpm
-hardlinks from the store. Run `npx @rtorcato/repo-tooling fix ai` in the repo to
-get the faster path back.
-
-Why the list has to come from that file rather than a hand-rolled glob: pnpm
-workspaces keep the resolution that matters in each
-`packages/<name>/node_modules`, and an earlier version of this pass linked the
-root and `apps/*` only — so it reproduced that gap on every repo that nests its
-packages anywhere else. Measured on `api-common` 2026-08-20: the main checkout
-had per-package `node_modules` in **37 of 37** packages, the worktree had **1**.
-So `pnpm --filter <pkg> typecheck` there fails with `Cannot find module` rather
-than the real error — the agent cannot reproduce the bug, and the environment
-looks like the issue's fault. Issue #201 was handed back `ai-blocked` this way,
-well-diagnosed and untouched. `workspaceSymlinkDirs` already globs the consuming
-repo's own layout, so deriving the list is both shorter here and correct on repos
-this file has never seen.
+That fallback is safe precisely because nothing was symlinked. Run
+`npx @rtorcato/repo-tooling fix ai` in the repo to get the faster path back.
 
 **Never force `pnpm install` against a symlinked tree.** It wants to purge and
 rebuild the modules dir (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`), which
-mutates the **main checkout's** `node_modules` — shared by every other worktree
-and yanked out from under any agent mid-typecheck. `CI=true` and
-`--config.confirmModulesPurge=false` both silence that prompt; neither makes it
-safe. Now that the default path symlinks, this rule is **load-bearing rather than
-advisory** — the implementer prompt below states it, and `browser-common` #145 →
-PR #147 is what an implementer doing it anyway costs: the main checkout's `.bin`
-emptied, surfacing arbitrarily later in a human's `git push`. Pass 2's rebuild is
-the one sanctioned exception, and only because it is gated on no worktree
-surviving.
+mutates the **main checkout's** `node_modules` — shared by every other worktree.
+`CI=true` and `--config.confirmModulesPurge=false` both silence that prompt;
+neither makes it safe. Pass 2's `loop guard --removed` rebuild is the one
+sanctioned exception, gated on no worktree surviving.
 
-**Once per repo, exclude the symlinks from git.** Repos ignore `node_modules/`
-*with a trailing slash*, which does not match a symlink — so every link shows as
-untracked in every worktree and a `git add -A` commits it. The pattern below has
-no slash, so it matches at any depth and covers the nested workspace links too.
-`.git/info/exclude` is shared by all worktrees and never committed:
+**Once per repo, exclude the symlinks from git.** `node_modules/` with a trailing
+slash does not match a symlink, so a `git add -A` would commit every link. The
+pattern below has no slash, so it matches at any depth. `.git/info/exclude` is
+shared by all worktrees and never committed:
 
 ```bash
 grep -qxF 'node_modules' "$ROOT/.git/info/exclude" || echo 'node_modules' >> "$ROOT/.git/info/exclude"
@@ -1535,23 +1135,15 @@ grep -qxF 'node_modules' "$ROOT/.git/info/exclude" || echo 'node_modules' >> "$R
 
 **No implementer ever calls `EnterWorktree` — in any form.** This is deliberate; do
 not add the step back. `EnterWorktree({path})` only accepts worktrees under
-`<repo>/.claude/worktrees/`, while Pass 0 deliberately puts them in a sibling
-directory — the two rules are incompatible, so the call can only ever be refused.
-`EnterWorktree({name})` does worse: it relocates *this* session as well — observed
-five-plus times in one tick, each producing *"this session is isolated in the worktree
+`<repo>/.claude/worktrees/`, which Pass 0 forbids, and `EnterWorktree({name})`
+relocates *this* session too, producing *"this session is isolated in the worktree
 …"* refusals on unrelated orchestrator commands. Implementers work via
-`git -C <absolute worktree path>` instead, which is what the prompt below says.
-Creating the worktree here also fixes the `worktree-` branch-prefix drift, and it is
-why the symlinks above are created explicitly *from* `worktree.symlinkDirectories`
-rather than by `EnterWorktree` honouring it.
+`git -C <absolute worktree path>` instead.
 
-**Spawn implementers one at a time — never two in the same message.** The worktree pin
-is a property of the session, not of an agent, so concurrent spawns cross-pin: the
-first to pin wins and its siblings inherit that tree. The failure is nasty rather than
-loud — a mispinned agent can Read and Edit its *assigned* worktree perfectly well, but
-every `git -C` aimed there is refused, so it does the whole implementation and only
-then discovers it cannot commit, push, or open a PR. Reviewers are unaffected — they
-never enter a worktree — and can still be launched concurrently.
+**Spawn implementers one at a time — never two in the same message.** The worktree
+pin is a property of the session, so concurrent spawns cross-pin, and a mispinned
+agent only discovers it cannot commit after doing the whole implementation.
+Reviewers never enter a worktree and can still be launched concurrently.
 
 Then spawn a background implementer agent:
 
@@ -1613,10 +1205,9 @@ Then spawn a background implementer agent:
 > only assignee, or the list still reads as though something is working on it.
 >
 > Then comment why. **Leave your worktree in place — never run
-> `git worktree remove`.** Pass 2 of the next tick reaps it (the issue is no
-> longer `ai-wip` and has no open PR, so it matches the orphan rule) and rebuilds
-> the main checkout's `node_modules` in the same pass, which a bare removal here
-> would silently break. The comment **must** open with this exact line, then a
+> `git worktree remove`.** Pass 2 of the next tick reaps it and rebuilds the main
+> checkout's `node_modules` in the same pass, which a bare removal here would
+> silently break. The comment **must** open with this exact line, then a
 > blank line — you authenticate as the owner, so without it the issue reads as if
 > they wrote it themselves:
 >
