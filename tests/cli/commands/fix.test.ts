@@ -937,6 +937,15 @@ describe('fix targeted', () => {
 		expect(await fs.readFile(join(dir, '.husky', 'pre-push'), 'utf-8')).toBe(prePush)
 	})
 
+	it('fix husky --yes makes an existing hook executable even when it already runs the command', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { prepare: 'husky' } })
+		const hook = join(dir, '.husky', 'pre-commit')
+		await fs.outputFile(hook, 'npx lint-staged\n', { mode: 0o644 })
+		await fixCommand('husky', { directory: dir, yes: true })
+		expect((await fs.stat(hook)).mode & 0o777).toBe(0o755)
+	})
+
 	it('fix typedoc --yes leaves an existing docs.yml workflow alone', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
