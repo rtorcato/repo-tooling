@@ -657,8 +657,10 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		if (!silent) {
 			console.log(`  ${chalk.bold(result.check)} (${result.status}) → ${fixer.target}`)
 		}
-		// Opt-in only — `--yes` must not sweep in a fixer that writes outside the repo.
-		if (fixer.explicitOnly) {
+		// Opt-in only — `--yes` must not sweep in a fixer that writes outside the repo,
+		// nor an optional tool: optional alternatives (Biome/ESLint/Prettier/Oxlint,
+		// semantic-release/Changesets/Release Please) are mutually exclusive (#630).
+		if (fixer.explicitOnly || result.status === 'optional-missing') {
 			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', []))
 			if (!silent) {
 				console.log(chalk.gray(`    skipped — run \`fix ${fixer.target}\` explicitly`))
