@@ -81,6 +81,28 @@ const REVIEW_CLAIMS: Record<string, string> = {
 	'ai-reviewing-sec': 'ai-ok-sec',
 }
 
+/** Every application of `label` on issue/PR `n`, oldest first — or why it could not be read. */
+export async function labelApplications(
+	gh: GhExec,
+	n: number,
+	label: string
+): Promise<number[] | string> {
+	const r = await gh([
+		'api',
+		`repos/{owner}/{repo}/issues/${n}/timeline`,
+		'--paginate',
+		'--jq',
+		'.[] | select(.event=="labeled") | [.label.name, .created_at] | @tsv',
+	])
+	if (!r.ok) return `timeline for #${n} failed: ${r.stderr.trim()}`
+	return r.stdout
+		.split('\n')
+		.map((line) => line.split('\t'))
+		.filter(([name]) => name === label)
+		.map(([, at]) => Date.parse(at as string))
+		.sort((a, b) => a - b)
+}
+
 export async function runLoopReap(options: LoopReapOptions = {}): Promise<LoopReapResult> {
 	const root = path.resolve(options.root ?? process.cwd())
 	const worktreeRoot = options.worktreeRoot
@@ -100,25 +122,13 @@ export async function runLoopReap(options: LoopReapOptions = {}): Promise<LoopRe
 		return JSON.parse(r.stdout || '[]') as T[]
 	}
 
-	/** Every application of `label` on issue/PR `n`, oldest first. */
 	const applications = async (n: number, label: string): Promise<number[] | null> => {
-		const r = await gh([
-			'api',
-			`repos/{owner}/{repo}/issues/${n}/timeline`,
-			'--paginate',
-			'--jq',
-			'.[] | select(.event=="labeled") | [.label.name, .created_at] | @tsv',
-		])
-		if (!r.ok) {
-			errors.push(`timeline for #${n} failed: ${r.stderr.trim()}`)
+		const times = await labelApplications(gh, n, label)
+		if (typeof times === 'string') {
+			errors.push(times)
 			return null
 		}
-		return r.stdout
-			.split('\n')
-			.map((line) => line.split('\t'))
-			.filter(([name]) => name === label)
-			.map(([, at]) => Date.parse(at as string))
-			.sort((a, b) => a - b)
+		return times
 	}
 
 	/** Age and count of `label` on `n`, or null when it is not stale yet (or unknown). */
