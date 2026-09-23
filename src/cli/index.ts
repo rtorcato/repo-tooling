@@ -6,6 +6,7 @@ import { Command } from 'commander'
 import fs from 'fs-extra'
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand } from './commands/fix.js'
+import { loopEnvCommand } from './commands/loop-env.js'
 import { loopGuardCommand } from './commands/loop-guard.js'
 import { setupProject } from './commands/setup.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
@@ -421,6 +422,22 @@ loop
 			'  2  root is not a repairable main checkout (bare clone, linked worktree, or not a repo) — halt the tick\n'
 	)
 	.action(loopGuardCommand)
+
+loop
+	.command('env')
+	.description('🧭 Resolve ROOT, WT_ROOT, OWNER_REPO, AGENT_USER, HUMAN_USER and ME once')
+	.option(
+		'-d, --dir <path>',
+		'Directory to resolve from — main checkout or any worktree',
+		process.cwd()
+	)
+	.option('--json', 'Emit machine-readable JSON output')
+	.addHelpText(
+		'after',
+		"\nWithout --json, prints KEY='value' lines for eval. Empty means none.\n" +
+			'Exits 1 when the checkout or its GitHub repo cannot be resolved.\n'
+	)
+	.action(loopEnvCommand)
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()
