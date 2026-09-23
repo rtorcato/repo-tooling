@@ -1303,7 +1303,6 @@ gh api "repos/$OWNER_REPO/issues?labels=ai-ready&state=open" \
             | select([.labels[].name] | index("ai-wip") == null)
             | select([.labels[].name] | index("ai-blocked") == null)
             | select([.labels[].name] | index("holding") == null)
-            | select([.labels[].name] | index("ai-suggested") == null)
             | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
             | {number, title, body}'
 ```
@@ -1318,9 +1317,11 @@ the first place, but then mislabelling it costs nothing. Unlike `ai-blocked` (an
 agent tried and got stuck), `holding` says *no agent should ever start*, and it
 shows up in the issue list so a human triaging does not re-litigate it either.
 
-`ai-suggested` is excluded for a harder reason: it is an agent's own suggestion,
-so picking one up would let the loop feed itself work — promoting one is a human
-act, which is what makes that label a triage queue rather than a backlog.
+`ai-suggested` is deliberately *not* filtered. An agent's own suggestion carries
+only `ai-suggested`, so it never matches `labels=ai-ready` — the loop cannot feed
+itself work. Promoting one is a human adding `ai-ready`, and the item keeps
+`ai-suggested` (Pass 2 relies on that), so excluding the label here would strand
+every promoted issue in the queue forever (#608).
 
 **Declining an issue is a visible act — comment, never just skip.** Whenever an
 agent decides an issue should *not* go to the pipeline — triaging which issues to

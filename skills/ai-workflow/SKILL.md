@@ -79,7 +79,6 @@ gh api "repos/$R/issues?labels=ai-ready&state=open" \
             | select([.labels[].name] | index("ai-wip") == null)
             | select([.labels[].name] | index("ai-blocked") == null)
             | select([.labels[].name] | index("holding") == null)
-            | select([.labels[].name] | index("ai-suggested") == null)
             | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
             | {number, title, body}'
 ```
