@@ -8,7 +8,12 @@ import {
 	skillDiffCommand,
 	type SkillStatus,
 } from '../cli/generators/claude-skills.js'
-import { DEPENDABOT_CONFIG_PATHS, dependabotIgnoreRules } from '../cli/generators/security.js'
+import {
+	DEPENDABOT_CONFIG_PATHS,
+	dependabotConfigDeltas,
+	dependabotEcosystemFor,
+	dependabotIgnoreRules,
+} from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
 import type { CheckResult } from './types.js'
@@ -295,12 +300,7 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 			// depends on it. Flag any config that predates it so `fix dependabot` can
 			// bring the pair up to standard.
 			const content = await fs.readFile(candidatePath, 'utf8')
-			const deltas: string[] = []
-			for (const group of ['production-minor', 'dev-minor', 'major-updates']) {
-				if (!new RegExp(`^\\s*${group}:`, 'm').test(content)) {
-					deltas.push(`missing \`${group}\` group`)
-				}
-			}
+			const deltas = dependabotConfigDeltas(content, await dependabotEcosystemFor(dir))
 			const automergePath = path.join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
 			if (await fs.pathExists(automergePath)) {
 				// Pre-#423 workflows gated on the semver type alone, so production
