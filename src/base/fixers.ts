@@ -40,7 +40,7 @@ import {
 } from '../cli/generators/security.js'
 import { classifyCopiedAssets } from '../cli/utils/copied-assets.js'
 import { copyPreset } from '../cli/utils/copy-preset.js'
-import { detectLanguage } from '../cli/utils/detect-language.js'
+import { detectAuditLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
 import { resolveLanguageModule } from '../languages/registry.js'
 import {
@@ -120,9 +120,18 @@ export class FixerAbort extends Error {
 	}
 }
 
-/** The repo's language module, resolved from its marker files. */
+/**
+ * The repo's language module, resolved from its marker files. No marker → no
+ * manifest ecosystem and no CodeQL matrix, rather than npm/JS guessed (#632).
+ */
 async function moduleFor(targetDir: string) {
-	return resolveLanguageModule(await detectLanguage(targetDir))
+	return (
+		resolveLanguageModule(await detectAuditLanguage(targetDir)) ?? {
+			label: 'unrecognized-language',
+			codeqlLanguages: [],
+			dependabotEcosystem: null,
+		}
+	)
 }
 
 /**

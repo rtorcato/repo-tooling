@@ -11,7 +11,7 @@ import { readPyproject, renderPythonWorkflow } from '../../languages/python/ci.j
 import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
-import { type DetectedLanguage, detectLanguage } from '../utils/detect-language.js'
+import { type DetectedLanguage, detectAuditLanguage } from '../utils/detect-language.js'
 import { checkAgentUser } from '../../base/agent-user.js'
 import { checkGitHubSettings } from '../../base/github-settings.js'
 import { checkLoopLabels } from '../../base/labels.js'
@@ -354,20 +354,21 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 
 	// Per-module dispatch (#285): the base checks (repo hygiene, CI, security,
 	// GitHub settings) apply to any repo and run for every language. A supported
-	// module layers its own checks on top. 'unknown' (bare dir mid-setup)
-	// resolves to JS so a fresh repo runs the full suite.
-	const language = await detectLanguage(targetDir)
+	// module layers its own checks on top. 'unknown' (no marker) gets the base
+	// suite only — JS checks against a C++ or Go repo are all noise (#632).
+	const language = await detectAuditLanguage(targetDir)
 	const languageModule = resolveLanguageModule(language)
-	// Every language in the registry has a module as of #289, so nothing reaches
-	// this today. It stays as the on-ramp: a language is added to the registry
-	// with `supported: false` first, and until its module lands its repos get the
+	// Also the on-ramp for a new language: it is added to the registry with
+	// `supported: false` first, and until its module lands its repos get the
 	// full base suite rather than the wholesale skip this replaced.
-	if (!languageModule.supported) {
+	if (!languageModule?.supported) {
 		const results: CheckResult[] = [
 			{
 				check: 'language',
 				status: 'ok',
-				detail: `detected ${languageModule.label} — running language-agnostic checks; ${languageModule.label}-specific checks land with its module (#139)`,
+				detail: languageModule
+					? `detected ${languageModule.label} — running language-agnostic checks; ${languageModule.label}-specific checks land with its module (#139)`
+					: 'no language marker (package.json, Package.swift, pyproject.toml, cpanfile, …) — running language-agnostic checks only',
 			},
 			// hooks: null — guessing a hook convention would nag every repo with a
 			// fix target that doesn't exist.
@@ -376,7 +377,7 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: null,
 				language,
-				codeqlLanguages: languageModule.codeqlLanguages,
+				codeqlLanguages: languageModule?.codeqlLanguages ?? [],
 				skillsDir,
 			})),
 		]
@@ -665,7 +666,7 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 		console.log(
 			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}, ${chalk.blue(`${summary.declared} declared`)}\n`
 		)
-		const suggestions = nextStepSuggestions(results, await detectLanguage(dir))
+		const suggestions = nextStepSuggestions(results, await detectAuditLanguage(dir))
 		if (suggestions.length > 0) {
 			console.log(chalk.bold('  Next steps:'))
 			for (const s of suggestions) {

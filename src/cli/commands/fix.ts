@@ -27,10 +27,11 @@ import { FIXERS, readPackageJson } from '../../languages/js/fixers.js'
 import { PERL_FIXERS } from '../../languages/perl/fixers.js'
 import { PYTHON_FIXERS } from '../../languages/python/fixers.js'
 import { SWIFT_FIXERS } from '../../languages/swift/fixers.js'
-import { detectLanguage } from '../utils/detect-language.js'
+import { detectAuditLanguage } from '../utils/detect-language.js'
 
 /** The module-specific fixer set per detected language (#286, #289, #290, #303). */
 const LANGUAGE_FIXERS: Record<string, Fixer[]> = {
+	js: FIXERS,
 	swift: SWIFT_FIXERS,
 	python: PYTHON_FIXERS,
 	perl: PERL_FIXERS,
@@ -38,11 +39,11 @@ const LANGUAGE_FIXERS: Record<string, Fixer[]> = {
 
 /**
  * The fixers that apply to a repo, by detected language: the language-agnostic
- * base set plus the module's own. Anything without a module of its own
- * (including a bare dir mid-setup) gets JS, the historical default.
+ * base set plus the module's own. A repo with no marker gets the base set only —
+ * the JS fixers would run against a missing package.json (#632).
  */
 function fixersForLanguage(language: string): Fixer[] {
-	return [...BASE_FIXERS, ...(LANGUAGE_FIXERS[language] ?? FIXERS)]
+	return [...BASE_FIXERS, ...(LANGUAGE_FIXERS[language] ?? [])]
 }
 
 /** Every fixer across every language — for `--list` and the unknown-target hint. */
@@ -493,7 +494,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 
 	const pkg = await readPackageJson(targetDir)
 	const lock = await readLockfile(targetDir)
-	const fixers = fixersForLanguage(await detectLanguage(targetDir))
+	const fixers = fixersForLanguage(await detectAuditLanguage(targetDir))
 	// Same --skills-dir the claude-skills fixer writes to, so the diagnosis fix
 	// acts on and the install it performs agree on one directory (#485).
 	const results = await runDoctor(targetDir, options.skillsDir)

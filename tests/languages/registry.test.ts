@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { LANGUAGES, resolveLanguageModule } from '../../src/languages/registry.js'
 
 describe('resolveLanguageModule', () => {
-	it('maps unknown (bare dir mid-setup) to the JS module', () => {
-		expect(resolveLanguageModule('unknown')).toBe(LANGUAGES.js)
+	it('maps unknown (no marker) to no module — base checks only (#632)', () => {
+		expect(resolveLanguageModule('unknown')).toBeNull()
 	})
 
 	it.each(['js', 'swift', 'python', 'perl'] as const)('resolves %s to its own module', (id) => {
-		expect(resolveLanguageModule(id).id).toBe(id)
+		expect(resolveLanguageModule(id)?.id).toBe(id)
 	})
 
 	it('every registered language now carries a module', () => {

@@ -76,6 +76,23 @@ describe('doctor base suite', () => {
 		}
 	})
 
+	it('runs only the base suite for a repo with no language marker (#632)', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'main.cpp'), 'int main() {}\n')
+		const results = await runDoctor(dir)
+		const checks = results.map((r) => r.check)
+
+		// Hooks are skipped: no language means no hook convention to check against.
+		for (const check of BASE_CHECKS.filter((c) => !/hook/.test(c))) {
+			expect(checks, check).toContain(check)
+		}
+		for (const jsCheck of ['package.json', 'TypeScript', 'verify script', 'semantic-release']) {
+			expect(checks, jsCheck).not.toContain(jsCheck)
+		}
+		expect(results.find((r) => r.check === 'language')?.detail).toMatch(/no language marker/)
+		expect(results.find((r) => r.check === 'CodeQL')?.status).toBe('ok')
+	})
+
 	it('emits each base check exactly once', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

@@ -37,6 +37,20 @@ export async function detectLanguage(dir: string): Promise<DetectedLanguage> {
 	return 'unknown'
 }
 
+/**
+ * The language doctor/fix audit a repo as. Like `detectLanguage`, except a fresh
+ * dir — nothing but dotfiles (`.git`, the lockfile) — is audited as JS, the
+ * default `setup` scaffolds, so its full suite shows what is still to come. A
+ * dir with real content and no marker (C++, Go, a README) stays 'unknown' and
+ * gets the base checks only (#632).
+ */
+export async function detectAuditLanguage(dir: string): Promise<DetectedLanguage> {
+	const language = await detectLanguage(dir)
+	if (language !== 'unknown') return language
+	const entries = await fs.readdir(dir).catch(() => [])
+	return entries.every((entry) => entry.startsWith('.')) ? 'js' : 'unknown'
+}
+
 /** Never worth descending into, and expensive when we do. */
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'target', 'vendor', '.build'])
 
