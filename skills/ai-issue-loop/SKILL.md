@@ -258,8 +258,12 @@ reviewable, and carried forward by `fix lockfile`:
 { "rules": { "aiLoop": { "agentUser": "your-bot-account" } } }
 ```
 
-Every later use is `${AGENT_USER:+--add-assignee "$AGENT_USER"}`, which expands
-to nothing when it is empty — so there is one code path, not two.
+Every later use is `${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}`, which expands
+to nothing when it is empty — so there is one code path, not two. **Keep the flag
+and the value in separate expansions.** The one-expansion form
+`${AGENT_USER:+--add-assignee "$AGENT_USER"}` (#624) word-splits in bash but not
+in zsh, where `gh` receives `--add-assignee bot` as a single argument and
+rejects it.
 
 **Resolve `HUMAN_USER` too — the person work is handed back to.** Needs no
 config: on a personal repo the owner *is* the person. On an organisation repo
@@ -270,7 +274,7 @@ every handoff below assigns nobody rather than something meaningless.
 HUMAN_USER=$(gh api "repos/$OWNER_REPO" --jq 'if .owner.type == "User" then .owner.login else "" end')
 ```
 
-Later uses are `${HUMAN_USER:+--add-assignee "$HUMAN_USER"}`, the same shape as
+Later uses are `${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"}`, the same shape as
 `AGENT_USER`. **A `gh … edit` whose every expansion is empty has no flags and
 errors — skip the call entirely in that case** rather than letting it fail the
 tick.
@@ -554,9 +558,9 @@ makes `merge-ready` assert more than the `ai-ok-*` pair ever did: reviews passed
 *and* GitHub will accept the merge.
 
 ```bash
-gh pr edit <N> ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} --add-label merge-ready \
+gh pr edit <N> ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} --add-label merge-ready \
   --remove-label ai-review --remove-label ai-ok-code --remove-label ai-ok-sec \
-  ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
 **`merge-ready` replaces the pass pair — it does not join it.** A handed-off PR
@@ -652,8 +656,8 @@ keep and self-retiring once the last one is handled:
 # Both empty (org repo, no agentUser) would leave `gh pr edit <N>` with no flags,
 # which errors — so guard the call rather than trusting the reader to skip it.
 if [ -n "$HUMAN_USER" ] || [ -n "$AGENT_USER" ]; then
-  gh pr edit <N> ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} \
-    ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  gh pr edit <N> ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} \
+    ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 fi
 ```
 
@@ -798,7 +802,7 @@ Only then:
 REMOVED=1                                          # every removal in this pass sets this
 git -C "$ROOT" worktree remove --force "$WT_DIR"   # the path found above, not a rebuilt one
 git -C "$ROOT" branch -D "$BRANCH" 2>/dev/null
-gh issue edit <N> --remove-label ai-wip ${AGENT_USER:+--remove-assignee "$AGENT_USER"} 2>/dev/null
+gh issue edit <N> --remove-label ai-wip ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"} 2>/dev/null
 # Still OPEN means the PR said only `Refs #N`; a `Closes #N` issue is already closed.
 if [ -n "$HUMAN_USER" ] && [ "$(gh issue view <N> --json state -q .state)" = OPEN ]; then
   gh issue edit <N> --add-assignee "$HUMAN_USER"
@@ -832,7 +836,7 @@ work must never be reaped out from under itself.
 
 | Stalled | Condition | Do |
 |---|---|---|
-| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} ${AGENT_USER:+--remove-assignee "$AGENT_USER"}`, comment, remove the worktree (and set `REMOVED=1`) |
+| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}`, comment, remove the worktree (and set `REMOVED=1`) |
 | Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label <the claim that stalled>` — drop **that** label, not a fixed one; a stalled `ai-reviewing-sec` cleared as `ai-reviewing-code` leaves the dead claim in place and the reviewer never re-spawns. Dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
 | Fix implementer died | PR `ai-fixing` ≥45min and still `ai-changes` — it never got as far as relabelling to `ai-review` | `gh pr edit <N> --remove-label ai-fixing`, which is what lets Pass 3 dispatch the round again. If `ai-fixing` has been applied ≥3 times, `ai-blocked` on the linked issue instead — a round that dies every time is not one more spawn away from working. Leave the worktree: it holds whatever the dead implementer committed |
 | Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch (and set `REMOVED=1`) |
@@ -1065,8 +1069,8 @@ intended; one that died after posting is now recovered instead of duplicated.
 issue. Apply the label immediately before the spawn, not after:
 
 ```bash
-gh pr edit <N> --add-label ai-reviewing-code ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn code-reviewer
-gh pr edit <N> --add-label ai-reviewing-sec  ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn security-expert
+gh pr edit <N> --add-label ai-reviewing-code ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn code-reviewer
+gh pr edit <N> --add-label ai-reviewing-sec  ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn security-expert
 ```
 
 Assigning `AGENT_USER` on the claim is idempotent — both arms adding the same
@@ -1240,9 +1244,9 @@ then:
 
 ```bash
 gh issue edit <M> --add-label ai-blocked --remove-label ai-wip \
-  ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 gh pr edit <N> --remove-label ai-review \
-  ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
 Leave the worktree and PR in place for the human; a ping-pong stall is the case where
@@ -1252,7 +1256,7 @@ Otherwise **claim first, then spawn** — same shape as the reviewer claims abov
 and for the same reason. Apply the label immediately before the spawn, not after:
 
 ```bash
-gh pr edit <N> --add-label ai-fixing ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn the implementer
+gh pr edit <N> --add-label ai-fixing ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn the implementer
 ```
 
 A fix round runs longer than a 15-minute tick — on #565, `ai-changes` at 17:35 and
@@ -1404,7 +1408,7 @@ concurrent tick can't double-pick:
 
 ```bash
 gh issue edit <N> --add-label ai-wip --remove-label ai-ready \
-  ${AGENT_USER:+--add-assignee "$AGENT_USER"}
+  ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
 Assigning here is what makes the issue list honest: from this moment an agent

@@ -36,6 +36,21 @@ describe('ai loop skills never assign @me (#606)', () => {
 	})
 
 	/**
+	 * zsh does not word-split `${VAR:+--flag "$VAR"}`, so gh receives
+	 * `--flag value` as one argument and exits `unknown flag` (#624). The flag
+	 * and the value must be separate expansions.
+	 */
+	it.each(skills)('%s never packs a flag and its value into one ${VAR:+…}', (path) => {
+		const offenders = fs
+			.readFileSync(path, 'utf8')
+			.split('\n')
+			.filter((line) => /\$\{[A-Z_]+:\+--[a-z-]+\s[^}]+\}/.test(line))
+			// Lines that quote the broken form as a warning are prose, not commands.
+			.filter((line) => !line.includes('#624'))
+		expect(offenders).toEqual([])
+	})
+
+	/**
 	 * The `${VAR:+…}` guard keeps an *empty* name out of the flag, but says
 	 * nothing about the command as a whole: a `gh … edit <N>` whose only flags
 	 * are conditional collapses to zero flags when every one of them is empty,
