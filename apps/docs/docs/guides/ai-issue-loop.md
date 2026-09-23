@@ -93,6 +93,15 @@ GH_CONFIG_DIR=~/.config/gh-bot gh pr review 42 --approve           # runs as the
 Complete the device flow in a private window logged in as the bot — your default
 browser will authorise *you* instead, leaving two profiles holding one identity.
 
+When `.repo-tooling.json` declares `rules.aiLoop.agentUser`, `loop guard` halts any
+tick not running as that account. `npx @rtorcato/repo-tooling fix ai-loop-identity`
+wires a checkout to it: it checks that `~/.config/gh-<agentUser>` (or
+`--gh-config-dir <path>`) is signed in as the agent, then merges
+`"env": {"GH_CONFIG_DIR": "<dir>"}` into the gitignored
+`.claude/settings.local.json`. Relaunch Claude afterwards. **Every** session in
+that checkout then runs as the agent, hands-on ones included — so use it on a
+checkout dedicated to the loop. It is opt-in: a bare `fix --yes` never runs it.
+
 Be clear about what this buys, because it is easy to overstate:
 
 - **Attribution** — agent reviews are visibly not you in every timeline, which no
