@@ -147,7 +147,7 @@ this block matches it, so the two cannot diverge.
 Also once per repo, keep the status file out of git:
 
 ```bash
-grep -qxF '.claude/ai-loop-status' .gitignore || echo '.claude/ai-loop-status' >> .gitignore
+grep -qxF '.claude/ai-loop-status' "$ROOT/.gitignore" || echo '.claude/ai-loop-status' >> "$ROOT/.gitignore"
 ```
 
 ```
@@ -258,8 +258,12 @@ reviewable, and carried forward by `fix lockfile`:
 { "rules": { "aiLoop": { "agentUser": "your-bot-account" } } }
 ```
 
-Every later use is `${AGENT_USER:+--add-assignee "$AGENT_USER"}`, which expands
-to nothing when it is empty — so there is one code path, not two.
+Every later use is `${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}`, which expands
+to nothing when it is empty — so there is one code path, not two. **Keep the flag
+and the value in separate expansions.** The one-expansion form
+`${AGENT_USER:+--add-assignee "$AGENT_USER"}` (#624) word-splits in bash but not
+in zsh, where `gh` receives `--add-assignee bot` as a single argument and
+rejects it.
 
 **Resolve `HUMAN_USER` too — the person work is handed back to.** Needs no
 config: on a personal repo the owner *is* the person. On an organisation repo
@@ -270,7 +274,7 @@ every handoff below assigns nobody rather than something meaningless.
 HUMAN_USER=$(gh api "repos/$OWNER_REPO" --jq 'if .owner.type == "User" then .owner.login else "" end')
 ```
 
-Later uses are `${HUMAN_USER:+--add-assignee "$HUMAN_USER"}`, the same shape as
+Later uses are `${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"}`, the same shape as
 `AGENT_USER`. **A `gh … edit` whose every expansion is empty has no flags and
 errors — skip the call entirely in that case** rather than letting it fail the
 tick.
@@ -490,7 +494,11 @@ Three things the gate does **not** change:
 - **`ai-notes` still blocks an unattended merge.** A reviewer who passed but left
   something to read means a human reads it.
 - **Order is still load-bearing.** If `autoMergeRequest != null` the merge can beat
-  the review, so Pass 0's disarm step applies unchanged.
+  the review. Nowhere but this arm does the loop let an issue PR auto-merge, and
+  only after both verdicts, so one found already armed without both `ai-ok-*`
+  labels was armed by someone else — run `gh pr merge <N> --disable-auto` before anything
+  else touches it. (#605 removed the Pass 0 disarm step this line used to point
+  at, along with the Dependabot arm it served.)
 
 Be plain about the residual risk: even gated, this lands code on `main` unattended,
 and the only quality signal is two reviewers that — per the limits above — see the
@@ -554,9 +562,9 @@ makes `merge-ready` assert more than the `ai-ok-*` pair ever did: reviews passed
 *and* GitHub will accept the merge.
 
 ```bash
-gh pr edit <N> ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} --add-label merge-ready \
+gh pr edit <N> ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} --add-label merge-ready \
   --remove-label ai-review --remove-label ai-ok-code --remove-label ai-ok-sec \
-  ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
 **`merge-ready` replaces the pass pair — it does not join it.** A handed-off PR
@@ -652,8 +660,8 @@ keep and self-retiring once the last one is handled:
 # Both empty (org repo, no agentUser) would leave `gh pr edit <N>` with no flags,
 # which errors — so guard the call rather than trusting the reader to skip it.
 if [ -n "$HUMAN_USER" ] || [ -n "$AGENT_USER" ]; then
-  gh pr edit <N> ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} \
-    ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  gh pr edit <N> ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} \
+    ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 fi
 ```
 
@@ -798,7 +806,7 @@ Only then:
 REMOVED=1                                          # every removal in this pass sets this
 git -C "$ROOT" worktree remove --force "$WT_DIR"   # the path found above, not a rebuilt one
 git -C "$ROOT" branch -D "$BRANCH" 2>/dev/null
-gh issue edit <N> --remove-label ai-wip ${AGENT_USER:+--remove-assignee "$AGENT_USER"} 2>/dev/null
+gh issue edit <N> --remove-label ai-wip ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"} 2>/dev/null
 # Still OPEN means the PR said only `Refs #N`; a `Closes #N` issue is already closed.
 if [ -n "$HUMAN_USER" ] && [ "$(gh issue view <N> --json state -q .state)" = OPEN ]; then
   gh issue edit <N> --add-assignee "$HUMAN_USER"
@@ -832,7 +840,7 @@ work must never be reaped out from under itself.
 
 | Stalled | Condition | Do |
 |---|---|---|
-| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} ${AGENT_USER:+--remove-assignee "$AGENT_USER"}`, comment, remove the worktree (and set `REMOVED=1`) |
+| Implementer died | issue `ai-wip` ≥45min, **and no PR exists** for `ai-<N>-<slug>` | `gh issue edit <N> --add-label ai-blocked --remove-label ai-wip ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}`, comment, remove the worktree (and set `REMOVED=1`) |
 | Reviewer died | PR `ai-reviewing-code` (or `ai-reviewing-sec`) ≥45min with no matching `ai-ok-*` and no `ai-changes` | `gh pr edit <N> --remove-label <the claim that stalled>` — drop **that** label, not a fixed one; a stalled `ai-reviewing-sec` cleared as `ai-reviewing-code` leaves the dead claim in place and the reviewer never re-spawns. Dropping the claim is what lets Pass 3 re-spawn it, and they're cheap and diff-scoped. If that claim has been applied ≥3 times, `ai-blocked` instead |
 | Fix implementer died | PR `ai-fixing` ≥45min and still `ai-changes` — it never got as far as relabelling to `ai-review` | `gh pr edit <N> --remove-label ai-fixing`, which is what lets Pass 3 dispatch the round again. If `ai-fixing` has been applied ≥3 times, `ai-blocked` on the linked issue instead — a round that dies every time is not one more spawn away from working. Leave the worktree: it holds whatever the dead implementer committed |
 | Orphan worktree | `"$WT_ROOT"/ai-<N>-*` whose issue is not `ai-wip` and has no open PR | remove the worktree and branch (and set `REMOVED=1`) |
@@ -1072,8 +1080,8 @@ intended; one that died after posting is now recovered instead of duplicated.
 issue. Apply the label immediately before the spawn, not after:
 
 ```bash
-gh pr edit <N> --add-label ai-reviewing-code ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn code-reviewer
-gh pr edit <N> --add-label ai-reviewing-sec  ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn security-expert
+gh pr edit <N> --add-label ai-reviewing-code ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn code-reviewer
+gh pr edit <N> --add-label ai-reviewing-sec  ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn security-expert
 ```
 
 Assigning `AGENT_USER` on the claim is idempotent — both arms adding the same
@@ -1247,9 +1255,9 @@ then:
 
 ```bash
 gh issue edit <M> --add-label ai-blocked --remove-label ai-wip \
-  ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 gh pr edit <N> --remove-label ai-review \
-  ${HUMAN_USER:+--add-assignee "$HUMAN_USER"} ${AGENT_USER:+--remove-assignee "$AGENT_USER"}
+  ${HUMAN_USER:+--add-assignee} ${HUMAN_USER:+"$HUMAN_USER"} ${AGENT_USER:+--remove-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
 Leave the worktree and PR in place for the human; a ping-pong stall is the case where
@@ -1259,7 +1267,7 @@ Otherwise **claim first, then spawn** — same shape as the reviewer claims abov
 and for the same reason. Apply the label immediately before the spawn, not after:
 
 ```bash
-gh pr edit <N> --add-label ai-fixing ${AGENT_USER:+--add-assignee "$AGENT_USER"}   # then spawn the implementer
+gh pr edit <N> --add-label ai-fixing ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}   # then spawn the implementer
 ```
 
 A fix round runs longer than a 15-minute tick — on #565, `ai-changes` at 17:35 and
@@ -1306,7 +1314,6 @@ gh api "repos/$OWNER_REPO/issues?labels=ai-ready&state=open" \
             | select([.labels[].name] | index("ai-wip") == null)
             | select([.labels[].name] | index("ai-blocked") == null)
             | select([.labels[].name] | index("holding") == null)
-            | select([.labels[].name] | index("ai-suggested") == null)
             | select(.author_association=="OWNER" or .author_association=="MEMBER" or .author_association=="COLLABORATOR")
             | {number, title, body}'
 ```
@@ -1321,9 +1328,11 @@ the first place, but then mislabelling it costs nothing. Unlike `ai-blocked` (an
 agent tried and got stuck), `holding` says *no agent should ever start*, and it
 shows up in the issue list so a human triaging does not re-litigate it either.
 
-`ai-suggested` is excluded for a harder reason: it is an agent's own suggestion,
-so picking one up would let the loop feed itself work — promoting one is a human
-act, which is what makes that label a triage queue rather than a backlog.
+`ai-suggested` is deliberately *not* filtered. An agent's own suggestion carries
+only `ai-suggested`, so it never matches `labels=ai-ready` — the loop cannot feed
+itself work. Promoting one is a human adding `ai-ready`, and the item keeps
+`ai-suggested` (Pass 2 relies on that), so excluding the label here would strand
+every promoted issue in the queue forever (#608).
 
 **Declining an issue is a visible act — comment, never just skip.** Whenever an
 agent decides an issue should *not* go to the pipeline — triaging which issues to
@@ -1411,7 +1420,7 @@ concurrent tick can't double-pick:
 
 ```bash
 gh issue edit <N> --add-label ai-wip --remove-label ai-ready \
-  ${AGENT_USER:+--add-assignee "$AGENT_USER"}
+  ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}
 ```
 
 Assigning here is what makes the issue list honest: from this moment an agent
@@ -1460,7 +1469,7 @@ done)
 **Iterate line by line — never `for d in $DIRS`.** Your shell may be zsh, which
 does not word-split an unquoted expansion: `$DIRS` arrives as *one* word with
 embedded newlines, `[ -d ]` fails against that nonsense path, and the loop links
-**nothing** (#585). Same class as the Pass 2 glob hazard below, and just as
+**nothing** (#585). Same class as the Pass 2 glob hazard above, and just as
 silent — the `pnpm install` fallback is gated on `$DIRS` being *empty*, which it
 is not, so the worktree gets neither links nor an install, and the implementer
 meets `Cannot find module` on its first test run, reading as the issue's fault
@@ -1629,7 +1638,8 @@ worktree in this pass. Never fall back to `EnterWorktree`.
 Never skip this pass, **including on an idle tick**. An unobservable loop is
 indistinguishable from a dead one.
 
-Compose `SUMMARY` from what Passes 1–4 already counted — no extra `gh` calls.
+Compose `SUMMARY` from what Passes 1–4 already counted — no extra `gh` calls
+(the triage digest's one `gh issue list` below is the only exception).
 Middle dot separated, zero segments omitted, stall counts first with a `⚠`:
 
 | State | `SUMMARY` |
@@ -1642,10 +1652,18 @@ Middle dot separated, zero segments omitted, stall counts first with a `⚠`:
 Then diff against last tick and decide whether to notify:
 
 ```bash
-STATUS=".claude/ai-loop-status"
+STATUS="$ROOT/.claude/ai-loop-status"   # absolute — a pinned tick's cwd is a worktree
 PREV=$(head -1 "$STATUS" 2>/dev/null)
-IDLE=$(sed -n 2p "$STATUS" 2>/dev/null || echo 0)
+IDLE=$(sed -n 2p "$STATUS" 2>/dev/null); IDLE=${IDLE:-0}
+PREV_SUGGESTED=$(sed -n 3p "$STATUS" 2>/dev/null)
+DIGEST=$(gh issue list -R "$OWNER_REPO" --label ai-suggested --state open --limit 100 \
+  --json number,title --jq 'sort_by(.number) | .[] | "#\(.number) \(.title)"')
+SUGGESTED=$(printf '%s\n' "$DIGEST" | grep -o '^#[0-9]*' | tr -d '#' | paste -sd, -)
 ```
+
+`IDLE=${IDLE:-0}` rather than `|| echo 0`: `sed` on a file shorter than two
+lines exits 0 with no output, so the `||` branch never fires and `IDLE+1` would
+run on an empty string.
 
 - **`SUMMARY` != `PREV`** → notify, and `IDLE=0`.
 - **`SUMMARY` == `idle`** → `IDLE=$((IDLE+1))`; notify **only when `IDLE` is
@@ -1668,7 +1686,7 @@ When `SUMMARY` carries a `⚠` (anything `blocked`, `ci-red`, or `rebuild`), app
 `sound name "Basso"` so a stall is audibly different from routine progress.
 
 Write the file **last** — summary, idle counter, and the sorted `ai-suggested`
-numbers the digest rule above compares against:
+numbers the digest rule below compares against:
 
 ```bash
 printf '%s\n%s\n%s\n' "$SUMMARY" "$IDLE" "$SUGGESTED" > "$STATUS"
@@ -1687,12 +1705,11 @@ cleaned up, sent to review, picked up, blocked. Nothing else; this repeats every
 which ones need reading before they are merged — that is the one place the notes
 reach a human who is not already looking at GitHub.
 
-**End with the triage digest** — the open `ai-suggested` queue, one line per
-issue, straight from `gh issue list --label ai-suggested --state open --json
-number,title`. No new state, no extra prose: a list scanned in one glance is what
-makes a human promote or close something. Skip the digest when the queue is empty
-or unchanged since the last tick (compare against a third line in `$STATUS`: the
-sorted issue numbers).
+**End with the triage digest** — print `$DIGEST` (the open `ai-suggested`
+queue, one line per issue, fetched above). No new state, no extra prose: a list
+scanned in one glance is what makes a human promote or close something. Skip the
+digest when `$SUGGESTED` is empty or equals `$PREV_SUGGESTED` (line 3 of
+`$STATUS` from the last tick).
 
 **The digest is a deadline, not an archive** — Pass 2 closes any item untouched
 for 30 days, so anything listed here that nobody engages with will expire on its
