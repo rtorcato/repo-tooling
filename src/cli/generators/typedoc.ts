@@ -37,9 +37,11 @@ export async function generateTypedocConfig(pkg: Pkg, targetDir: string) {
 	await fs.writeJson(path.join(targetDir, 'typedoc.json'), config, { spaces: 2 })
 }
 
-export async function generateTypedocWorkflow(targetDir: string): Promise<string> {
-	const workflowsDir = path.join(targetDir, '.github', 'workflows')
-	await fs.ensureDir(workflowsDir)
-	await fs.writeFile(path.join(workflowsDir, 'docs.yml'), DOCS_WORKFLOW)
-	return '.github/workflows/docs.yml'
+/** The path written, or null when a docs.yml already exists — never replaced (#629). */
+export async function generateTypedocWorkflow(targetDir: string): Promise<string | null> {
+	const rel = '.github/workflows/docs.yml'
+	const workflowPath = path.join(targetDir, rel)
+	if (await fs.pathExists(workflowPath)) return null
+	await fs.outputFile(workflowPath, DOCS_WORKFLOW)
+	return rel
 }
