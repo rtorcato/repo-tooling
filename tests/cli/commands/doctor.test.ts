@@ -13,7 +13,10 @@ import {
 	SHIPPED_SKILL,
 	SHIPPED_SKILLS,
 } from '../../../src/cli/generators/claude-skills.js'
-import { generateDependabotConfig } from '../../../src/cli/generators/security.js'
+import {
+	DEPENDABOT_AUTOMERGE_WORKFLOW,
+	generateDependabotConfig,
+} from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -1035,6 +1038,19 @@ describe('doctor security checks', () => {
 		await generateDependabotConfig(dir)
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'Dependabot')?.status).toBe('ok')
+	})
+
+	it('does not expect npm groups in a repo with no package.json (#631)', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(
+			join(dir, '.github', 'dependabot.yml'),
+			'version: 2\n# C++ firmware: no package manager Dependabot supports.\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n'
+		)
+		await fs.outputFile(
+			join(dir, '.github', 'workflows', 'dependabot-automerge.yml'),
+			DEPENDABOT_AUTOMERGE_WORKFLOW
+		)
+		expect((await runDoctor(dir)).find((r) => r.check === 'Dependabot')?.status).toBe('ok')
 	})
 
 	it('names repo-local ignore rules without calling them drift (#422)', async () => {

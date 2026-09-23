@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { renderCodeQLWorkflow } from '../../base/ci.js'
 import { LANGUAGES } from '../../languages/registry.js'
+import { detectLanguage } from '../utils/detect-language.js'
 
 /**
  * The canonical dependency-update standard shared by every @rtorcato repo.
@@ -78,6 +79,41 @@ export const DEPENDABOT_CONFIG_PATHS = [
 	'.github/dependabot.yml',
 	'.github/dependabot.yaml',
 ] as const
+
+/**
+ * The manifest ecosystem a repo's dependabot.yml should cover, or null when it
+ * has none — Perl, or a repo with no recognised manifest at all (#631). Unlike
+ * `resolveLanguageModule`, `unknown` does not fall back to npm here: a C++ repo
+ * with no package.json has nothing for an npm block to update.
+ */
+export async function dependabotEcosystemFor(dir: string): Promise<string | null> {
+	const language = await detectLanguage(dir)
+	return language === 'unknown' ? null : LANGUAGES[language].dependabotEcosystem
+}
+
+/**
+ * How an existing dependabot.yml falls short of `dependabotConfig(ecosystem)`.
+ * The canonical groups live on the manifest block, so a repo with no manifest
+ * ecosystem is not expected to carry them (#631).
+ */
+export function dependabotConfigDeltas(content: string, ecosystem: string | null): string[] {
+	if (ecosystem === null) return []
+	return ['production-minor', 'dev-minor', 'major-updates']
+		.filter((group) => !new RegExp(`^\\s*${group}:`, 'm').test(content))
+		.map((group) => `missing \`${group}\` group`)
+}
+
+/** The existing dependabot config, in Dependabot's resolution order, or null. */
+export async function readDependabotConfig(
+	dir: string
+): Promise<{ file: string; content: string } | null> {
+	for (const file of DEPENDABOT_CONFIG_PATHS) {
+		const candidate = path.join(dir, file)
+		if (await fs.pathExists(candidate))
+			return { file, content: await fs.readFile(candidate, 'utf8') }
+	}
+	return null
+}
 
 /**
  * The `ignore:` rules an existing dependabot.yml carries, named by
@@ -247,13 +283,10 @@ export const DEPENDABOT_FILES = [
 export async function findDependabotIgnoreRules(
 	targetDir: string
 ): Promise<{ file: string; rules: string[] } | null> {
-	for (const file of DEPENDABOT_CONFIG_PATHS) {
-		const candidate = path.join(targetDir, file)
-		if (!(await fs.pathExists(candidate))) continue
-		const rules = dependabotIgnoreRules(await fs.readFile(candidate, 'utf8'))
-		return rules.length > 0 ? { file, rules } : null
-	}
-	return null
+	const existing = await readDependabotConfig(targetDir)
+	if (!existing) return null
+	const rules = dependabotIgnoreRules(existing.content)
+	return rules.length > 0 ? { file: existing.file, rules } : null
 }
 
 /**

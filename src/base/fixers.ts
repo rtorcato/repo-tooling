@@ -14,6 +14,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import chalk from 'chalk'
+import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
 import {
@@ -28,10 +29,14 @@ import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
 import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc.js'
 import {
+	DEPENDABOT_AUTOMERGE_WORKFLOW,
+	dependabotConfigDeltas,
+	dependabotEcosystemFor,
 	findDependabotIgnoreRules,
 	generateCodeQLWorkflow,
 	generateDependabotConfig,
 	generateRenovateConfig,
+	readDependabotConfig,
 } from '../cli/generators/security.js'
 import { classifyCopiedAssets } from '../cli/utils/copied-assets.js'
 import { copyPreset } from '../cli/utils/copy-preset.js'
@@ -228,6 +233,18 @@ export const BASE_FIXERS: Fixer[] = [
 		outputs: ['.github/dependabot.yml', '.github/workflows/dependabot-automerge.yml'],
 		canFixDrift: true,
 		async run({ targetDir }) {
+			const ecosystem = await dependabotEcosystemFor(targetDir)
+			// The config is already canonical for this repo's ecosystem, so only the
+			// workflow half drifts. Leave the config — and its repo-authored comments
+			// — alone rather than regenerate a file with nothing to change (#631).
+			const existing = await readDependabotConfig(targetDir)
+			if (existing && dependabotConfigDeltas(existing.content, ecosystem).length === 0) {
+				await fs.outputFile(
+					path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml'),
+					DEPENDABOT_AUTOMERGE_WORKFLOW
+				)
+				return { filesWritten: ['.github/workflows/dependabot-automerge.yml'] }
+			}
 			// The template owns the whole file but emits no `ignore:` block, so
 			// regenerating deletes any repo-local ignore rule — silently, and with
 			// nothing in `doctor` to report the loss afterwards, because from the
@@ -242,8 +259,7 @@ export const BASE_FIXERS: Fixer[] = [
 					`re-add the \`ignore:\` block after regenerating, or delete it from ${ignored.file} to accept the loss — then re-run \`fix dependabot\``
 				)
 			}
-			const { dependabotEcosystem } = await moduleFor(targetDir)
-			return { filesWritten: await generateDependabotConfig(targetDir, dependabotEcosystem) }
+			return { filesWritten: await generateDependabotConfig(targetDir, ecosystem) }
 		},
 	},
 	{

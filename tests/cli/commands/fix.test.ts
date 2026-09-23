@@ -324,6 +324,26 @@ describe('fix targeted', () => {
 		)
 	})
 
+	it('fix dependabot keeps an actions-only config in a repo with no package.json (#631)', async () => {
+		const dir = newTmpDir()
+		const config =
+			'version: 2\n# C++ firmware: no package manager Dependabot supports.\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n'
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), config)
+		await fixCommand('dependabot', { directory: dir, yes: true })
+		expect(await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')).toBe(config)
+		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'dependabot-automerge.yml'))).toBe(
+			true
+		)
+	})
+
+	it('fix dependabot scaffolds no npm block in a repo with no package.json (#631)', async () => {
+		const dir = newTmpDir()
+		await fixCommand('dependabot', { directory: dir, yes: true })
+		const yaml = await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')
+		expect(yaml).not.toMatch(/npm/)
+		expect(yaml).toMatch(/github-actions/)
+	})
+
 	it('fix dependabot refuses rather than drop repo-local ignore rules', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
