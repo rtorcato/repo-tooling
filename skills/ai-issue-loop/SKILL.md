@@ -1666,17 +1666,22 @@ run on an empty string.
 
 One notification per tick, maximum — the summary already says everything.
 
+Send it with the **`PushNotification`** tool — `message`: `"$OWNER_REPO: $SUMMARY"`
+(one line, under 200 characters, `⚠` segments first so a truncated phone banner
+still leads with the stall). It works on every platform, reaches the phone when
+Remote Control is connected, and skips itself when the user is already at the
+terminal — so a tick the user is watching costs no toast. A "not sent" result is
+normal; never retry it.
+
+Only when the tool is not available in this session, fall back to a desktop toast
+that cannot fail the tick:
+
 ```bash
-osascript -e "display notification \"$SUMMARY\" with title \"ai-issue-loop\" subtitle \"$OWNER_REPO\"" 2>/dev/null || true
+osascript -e "display notification \"$SUMMARY\" with title \"ai-issue-loop\" subtitle \"$OWNER_REPO\"" 2>/dev/null \
+  || notify-send "ai-issue-loop" "$OWNER_REPO: $SUMMARY" 2>/dev/null || true
 ```
 
-`osascript` is macOS-only, and the `|| true` is what makes shipping it portable:
-elsewhere the tick still completes and only loses the desktop toast. On Linux
-swap in `notify-send "ai-issue-loop" "$SUMMARY"` behind the same `|| true`. The
-statusline file below is plain text and works anywhere.
-
-When `SUMMARY` carries a `⚠` (anything `blocked`, `ci-red`, or `rebuild`), append
-`sound name "Basso"` so a stall is audibly different from routine progress.
+The statusline file below is plain text and works anywhere.
 
 Write the file **last** — summary, idle counter, and the sorted `ai-suggested`
 numbers the digest rule below compares against:
