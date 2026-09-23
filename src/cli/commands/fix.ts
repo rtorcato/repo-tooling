@@ -633,7 +633,8 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		// A fixer that refuses (e.g. dependabot, when the existing config carries
 		// repo-local `ignore:` rules the template can't reproduce) is a skip, not a
 		// crash — the remaining findings still deserve their fixers. The reason goes
-		// to stderr so it survives `--json`.
+		// to stderr so it survives `--json`. An unexpected error is skipped the same
+		// way (#636): rethrowing it killed the walk mid-run with no JSON on stdout.
 		let outcome: Awaited<ReturnType<typeof applyFixer>>
 		try {
 			outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent, {
@@ -642,10 +643,13 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 				assumeYes,
 			})
 		} catch (err) {
-			if (!(err instanceof FixerAbort)) throw err
 			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict))
-			console.error(chalk.red(`    refused — ${err.message}`))
-			if (err.hint) console.error(chalk.gray(`    ${err.hint}`))
+			if (err instanceof FixerAbort) {
+				console.error(chalk.red(`    refused — ${err.message}`))
+				if (err.hint) console.error(chalk.gray(`    ${err.hint}`))
+			} else {
+				console.error(chalk.red(`    failed — ${err instanceof Error ? err.message : String(err)}`))
+			}
 			skippedCount++
 			continue
 		}

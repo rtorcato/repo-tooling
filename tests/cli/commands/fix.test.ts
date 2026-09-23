@@ -995,6 +995,39 @@ describe('fix targeted', () => {
 		expect(await fs.pathExists(join(dir, '.husky', 'commit-msg'))).toBe(false)
 	})
 
+	// #636: husky read package.json unguarded, so a repo without one crashed
+	// with ENOENT after the .husky hook was already written.
+	it('fix husky refuses without a package.json and writes nothing', async () => {
+		const dir = newTmpDir()
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			await expect(fixCommand('husky', { directory: dir, yes: true })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			expect(await fs.pathExists(join(dir, '.husky'))).toBe(false)
+		} finally {
+			exitSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
+	it('fix --json without a package.json still emits JSON, husky skipped', async () => {
+		const dir = newTmpDir()
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			await fixCommand(undefined, { directory: dir, json: true })
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			const husky = parsed.actions.find((a: { target: string | null }) => a.target === 'husky')
+			expect(husky).toMatchObject({ status: 'skipped', filesWritten: [] })
+		} finally {
+			logSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
 	it('fix husky --yes skips the pre-push hook when no verify script exists', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
