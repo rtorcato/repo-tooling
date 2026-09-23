@@ -9,6 +9,7 @@ import { fixCommand } from './commands/fix.js'
 import { loopCleanupCommand } from './commands/loop-cleanup.js'
 import { loopEnvCommand } from './commands/loop-env.js'
 import { loopGuardCommand } from './commands/loop-guard.js'
+import { loopCommentCommand, loopVerdictCommand } from './commands/loop-marker.js'
 import { loopReapCommand } from './commands/loop-reap.js'
 import { loopWorktreeAddCommand } from './commands/loop-worktree.js'
 import { setupProject } from './commands/setup.js'
@@ -485,6 +486,27 @@ loop
 			'Exits 1 when a gh query failed and the report is incomplete.\n'
 	)
 	.action(loopReapCommand)
+
+loop
+	.command('comment <pr>')
+	.description("💬 Upsert the loop's one decision-marker comment on a PR")
+	.requiredOption('--body-file <path>', 'Comment text, without the marker (- for stdin)')
+	.option('-d, --dir <path>', 'Directory to resolve the GitHub repo from', process.cwd())
+	.option('--json', 'Emit machine-readable JSON output')
+	.action(loopCommentCommand)
+
+loop
+	.command('verdict <pr>')
+	.description("⚖️  Read a reviewer arm's verdict marker for the PR's current head")
+	.requiredOption('--arm <arm>', 'Reviewer arm: code or sec')
+	.option('-d, --dir <path>', 'Directory to resolve the GitHub repo from', process.cwd())
+	.option('--json', 'Emit machine-readable JSON output')
+	.addHelpText(
+		'after',
+		'\nPrints PASS, PASS-NOTES, CHANGES, or an empty line when none is posted.\n' +
+			'Exits 1 when the PR or its reviews cannot be read.\n'
+	)
+	.action(loopVerdictCommand)
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()
