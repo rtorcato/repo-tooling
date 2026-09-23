@@ -769,7 +769,7 @@ export const FIXERS: Fixer[] = [
 			await generateTypedocConfig(pkg, targetDir)
 			const workflow = await generateTypedocWorkflow(targetDir)
 			const pkgPath = path.join(targetDir, 'package.json')
-			const filesWritten: string[] = ['typedoc.json', workflow]
+			const filesWritten = workflow ? ['typedoc.json', workflow] : ['typedoc.json']
 			if (await fs.pathExists(pkgPath)) {
 				const pkgData = (await fs.readJson(pkgPath)) as Record<string, unknown>
 				const scripts = (pkgData.scripts as Record<string, string> | undefined) ?? {}

@@ -899,8 +899,32 @@ describe('fix targeted', () => {
 		await fs.writeFile(join(dir, '.husky', 'pre-push'), '# pnpm verify\n')
 		await fixCommand('husky', { directory: dir, yes: true })
 		const prePush = await fs.readFile(join(dir, '.husky', 'pre-push'), 'utf-8')
-		expect(prePush).toContain('pnpm verify')
-		expect(prePush).not.toMatch(/^#\s*pnpm verify/m)
+		expect(prePush).toMatch(/^pnpm verify$/m)
+	})
+
+	// #629: optional-missing lint-staged used to replace a custom pre-commit.
+	it('fix husky --yes appends to hand-written hooks instead of replacing them', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { prepare: 'husky', verify: 'pnpm check' } })
+		const preCommit = 'pnpm typecheck\npnpm check\n'
+		const prePush = 'pnpm verify\npnpm build\n'
+		await fs.outputFile(join(dir, '.husky', 'pre-commit'), preCommit)
+		await fs.outputFile(join(dir, '.husky', 'pre-push'), prePush)
+		await fixCommand('husky', { directory: dir, yes: true })
+		expect(await fs.readFile(join(dir, '.husky', 'pre-commit'), 'utf-8')).toBe(
+			`${preCommit}npx lint-staged\n`
+		)
+		expect(await fs.readFile(join(dir, '.husky', 'pre-push'), 'utf-8')).toBe(prePush)
+	})
+
+	it('fix typedoc --yes leaves an existing docs.yml workflow alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const workflow = 'name: Docs\n# deploys Docusaurus\n'
+		await fs.outputFile(join(dir, '.github', 'workflows', 'docs.yml'), workflow)
+		await fixCommand('typedoc', { directory: dir, yes: true })
+		expect(await fs.pathExists(join(dir, 'typedoc.json'))).toBe(true)
+		expect(await fs.readFile(join(dir, '.github', 'workflows', 'docs.yml'), 'utf-8')).toBe(workflow)
 	})
 
 	it('fix treeshake-check --yes scaffolds apps/treeshake-check from pkg.exports', async () => {

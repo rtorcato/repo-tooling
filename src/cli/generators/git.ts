@@ -1,5 +1,6 @@
 import fs from 'fs-extra'
 import path from 'node:path'
+import { hookHasUncommented } from '../../base/checks.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 export const PRE_PUSH_HOOK_CONTENT = `echo "🔍 Running pre-push verify..."
@@ -32,10 +33,7 @@ export async function generateHuskyConfig(config: ProjectConfig, targetDir: stri
 	// Pre-commit hook. husky v10 format: just the command — the v9 shebang +
 	// `. "$(dirname ...)/_/husky.sh"` bootstrap is deprecated (warns on every
 	// hook run in v9, fails outright in v10).
-	const preCommitPath = path.join(huskyDir, 'pre-commit')
-	const preCommitContent = 'npx lint-staged\n'
-	await fs.writeFile(preCommitPath, preCommitContent)
-	await fs.chmod(preCommitPath, 0o755)
+	await ensureHookRuns(path.join(huskyDir, 'pre-commit'), /\blint-staged\b/, 'npx lint-staged\n')
 
 	// Pre-push hook — only when the package.json already has a `verify` script.
 	// In the setup flow, generatePackageJson runs before this and writes verify
@@ -76,9 +74,28 @@ export async function generateHuskyConfig(config: ProjectConfig, targetDir: stri
 export async function generatePrePushHook(targetDir: string) {
 	const huskyDir = path.join(targetDir, '.husky')
 	await fs.ensureDir(huskyDir)
-	const prePushPath = path.join(huskyDir, 'pre-push')
-	await fs.writeFile(prePushPath, PRE_PUSH_HOOK_CONTENT)
-	await fs.chmod(prePushPath, 0o755)
+	await ensureHookRuns(
+		path.join(huskyDir, 'pre-push'),
+		/\bpnpm\s+verify\b/,
+		PRE_PUSH_HOOK_CONTENT,
+		'pnpm verify\n'
+	)
+}
+
+/**
+ * Write a missing hook; append the command to an existing hook that lacks it.
+ * Never replaces a hand-written hook (#629). Husky runs hooks with `sh -e`, so
+ * an appended command still fails the hook when it fails.
+ */
+async function ensureHookRuns(hookPath: string, runs: RegExp, fresh: string, line = fresh) {
+	if (!(await fs.pathExists(hookPath))) {
+		await fs.writeFile(hookPath, fresh)
+	} else {
+		const existing = await fs.readFile(hookPath, 'utf-8')
+		if (hookHasUncommented(existing, runs)) return
+		await fs.writeFile(hookPath, `${existing.replace(/\n*$/, '\n')}${line}`)
+	}
+	await fs.chmod(hookPath, 0o755)
 }
 
 /** Package versions the commit-msg hook needs on disk to run at all. */
