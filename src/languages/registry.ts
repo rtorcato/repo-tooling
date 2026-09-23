@@ -62,9 +62,11 @@ export const LANGUAGES: Record<LanguageModule['id'], LanguageModule> = {
 }
 
 /**
- * Resolve the module for a detected language. `unknown` (a bare dir mid-setup)
- * maps to JS — the historical default so a fresh repo still gets the full suite.
+ * Resolve the module for a detected language, or null for `unknown` — a repo
+ * with no marker (C++, Go, a README) gets the base suite only, never JS (#632).
+ * A fresh, empty dir never arrives as `unknown`: `detectAuditLanguage` audits
+ * it as JS, and setup's language picker defaults it to JS itself.
  */
-export function resolveLanguageModule(language: DetectedLanguage): LanguageModule {
-	return language === 'unknown' ? LANGUAGES.js : LANGUAGES[language]
+export function resolveLanguageModule(language: DetectedLanguage): LanguageModule | null {
+	return language === 'unknown' ? null : LANGUAGES[language]
 }

@@ -1,7 +1,11 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
-import { detectLanguage, detectNestedLanguages } from '../../../src/cli/utils/detect-language.js'
+import {
+	detectAuditLanguage,
+	detectLanguage,
+	detectNestedLanguages,
+} from '../../../src/cli/utils/detect-language.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -48,6 +52,26 @@ describe('detectLanguage', () => {
 			expect(await detectLanguage(dir)).toBe('js')
 		}
 	)
+})
+
+describe('detectAuditLanguage (#632)', () => {
+	it('audits a fresh dir — dotfiles only — as js', async () => {
+		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		expect(await detectAuditLanguage(dir)).toBe('js')
+	})
+
+	it('keeps unknown for a dir with content but no marker', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'main.go'), 'package main\n')
+		expect(await detectAuditLanguage(dir)).toBe('unknown')
+	})
+
+	it('defers to a marker when there is one', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'Package.swift'), '')
+		expect(await detectAuditLanguage(dir)).toBe('swift')
+	})
 })
 
 /** Writes `marker` inside `dir/relative`, creating the path. */
