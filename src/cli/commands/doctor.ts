@@ -265,7 +265,7 @@ function applyExceptions(results: CheckResult[], lock: Lockfile | null): CheckRe
 interface BaseCheckOptions {
 	/** Null for a language whose hook convention isn't encoded yet. */
 	hooks: GitHooksProfile | null
-	badges: { audience: BadgeAudience; fixTarget: string | null }
+	badges: { audience: BadgeAudience; fixTarget: string | null; name?: string }
 	/**
 	 * The ci.yml this module's generator would render right now, so the CI check
 	 * can spot a workflow that has drifted from it (#349). Null for a language
@@ -340,7 +340,9 @@ async function runBaseChecks(
 	if (lock?.rules?.mcp?.recommended?.length) {
 		results.push(await checkRecommendedMcp(dir, lock.rules.mcp.recommended))
 	}
-	results.push(await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget))
+	results.push(
+		await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget, opts.badges.name)
+	)
 	results.push(await checkCoverageUpload(dir))
 	return results
 }
@@ -515,7 +517,11 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 	results.push(
 		...(await runBaseChecks(targetDir, lock, {
 			hooks: jsGitHooksProfile(pkg),
-			badges: { audience: jsBadgeAudience(pkg), fixTarget: 'badges' },
+			badges: {
+				audience: jsBadgeAudience(pkg),
+				fixTarget: 'badges',
+				name: typeof pkg?.name === 'string' ? pkg.name : undefined,
+			},
 			// Same `scripts` gating the fixer applies, or the workflow doctor
 			// compares against would reference steps the fixer never writes (#364).
 			presetWorkflow: renderGitHubWorkflow(

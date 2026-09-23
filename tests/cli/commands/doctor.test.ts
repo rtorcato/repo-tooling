@@ -1587,6 +1587,36 @@ describe('doctor README badges check', () => {
 		expect(b?.status).toBe('drift')
 	})
 
+	// #634: a profile README advertising other packages is not this repo's drift.
+	it('skips the check when there is no package.json', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(
+			join(dir, 'README.md'),
+			'# me\n\n![dl](https://img.shields.io/npm/dm/%40rtorcato%2Frepo-tooling)\n'
+		)
+		const results = await runDoctor(dir)
+		const b = results.find((r) => r.check === 'README badges')
+		expect(b?.status).toBe('ok')
+	})
+
+	it('ignores npm badges of other packages in a private package', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: '@o/demo', private: true })
+		await fs.writeFile(
+			join(dir, 'README.md'),
+			'# demo\n\n![npm](https://img.shields.io/npm/v/%40o%2Fdemo-other)\n![b](https://img.shields.io/bundlephobia/minzip/@o/lib)\n'
+		)
+		let b = (await runDoctor(dir)).find((r) => r.check === 'README badges')
+		expect(b?.status).toBe('ok')
+
+		await fs.appendFile(
+			join(dir, 'README.md'),
+			'![dl](https://img.shields.io/npm/dm/%40o%2Fdemo)\n'
+		)
+		b = (await runDoctor(dir)).find((r) => r.check === 'README badges')
+		expect(b?.status).toBe('drift')
+	})
+
 	it('flags a Codecov badge with no CI coverage upload', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

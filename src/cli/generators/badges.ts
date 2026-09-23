@@ -88,9 +88,27 @@ export function buildBadgeBlock(inputs: BadgeInputs): string {
 	return row ? `${BADGE_START}\n${row}\n${BADGE_END}` : ''
 }
 
-/** True when the text carries npm/bundlephobia/codecov badges (which 404 on private/unpublished). */
-export function hasPublicOnlyBadges(text: string): boolean {
-	return /img\.shields\.io\/npm\/|bundlephobia|codecov\.io/.test(text)
+/**
+ * True when the text carries npm/bundlephobia/codecov badges (which 404 on
+ * private/unpublished). Given `name`, npm/bundlephobia badges count only when
+ * they point at that package — a README may advertise *other* packages (#634).
+ */
+export function hasPublicOnlyBadges(text: string, name?: string): boolean {
+	if (/codecov\.io/.test(text)) return true
+	if (!name) return /img\.shields\.io\/npm\/|bundlephobia/.test(text)
+	const refs = text.matchAll(
+		/(?:img\.shields\.io\/npm\/[\w-]+|bundlephobia\/[\w-]+|bundlephobia\.com\/package)\/([^\s)"'?#]+)/g
+	)
+	for (const [, raw = ''] of refs) {
+		let ref = raw
+		try {
+			ref = decodeURIComponent(raw)
+		} catch {
+			// Malformed escape — compare the raw text.
+		}
+		if (ref === name || ref.startsWith(`${name}/`)) return true
+	}
+	return false
 }
 
 /**

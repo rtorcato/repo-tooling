@@ -1253,7 +1253,9 @@ export async function checkExportsBuildable(
 
 /** Who this package's README badges are for — feeds the base badge check (#309). */
 export function jsBadgeAudience(pkg: Pkg | null): BadgeAudience {
-	if (!pkg || pkg.private === true) return 'private'
+	// No package.json: nothing here is published, so no npm badge can be ours (#634).
+	if (!pkg) return 'not-applicable'
+	if (pkg.private === true) return 'private'
 	return isPublishableLibrary(pkg) ? 'public' : 'not-applicable'
 }
 
