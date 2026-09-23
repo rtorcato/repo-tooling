@@ -841,7 +841,9 @@ export async function checkReadmeBadges(
 	dir: string,
 	audience: BadgeAudience,
 	/** `fix` target that rebuilds the badge block, or null when the language has none. */
-	fixTarget: string | null
+	fixTarget: string | null,
+	/** The repo's own package name — only its badges can 404; others' resolve fine (#634). */
+	name?: string
 ): Promise<CheckResult> {
 	const check = 'README badges'
 	const hint = fixTarget
@@ -852,7 +854,7 @@ export async function checkReadmeBadges(
 
 	if (audience === 'private') {
 		// Only a problem if a private/app repo carries badges that would 404.
-		if (readme && hasPublicOnlyBadges(readme)) {
+		if (readme && hasPublicOnlyBadges(readme, name)) {
 			return {
 				check,
 				status: 'drift',
