@@ -106,13 +106,13 @@ npx @rtorcato/repo-tooling fix --yes --dry-run --json
   "target": null,
   "actions": [
     { "target": "engines", "check": "engines.node", "status": "applied", "doctorStatus": "drift", "filesWritten": ["package.json"] },
-    { "target": "dependabot", "check": "Dependabot", "status": "applied", "doctorStatus": "optional-missing", "filesWritten": [".github/dependabot.yml"] },
+    { "target": "dependabot", "check": "Dependabot", "status": "skipped", "doctorStatus": "optional-missing", "filesWritten": [] },
     { "target": null, "check": "GitLab CI", "status": "unsupported", "doctorStatus": "optional-missing", "filesWritten": [] }
   ]
 }
 ```
 
-Action statuses: `applied` (fixer ran, files written), `dry-run` (would have written), `skipped` (user declined or fixer chose to skip), `already-ok` (no action needed), `unsupported` (no fixer registered for this check).
+Action statuses: `applied` (fixer ran, files written), `dry-run` (would have written), `skipped` (user declined, fixer chose to skip, or an `optional-missing` finding in a bulk run — name its target to apply it), `already-ok` (no action needed), `unsupported` (no fixer registered for this check).
 
 **Drift policy:** without `--yes`, drift cases default to "No" in the confirm prompt — your customisations are preserved. With `--yes`, drift IS overwritten. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite even with `--yes` — they only add/merge.
 

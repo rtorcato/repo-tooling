@@ -1522,16 +1522,26 @@ describe('fix --resync', () => {
 })
 
 describe('fix walk-all', () => {
-	it('applies all missing items when --yes', async () => {
+	// #630: optional tools are often mutually exclusive, so --yes must not install them all.
+	it('skips optional-missing items when --yes, leaving them to a targeted fix', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fixCommand(undefined, { directory: dir, yes: true })
-		// A handful of representative outputs:
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		let payload: { actions: { check: string; status: string; doctorStatus: string }[] }
+		try {
+			await fixCommand(undefined, { directory: dir, yes: true, json: true })
+			payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+		} finally {
+			logSpy.mockRestore()
+		}
+		const optional = payload.actions.filter((a) => a.doctorStatus === 'optional-missing')
+		expect(optional.length).toBeGreaterThan(0)
+		expect(optional.every((a) => a.status === 'skipped' || a.status === 'unsupported')).toBe(true)
+		expect(await fs.pathExists(join(dir, '.editorconfig'))).toBe(false)
+		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'codeql.yml'))).toBe(false)
+
+		await fixCommand('editorconfig', { directory: dir, yes: true })
 		expect(await fs.pathExists(join(dir, '.editorconfig'))).toBe(true)
-		expect(await fs.pathExists(join(dir, '.nvmrc'))).toBe(true)
-		expect(await fs.pathExists(join(dir, 'knip.json'))).toBe(true)
-		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(true)
-		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'codeql.yml'))).toBe(true)
 	})
 
 	it('prints all-pass message when nothing is non-ok', async () => {
