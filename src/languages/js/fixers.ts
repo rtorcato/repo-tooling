@@ -346,6 +346,15 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
+			// Refuse before writing any hook: lint-staged lives in package.json, so a
+			// repo without a readable one cannot be wired (#636).
+			if (!pkg) {
+				throw new FixerAbort(
+					'no-package-json',
+					'no readable package.json — husky needs one for lint-staged',
+					'add a package.json, then re-run'
+				)
+			}
 			const existingLintStaged = (pkg?.['lint-staged'] as Record<string, unknown> | undefined) ?? {}
 			await generateHuskyConfig(inferProjectConfig(pkg), targetDir)
 			const updated = (await fs.readJson(pkgPath)) as Record<string, unknown>
