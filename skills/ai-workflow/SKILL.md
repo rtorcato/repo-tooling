@@ -121,7 +121,7 @@ carrying both re-enters the queue the instant `ai-wip` clears):
 ```bash
 for n in <numbers>; do
   gh issue edit -R "$R" $n --add-label ai-wip --remove-label ai-ready \
-    ${AGENT_USER:+--add-assignee "$AGENT_USER"}
+    ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}
   SLUG="ai-$n-<3-4 kebab words from the title>"
   mkdir -p "$WT_ROOT"
   git -C "$ROOT" worktree add "$WT_ROOT/$SLUG" -b "$SLUG" origin/main
