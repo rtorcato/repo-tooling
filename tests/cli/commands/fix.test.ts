@@ -58,8 +58,19 @@ async function seedPackageJson(dir: string, extra: Record<string, unknown> = {})
 	})
 }
 
+// Prompts only fire on a TTY; pretend to be one so the prompt-driven tests reach inquirer.
+const realIsTTY = process.stdin.isTTY
+function setStdinTTY(value: boolean | undefined) {
+	Object.defineProperty(process.stdin, 'isTTY', { value, configurable: true, writable: true })
+}
+
 beforeEach(() => {
 	promptMock.mockReset()
+	setStdinTTY(true)
+})
+
+afterEach(() => {
+	setStdinTTY(realIsTTY)
 })
 
 describe('fix registry', () => {
@@ -280,6 +291,24 @@ describe('fix targeted', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fixCommand('dependabot', { directory: dir, yes: true, dryRun: true })
+		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
+	})
+
+	// #637: a dry run writes nothing, so it has nothing to confirm.
+	it('fix --dry-run never prompts, even without --yes', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('dependabot', { directory: dir, dryRun: true })
+		expect(promptMock).not.toHaveBeenCalled()
+		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
+	})
+
+	it('fix without a TTY skips instead of prompting', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		setStdinTTY(undefined)
+		await fixCommand('dependabot', { directory: dir })
+		expect(promptMock).not.toHaveBeenCalled()
 		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
 	})
 
