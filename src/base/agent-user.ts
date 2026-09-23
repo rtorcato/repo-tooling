@@ -22,7 +22,7 @@ const CHECK = 'AI loop agent'
  * or trailing hyphen. The injection boundary — the login is interpolated into
  * the API path below.
  */
-const LOGIN = /^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$/
+export const LOGIN = /^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$/
 
 const skip = (reason: string): CheckResult => ({
 	check: CHECK,

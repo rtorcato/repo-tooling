@@ -90,13 +90,20 @@ npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test confi
 # Installs the ai-issue-loop skill to ~/.claude/skills. Override with --skills-dir,
 # which is required alongside --yes/--json when that directory doesn't exist.
 npx @rtorcato/repo-tooling fix claude-skills --yes --json
+
+# Opt-in only. Points this checkout's Claude sessions at a gh profile signed in as
+# rules.aiLoop.agentUser (~/.config/gh-<agentUser>, or --gh-config-dir) by merging
+# env.GH_CONFIG_DIR into the gitignored .claude/settings.local.json. Every session
+# in the checkout then runs as the agent, hands-on ones included. Writes nothing
+# and prints the `gh auth login` command if the profile isn't that account.
+npx @rtorcato/repo-tooling fix ai-loop-identity --yes --json
 ```
 
 ## Drift policy (important)
 
 `fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
 
-Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `claude-skills`, the one fixer whose blast radius is outside the repo.
+Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `claude-skills` (writes outside the repo), `release-environment` (changes what a merge does), and `ai-loop-identity` (changes which account every session in the checkout acts as).
 
 The same goes for every `optional-missing` finding: a bulk `fix` records it `skipped`, because optional tools are often mutually exclusive (Biome / ESLint / Prettier / Oxlint, semantic-release / Changesets / Release Please) and installing them all is never the intent (#630). Name the one you want — `fix editorconfig --yes`.
 

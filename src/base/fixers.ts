@@ -43,6 +43,7 @@ import { copyPreset } from '../cli/utils/copy-preset.js'
 import { detectAuditLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
 import { resolveLanguageModule } from '../languages/registry.js'
+import { SETTINGS_LOCAL, setupAgentIdentity } from './ai-loop-identity.js'
 import {
 	applyGithubSettings,
 	applyReleaseEnvironment,
@@ -67,6 +68,8 @@ interface FixerContext {
 	skillsDir?: string
 	/** `--force-skills`: overwrite a locally forked skill anyway (#480). */
 	forceSkills?: boolean
+	/** `--gh-config-dir`: the agent's gh profile for `fix ai-loop-identity` (#638). */
+	ghConfigDir?: string
 	/** True under `--yes` / `--json`, so a fixer knows a prompt is not available. */
 	assumeYes: boolean
 }
@@ -509,6 +512,23 @@ export const BASE_FIXERS: Fixer[] = [
 				filesWritten.push(result.realFile)
 			}
 			return { filesWritten }
+		},
+	},
+	{
+		target: 'ai-loop-identity',
+		description:
+			"Point this checkout's Claude sessions at a gh profile signed in as rules.aiLoop.agentUser (~/.config/gh-<agentUser>, or --gh-config-dir) via .claude/settings.local.json. Every session in the checkout then runs as the agent",
+		appliesTo: ['AI loop identity'],
+		outputs: [SETTINGS_LOCAL, '.gitignore'],
+		// safe-add keeps it out of the `--diff` shadow-run, which would spawn gh;
+		// explicitOnly because it changes who every session here acts as.
+		riskLevel: 'safe-add',
+		explicitOnly: true,
+		canFixDrift: true,
+		async run({ targetDir, ghConfigDir }) {
+			return {
+				filesWritten: await setupAgentIdentity(targetDir, { ghConfigDir, home: os.homedir() }),
+			}
 		},
 	},
 	{

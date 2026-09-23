@@ -382,6 +382,10 @@ program
 		'--force-skills',
 		'Let `fix claude-skills` overwrite a locally modified skill instead of refusing'
 	)
+	.option(
+		'--gh-config-dir <path>',
+		'gh profile signed in as rules.aiLoop.agentUser, for `fix ai-loop-identity` (default: ~/.config/gh-<agentUser>)'
+	)
 	.action((target: string | undefined, options) =>
 		fixCommand(target, {
 			directory: options.directory,
@@ -393,6 +397,7 @@ program
 			diff: options.diff,
 			skillsDir: options.skillsDir,
 			forceSkills: options.forceSkills,
+			ghConfigDir: options.ghConfigDir,
 		})
 	)
 

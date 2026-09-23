@@ -34,7 +34,12 @@ const GH_TIMEOUT_MS = 10_000
  * `: GhExec` so the optional cwd stays callable; still assignable where GhExec
  * is expected.
  */
-export const realGhExec = (args: string[], stdin?: string, cwd?: string): Promise<GhResult> =>
+export const realGhExec = (
+	args: string[],
+	stdin?: string,
+	cwd?: string,
+	env?: NodeJS.ProcessEnv
+): Promise<GhResult> =>
 	new Promise((resolve) => {
 		let settled = false
 		const done = (r: GhResult) => {
@@ -47,6 +52,7 @@ export const realGhExec = (args: string[], stdin?: string, cwd?: string): Promis
 		// shell:false + an args array keeps this injection-safe.
 		const child = spawn('gh', args, {
 			cwd,
+			env: env && { ...process.env, ...env },
 			stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
 		})
 		let stdout = ''
