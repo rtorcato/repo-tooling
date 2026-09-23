@@ -31,6 +31,23 @@ describe('detectLanguage', () => {
 		await fs.writeFile(join(dir, 'pyproject.toml'), '')
 		expect(await detectLanguage(dir)).toBe('js')
 	})
+
+	it('prefers swift over a docs-only package.json (#633)', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { private: true, scripts: { docs: 'x' } })
+		await fs.writeFile(join(dir, 'Package.swift'), '')
+		expect(await detectLanguage(dir)).toBe('swift')
+	})
+
+	it.each(['main', 'exports', 'bin'])(
+		'keeps js when package.json declares %s next to Package.swift',
+		async (field) => {
+			const dir = newTmpDir()
+			await fs.writeJson(join(dir, 'package.json'), { [field]: './index.js' })
+			await fs.writeFile(join(dir, 'Package.swift'), '')
+			expect(await detectLanguage(dir)).toBe('js')
+		}
+	)
 })
 
 /** Writes `marker` inside `dir/relative`, creating the path. */
