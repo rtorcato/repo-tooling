@@ -144,8 +144,14 @@ and why.
 Call `Workflow` with the script below, passing the selected issues as `args`:
 
 ```
-Workflow({args: {repo: R, agentUser: AGENT_USER, humanUser: HUMAN_USER, issues: [{number, title, slug, worktree}, …]}, script: …})
+Workflow({args: {repo: R, agentUser: AGENT_USER, humanUser: HUMAN_USER, namedReviewers, issues: [{number, title, slug, worktree}, …]}, script: …})
 ```
+
+Pass `namedReviewers: true` only when **both** `code-reviewer` and
+`security-expert` appear in your Agent tool's list of agent types. They are not
+shipped by this package, and a Workflow `agentType` that does not exist fails the
+spawn. Otherwise pass `false`, and the reviewers run as `general-purpose` with the
+same prompt, which carries the whole lens and verdict protocol (#611).
 
 Pass `agentUser` / `humanUser` as the empty string when unset — the script
 tests each, so an empty value simply drops that assign.
@@ -253,7 +259,7 @@ Then apply exactly one verdict label, clearing your claim in the same command:
   \`gh pr edit ${r.pr} --add-label ai-changes --remove-label ai-review --remove-label ${v.claim}\`
 Plus \`--add-label ai-notes\` if and only if your section is not Nothing.
 A question only a human can answer → pass + ai-notes, never ai-changes.`,
-		{ label: `${v.type}:#${i.number}`, phase: 'Review', schema: VERDICT, agentType: v.type }
+		{ label: `${v.type}:#${i.number}`, phase: 'Review', schema: VERDICT, agentType: args.namedReviewers ? v.type : 'general-purpose' }
 	)))
 )
 
@@ -270,7 +276,8 @@ Notes on the script, so it doesn't get "tidied" into breakage:
 - **No `EnterWorktree` anywhere** — `{path}` is rejected for sibling worktrees
   and `{name}` relocates the orchestrator's own session. Implementers work via
   `git -C` and absolute paths.
-- Reviewers use `agentType` so they get their real system prompts, and post the
+- Reviewers use `agentType` (the named type when installed, else
+  `general-purpose`) so they get their real system prompts, and post the
   same verdict markers the loop's Pass 3 reads — so a later tick adopts their
   verdicts instead of re-reviewing.
 

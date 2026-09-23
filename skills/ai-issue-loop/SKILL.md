@@ -991,6 +991,13 @@ whose pass-label is missing — `code-reviewer` if no `ai-ok-code`,
 carries `ai-reviewing-sec`. Both can run concurrently; launch them in a single
 message.
 
+**`code-reviewer` and `security-expert` name the two *arms*, not agent types this
+package ships.** Spawn each with that `subagent_type` when your Agent tool lists
+it; otherwise spawn `general-purpose`, which always exists. The prompt template
+below carries the whole review lens and the verdict protocol, so a named agent
+only adds its own system prompt on top. Never skip a review because the named
+type is missing (#611).
+
 **Before spawning either, check whether it already posted.** A missing verdict
 label does not mean the review is missing: on #497 both reviewers posted
 complete reviews and then went idle, labelling nothing. Every review comment
