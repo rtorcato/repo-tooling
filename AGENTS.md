@@ -29,6 +29,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `loop guard --root <path>` | ✅ | ✅ | Guard an `ai-issue-loop` tick: repair a wrongly-bare main checkout, gate the `node_modules` rebuild (`--removed`), and assert `gh` authenticates as the declared `rules.aiLoop.agentUser`. Exit `0` continue, `1` repair failed, `2` root is not a repairable checkout or the agent identity is wrong — both non-zero halt the tick. |
 | `loop env` | ✅ | ✅ | Resolve an `ai-issue-loop` tick's variables once: `root` (main checkout, correct from inside a worktree), `worktreeRoot`, `ownerRepo`, `agentUser` (empty unless an assignable collaborator), `humanUser` (empty for org repos), `me`. Without `--json`, prints `KEY='value'` lines for `eval`. Exit `1` when the checkout or its GitHub repo cannot be resolved. |
 | `loop worktree add <ai-N-slug>` | ✅ | ✅ | Create an `ai-issue-loop` worktree at `<root>-worktrees/<slug>` on a new branch off `origin/main` (`--base`), symlink every `worktree.symlinkDirectories` entry from `.claude/settings.json`, and add `node_modules` to `.git/info/exclude`. `needsInstall: true` when no list is declared. Exit `1` when the worktree was not created or an entry is left unlinked — do not spawn an implementer. |
+| `loop reap --json` | ✅ | ✅ | Report the `ai-issue-loop` Pass 2 stalls: a label that sat ≥45 minutes past its last application (per the issue timeline). Each entry is `{ kind, issue, pr, label, minutes, applications, action, worktree, reason }` — `kind` is `implementer` / `reviewer` / `fixer` / `orphan`, `action` is `block` / `drop-label` / `remove-worktree` (`block` once a claim has been applied ≥3 times). Read-only; exit `1` when a `gh` query failed. |
 
 ## Recommended workflows
 
@@ -121,6 +122,7 @@ A fixer may also **refuse** — the target file holds something the generator ca
 - `src/cli/commands/loop-guard.ts` — `loop guard`: the `--is-inside-work-tree` / `.git` invariant table and the `node_modules` rebuild gate, drained out of the ai-issue-loop skill's prose (#519)
 - `src/cli/commands/loop-env.ts` — `loop env`: the skill's Pass 0 variables resolved in one call (#615)
 - `src/cli/commands/loop-worktree.ts` — `loop worktree add`: Pass 4 worktree creation, dependency linking and the missing-link assertion (#616)
+- `src/cli/commands/loop-reap.ts` — `loop reap`: the skill's Pass 2 stalled-agent table as verdicts (#618)
 - `src/cli/generators/` — one file per concern (linting, testing, build, git, github-actions, security, misc)
 - `tooling/` — every shipped preset, mirrored 1:1 with `package.json` `exports`
 

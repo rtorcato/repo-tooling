@@ -9,6 +9,7 @@ import { fixCommand } from './commands/fix.js'
 import { loopCleanupCommand } from './commands/loop-cleanup.js'
 import { loopEnvCommand } from './commands/loop-env.js'
 import { loopGuardCommand } from './commands/loop-guard.js'
+import { loopReapCommand } from './commands/loop-reap.js'
 import { loopWorktreeAddCommand } from './commands/loop-worktree.js'
 import { setupProject } from './commands/setup.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
@@ -471,6 +472,19 @@ loop
 			'unlinked — do not spawn an implementer. needsInstall means no list was declared.\n'
 	)
 	.action(loopWorktreeAddCommand)
+
+loop
+	.command('reap')
+	.description('🪦 Report agents stalled past 45 minutes and what to do about each')
+	.option('--root <path>', 'Main checkout the loop branches worktrees from', process.cwd())
+	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
+	.option('--json', 'Emit machine-readable JSON output')
+	.addHelpText(
+		'after',
+		'\nRead-only: prints a verdict per stall (block / drop-label / remove-worktree).\n' +
+			'Exits 1 when a gh query failed and the report is incomplete.\n'
+	)
+	.action(loopReapCommand)
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()
