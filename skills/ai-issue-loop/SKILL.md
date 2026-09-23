@@ -494,7 +494,11 @@ Three things the gate does **not** change:
 - **`ai-notes` still blocks an unattended merge.** A reviewer who passed but left
   something to read means a human reads it.
 - **Order is still load-bearing.** If `autoMergeRequest != null` the merge can beat
-  the review, so Pass 0's disarm step applies unchanged.
+  the review. Nowhere but this arm does the loop let an issue PR auto-merge, and
+  only after both verdicts, so one found already armed without both `ai-ok-*`
+  labels was armed by someone else — run `gh pr merge <N> --disable-auto` before anything
+  else touches it. (#605 removed the Pass 0 disarm step this line used to point
+  at, along with the Dependabot arm it served.)
 
 Be plain about the residual risk: even gated, this lands code on `main` unattended,
 and the only quality signal is two reviewers that — per the limits above — see the
@@ -1458,7 +1462,7 @@ done)
 **Iterate line by line — never `for d in $DIRS`.** Your shell may be zsh, which
 does not word-split an unquoted expansion: `$DIRS` arrives as *one* word with
 embedded newlines, `[ -d ]` fails against that nonsense path, and the loop links
-**nothing** (#585). Same class as the Pass 2 glob hazard below, and just as
+**nothing** (#585). Same class as the Pass 2 glob hazard above, and just as
 silent — the `pnpm install` fallback is gated on `$DIRS` being *empty*, which it
 is not, so the worktree gets neither links nor an install, and the implementer
 meets `Cannot find module` on its first test run, reading as the issue's fault

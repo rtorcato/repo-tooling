@@ -55,6 +55,8 @@ git -C "$ROOT" fetch --prune
 # ai-issue-loop skill's Pass 0 for why this is repo config rather than an env var.
 AGENT_USER="${AI_LOOP_AGENT:-$(jq -r '.rules.aiLoop.agentUser // .aiLoop.agentUser // empty' "$ROOT/.repo-tooling.json" 2>/dev/null)}"
 [ -n "$AGENT_USER" ] && { gh api "repos/$R/assignees/$AGENT_USER" --silent 2>/dev/null || AGENT_USER=""; }
+# The human a given-up issue is handed back to — the repo owner, when that is a user.
+HUMAN_USER=$(gh api "repos/$R" --jq 'if .owner.type == "User" then .owner.login else "" end')
 ```
 
 `R` comes from the working directory's remote and is the only repo touched —
@@ -142,11 +144,11 @@ and why.
 Call `Workflow` with the script below, passing the selected issues as `args`:
 
 ```
-Workflow({args: {repo: R, agentUser: AGENT_USER, issues: [{number, title, slug, worktree}, …]}, script: …})
+Workflow({args: {repo: R, agentUser: AGENT_USER, humanUser: HUMAN_USER, issues: [{number, title, slug, worktree}, …]}, script: …})
 ```
 
-Pass `agentUser` as the empty string when `AGENT_USER` is unset — the script
-tests it, so an empty value simply drops every assign.
+Pass `agentUser` / `humanUser` as the empty string when unset — the script
+tests each, so an empty value simply drops that assign.
 
 ```js
 export const meta = {
@@ -210,8 +212,9 @@ const results = await pipeline(
 
 Give up early rather than grinding: if a build or test command hangs or fails
 twice the same way, stop. If you cannot finish, \`gh issue edit ${i.number}
---add-label ai-blocked --remove-label ai-wip\`, comment why (🤖 header first),
-leave the worktree in place, and return pr: null.`,
+--add-label ai-blocked --remove-label ai-wip${args.humanUser ? ` --add-assignee ${args.humanUser}` : ''}${args.agentUser ? ` --remove-assignee ${args.agentUser}` : ''}\`,
+comment why (🤖 header first), leave the worktree in place, and return pr: null.
+Handing back means the human ends up the only assignee.`,
 		{ label: `impl:#${i.number}`, phase: 'Implement', schema: PR }
 	),
 
