@@ -92,8 +92,9 @@ async function ensureHookRuns(hookPath: string, runs: RegExp, fresh: string, lin
 		await fs.writeFile(hookPath, fresh)
 	} else {
 		const existing = await fs.readFile(hookPath, 'utf-8')
-		if (hookHasUncommented(existing, runs)) return
-		await fs.writeFile(hookPath, `${existing.replace(/\n*$/, '\n')}${line}`)
+		if (!hookHasUncommented(existing, runs)) {
+			await fs.writeFile(hookPath, `${existing.replace(/\n*$/, '\n')}${line}`)
+		}
 	}
 	await fs.chmod(hookPath, 0o755)
 }
