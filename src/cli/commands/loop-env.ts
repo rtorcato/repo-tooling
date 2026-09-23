@@ -38,7 +38,7 @@ export interface LoopEnvOptions {
 	env?: NodeJS.ProcessEnv
 }
 
-async function ghOut(gh: GhExec, args: string[]): Promise<string> {
+export async function ghOut(gh: GhExec, args: string[]): Promise<string> {
 	const r = await gh(args)
 	return r.ok ? r.stdout.trim() : ''
 }
