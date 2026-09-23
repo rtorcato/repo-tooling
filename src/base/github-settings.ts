@@ -658,6 +658,19 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 }
 
 /**
+ * The ai-issue-loop's unattended-merge probe (#620): true only when the job
+ * that publishes runs behind an environment carrying `required_reviewers`, so a
+ * human still stands between a merge and the registry. An environment no job
+ * references gates nothing, and every unreadable answer fails closed.
+ */
+export async function releaseGated(gh: GhExec, nwo: string, dir: string): Promise<boolean> {
+	const publish = await findPublishJob(dir)
+	if (publish === null || publish === 'skip' || publish.environment === null) return false
+	const envs = await readEnvironments(gh, nwo)
+	return envs !== 'skip' && envs.get(publish.environment) === true
+}
+
+/**
  * The gap between merging the default branch and publishing to npm (#429). On
  * the shipped semantic-release preset those are one event: nothing stands
  * between a squash-merge and a new version on the registry.

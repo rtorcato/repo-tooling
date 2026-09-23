@@ -21,11 +21,10 @@ describe('ai loop skills never assign @me (#606)', () => {
 		expect(offenders).toEqual([])
 	})
 
-	it('ai-issue-loop resolves HUMAN_USER from the repo owner, humans only', () => {
+	it('ai-issue-loop resolves HUMAN_USER through `loop env`, humans only', () => {
 		const skill = fs.readFileSync(skills[0], 'utf8')
-		expect(skill).toContain(
-			`HUMAN_USER=$(gh api "repos/$OWNER_REPO" --jq 'if .owner.type == "User" then .owner.login else "" end')`
-		)
+		// `loop env` owns the owner-type test now; loop-env.test.ts covers it.
+		expect(skill).toContain('eval "$(npx @rtorcato/repo-tooling loop env)"')
 		// Every handoff site guards on it, so an org repo assigns nobody: either
 		// the `${HUMAN_USER:+…}` expansion, or an explicit `-n` test.
 		const unguarded = skill

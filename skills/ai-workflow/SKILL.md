@@ -123,18 +123,16 @@ carrying both re-enters the queue the instant `ai-wip` clears):
 for n in <numbers>; do
   gh issue edit -R "$R" $n --add-label ai-wip --remove-label ai-ready \
     ${AGENT_USER:+--add-assignee} ${AGENT_USER:+"$AGENT_USER"}
-  SLUG="ai-$n-<3-4 kebab words from the title>"
-  mkdir -p "$WT_ROOT"
-  git -C "$ROOT" worktree add "$WT_ROOT/$SLUG" -b "$SLUG" origin/main
+  npx @rtorcato/repo-tooling loop worktree add "ai-$n-<3-4 kebab words from the title>" --root "$ROOT" --json
 done
 ```
 
-**Then give each worktree dependencies** — the loop skill's Pass 4 rules apply
-verbatim: symlink every entry of `worktree.symlinkDirectories` from
-`$ROOT/.claude/settings.json` (the root `node_modules` plus each workspace
-package's, written by `fix ai`); run a real `pnpm install` in the worktree only
-when that list is missing or empty; never force an install against a symlinked
-tree; and add `node_modules` to `$ROOT/.git/info/exclude` once per repo.
+`loop worktree add` branches off `origin/main` under `WT_ROOT`, symlinks every
+`worktree.symlinkDirectories` entry (written by `fix ai`) and adds
+`node_modules` to `.git/info/exclude`. **Exit 1 → do not implement that issue**:
+return it to `ai-ready` and drop `ai-wip`. `needsInstall: true` means nothing was
+linked, so a real `pnpm install` in that worktree is safe; never force one
+against a symlinked tree.
 
 Stop here on `--label-only`. Report the picks and — briefly — what you skipped
 and why.
