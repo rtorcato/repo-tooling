@@ -9,6 +9,7 @@ import { fixCommand } from './commands/fix.js'
 import { loopCleanupCommand } from './commands/loop-cleanup.js'
 import { loopEnvCommand } from './commands/loop-env.js'
 import { loopGuardCommand } from './commands/loop-guard.js'
+import { loopWorktreeAddCommand } from './commands/loop-worktree.js'
 import { setupProject } from './commands/setup.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
 import { getToolVersion } from './utils/version.js'
@@ -452,6 +453,24 @@ loop
 			'Exits 1 when a worktree removal failed.\n'
 	)
 	.action(loopCleanupCommand)
+
+loop
+	.command('worktree')
+	.description('🌳 Loop worktree mechanics')
+	.command('add <slug>')
+	.description(
+		'🌱 Create ai-<issue>-<slug> off origin/main, link its deps, assert none are missing'
+	)
+	.option('--root <path>', 'Main checkout to branch the worktree from', process.cwd())
+	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
+	.option('--base <ref>', 'Ref to branch from', 'origin/main')
+	.option('--json', 'Emit machine-readable JSON output')
+	.addHelpText(
+		'after',
+		'\nExit 1 when the worktree was not created or a symlinkDirectories entry is left\n' +
+			'unlinked — do not spawn an implementer. needsInstall means no list was declared.\n'
+	)
+	.action(loopWorktreeAddCommand)
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()
