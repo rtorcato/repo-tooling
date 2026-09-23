@@ -1162,6 +1162,49 @@ describe('fix --json', () => {
 		}
 	})
 
+	it('dry-run JSON lists the files the fixer would write', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await fixCommand('dependabot', { directory: dir, json: true, dryRun: true })
+			const payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(payload.actions[0].filesWritten).toContain('.github/dependabot.yml')
+			expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
+		} finally {
+			logSpy.mockRestore()
+		}
+	})
+
+	it('dry-run omits files a safe-add fixer would leave alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(join(dir, 'SECURITY.md'), '# mine\n')
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await fixCommand('community-health', { directory: dir, json: true, dryRun: true })
+			const payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(payload.actions[0].filesWritten).toContain('CONTRIBUTING.md')
+			expect(payload.actions[0].filesWritten).not.toContain('SECURITY.md')
+		} finally {
+			logSpy.mockRestore()
+		}
+	})
+
+	it('dry-run reports nothing for a file the fixer would keep unchanged', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_CONFIG)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await fixCommand('dependabot', { directory: dir, json: true, dryRun: true })
+			const payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(payload.actions[0].filesWritten).not.toContain('.github/dependabot.yml')
+		} finally {
+			logSpy.mockRestore()
+		}
+	})
+
 	it('walk-all in JSON mode records every fixable check', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

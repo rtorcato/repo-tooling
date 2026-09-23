@@ -202,8 +202,15 @@ async function previewFixer(
 			},
 		})
 		// assumeYes: a preview must never prompt.
+		let written: string[]
 		try {
-			await fixer.run({ targetDir: tmpDir, pkg, result, lock, assumeYes: true })
+			;({ filesWritten: written } = await fixer.run({
+				targetDir: tmpDir,
+				pkg,
+				result,
+				lock,
+				assumeYes: true,
+			}))
 		} catch (err) {
 			// A fixer that refuses has nothing to preview. Swallow it here rather than
 			// reporting it twice — the real run happens moments later and its abort is
@@ -214,14 +221,21 @@ async function previewFixer(
 
 		const previews: PreviewEntry[] = []
 		const seen = new Set<string>()
-		for (const output of fixer.outputs) {
+		// Declared outputs miss globbed writes (apps/docs/**), so also take what the
+		// shadow run reported writing.
+		const candidates = [
+			...fixer.outputs,
+			...written.map((f) => (path.isAbsolute(f) ? path.relative(tmpDir, f) : f)),
+		]
+		for (const output of candidates) {
 			const rel = outputToRelativePath(output)
-			if (seen.has(rel)) continue
+			if (seen.has(rel) || rel.startsWith('..')) continue
 			seen.add(rel)
 
 			const tmpPath = path.join(tmpDir, rel)
 			const realPath = path.join(targetDir, rel)
-			if (!(await fs.pathExists(tmpPath))) continue
+			const stat = await fs.stat(tmpPath).catch(() => null)
+			if (!stat?.isFile()) continue
 
 			const newContent = await fs.readFile(tmpPath, 'utf-8')
 			const existed = await fs.pathExists(realPath)
@@ -269,6 +283,32 @@ function printPreviews(previews: PreviewEntry[]): void {
 	}
 }
 
+/**
+ * What a fixer would actually change. Shadow-runs it like `--diff` does, except
+ * for safe-add fixers: some of those write remote state or the home dir, so they
+ * are never executed — and since they only create missing files, the declared
+ * outputs that already exist are dropped instead.
+ */
+async function dryRunFiles(
+	fixer: Fixer,
+	result: CheckResult,
+	targetDir: string,
+	pkg: Pkg,
+	lock: Lockfile | null
+): Promise<string[]> {
+	if ((fixer.riskLevel ?? 'destructive') === 'safe-add') {
+		const missing: string[] = []
+		for (const out of fixer.outputs) {
+			if (!(await fs.pathExists(path.join(targetDir, outputToRelativePath(out))))) {
+				missing.push(out)
+			}
+		}
+		return missing
+	}
+	const previews = await previewFixer(fixer, result, targetDir, pkg, lock)
+	return previews.filter((p) => p.kind !== 'unchanged').map((p) => p.path)
+}
+
 async function applyFixer(
 	fixer: Fixer,
 	result: CheckResult,
@@ -280,10 +320,17 @@ async function applyFixer(
 	opts: { skillsDir?: string; forceSkills?: boolean; assumeYes: boolean }
 ): Promise<{ filesWritten: string[]; dryRun: boolean }> {
 	if (dryRun) {
+		const files = await dryRunFiles(fixer, result, targetDir, pkg, lock)
 		if (!silent) {
-			console.log(chalk.cyan(`  [dry-run] would write: ${fixer.outputs.join(', ')}`))
+			console.log(
+				chalk.cyan(
+					files.length > 0
+						? `  [dry-run] would write: ${files.join(', ')}`
+						: '  [dry-run] nothing to write'
+				)
+			)
 		}
-		return { filesWritten: [], dryRun: true }
+		return { filesWritten: files, dryRun: true }
 	}
 	const { filesWritten } = await fixer.run({ targetDir, pkg, result, lock, ...opts })
 	if (!silent && filesWritten.length > 0) {
