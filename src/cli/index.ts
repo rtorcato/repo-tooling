@@ -6,6 +6,7 @@ import { Command } from 'commander'
 import fs from 'fs-extra'
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand } from './commands/fix.js'
+import { loopCleanupCommand } from './commands/loop-cleanup.js'
 import { loopEnvCommand } from './commands/loop-env.js'
 import { loopGuardCommand } from './commands/loop-guard.js'
 import { setupProject } from './commands/setup.js'
@@ -438,6 +439,19 @@ loop
 			'Exits 1 when the checkout or its GitHub repo cannot be resolved.\n'
 	)
 	.action(loopEnvCommand)
+
+loop
+	.command('cleanup')
+	.description('🧹 Remove ai-* worktrees whose PR landed on main or was closed')
+	.option('--root <path>', 'Main checkout the loop branches worktrees from', process.cwd())
+	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
+	.option('--json', 'Emit machine-readable JSON output')
+	.addHelpText(
+		'after',
+		'\nPass `removed` from --json to `loop guard --removed`.\n' +
+			'Exits 1 when a worktree removal failed.\n'
+	)
+	.action(loopCleanupCommand)
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()

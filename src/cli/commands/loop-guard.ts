@@ -206,7 +206,7 @@ async function gitEntryKind(root: string): Promise<GitEntry> {
 }
 
 /** `ai-*` directories one level down, in either place worktrees are kept. */
-async function findLive(dirs: string[]): Promise<string[]> {
+export async function findLive(dirs: string[]): Promise<string[]> {
 	const live: string[] = []
 	for (const dir of dirs) {
 		// A missing worktree root is the normal case, not an error.

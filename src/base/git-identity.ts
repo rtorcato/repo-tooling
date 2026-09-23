@@ -124,7 +124,11 @@ function repoScopedEnv(): NodeJS.ProcessEnv {
 }
 
 /** Never rejects; a missing or failing git resolves to null. */
-export const realGitExec = (args: string[], cwd?: string): Promise<string | null> =>
+export const realGitExec = (
+	args: string[],
+	cwd?: string,
+	timeoutMs = GIT_TIMEOUT_MS
+): Promise<string | null> =>
 	new Promise((resolve) => {
 		let settled = false
 		const done = (v: string | null) => {
@@ -144,7 +148,7 @@ export const realGitExec = (args: string[], cwd?: string): Promise<string | null
 		const timer = setTimeout(() => {
 			child.kill()
 			done(null)
-		}, GIT_TIMEOUT_MS)
+		}, timeoutMs)
 		child.stdout?.on('data', (d) => {
 			stdout += d
 		})
