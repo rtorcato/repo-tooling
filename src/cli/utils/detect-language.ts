@@ -8,6 +8,10 @@ export type DetectedLanguage = 'js' | 'swift' | 'perl' | 'python' | 'unknown'
  * wins. One language per repo root; multi-language monorepos stay out of scope
  * (#139, reaffirmed in #317 — the audit is root-only, but says so via
  * `detectNestedLanguages`). A dir with no marker → 'unknown' (base checks only).
+ *
+ * One exception to the order: `Package.swift` beats a `package.json` that ships
+ * no JS (no `main`/`exports`/`bin`) — a Swift package whose root `package.json`
+ * only drives its docs site is a Swift repo (#633).
  */
 const MARKERS: ReadonlyArray<[DetectedLanguage, readonly string[]]> = [
 	['js', ['package.json']],
@@ -16,7 +20,15 @@ const MARKERS: ReadonlyArray<[DetectedLanguage, readonly string[]]> = [
 	['python', ['pyproject.toml', 'setup.py']],
 ]
 
+/** True when `package.json` declares a JS entry point — the repo ships JS, not just tooling. */
+async function shipsJs(dir: string): Promise<boolean> {
+	const pkg = await fs.readJson(path.join(dir, 'package.json')).catch(() => null)
+	return Boolean(pkg && (pkg.main || pkg.exports || pkg.bin))
+}
+
 export async function detectLanguage(dir: string): Promise<DetectedLanguage> {
+	if ((await fs.pathExists(path.join(dir, 'Package.swift'))) && !(await shipsJs(dir)))
+		return 'swift'
 	for (const [language, candidates] of MARKERS) {
 		for (const candidate of candidates) {
 			if (await fs.pathExists(path.join(dir, candidate))) return language
