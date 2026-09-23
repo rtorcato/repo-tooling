@@ -374,9 +374,13 @@ function promptMessageFor(
 async function confirmApply(
 	fixer: Fixer,
 	result: CheckResult,
-	assumeYes: boolean
+	assumeYes: boolean,
+	dryRun: boolean
 ): Promise<boolean> {
-	if (assumeYes) return true
+	// A dry run writes nothing, so there is nothing to confirm (#637).
+	if (assumeYes || dryRun) return true
+	// No TTY means no one can answer: inquirer would throw ExitPromptError. Treat it as "no".
+	if (!process.stdin.isTTY) return false
 	const { message, default: defaultValue } = promptMessageFor(fixer, result)
 	const { confirm } = await inquirer.prompt([
 		{ type: 'confirm', name: 'confirm', message, default: defaultValue },
@@ -467,14 +471,16 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			return
 		}
 		if (!assumeYes) {
-			const { confirm } = await inquirer.prompt([
-				{
-					type: 'confirm',
-					name: 'confirm',
-					message: `Re-scaffold ${files.length} file(s) from ${LOCKFILE_NAME}? Generators preserve existing customizations where possible, but README.md will be rewritten.`,
-					default: false,
-				},
-			])
+			const { confirm } = !process.stdin.isTTY
+				? { confirm: false }
+				: await inquirer.prompt([
+						{
+							type: 'confirm',
+							name: 'confirm',
+							message: `Re-scaffold ${files.length} file(s) from ${LOCKFILE_NAME}? Generators preserve existing customizations where possible, but README.md will be rewritten.`,
+							default: false,
+						},
+					])
 			if (!confirm) {
 				console.log(chalk.gray('   skipped\n'))
 				return
@@ -581,7 +587,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			const previews = await previewFixer(fixer, effectiveResult, targetDir, pkg, lock)
 			printPreviews(previews)
 		}
-		const ok = await confirmApply(fixer, effectiveResult, assumeYes)
+		const ok = await confirmApply(fixer, effectiveResult, assumeYes, dryRun)
 		if (!ok) {
 			actions.push(
 				recordFor(fixer.target, result.check, effectiveResult.status, 'skipped', [], conflict)
@@ -673,7 +679,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			const previews = await previewFixer(fixer, result, targetDir, pkg, lock)
 			printPreviews(previews)
 		}
-		const ok = await confirmApply(fixer, result, assumeYes)
+		const ok = await confirmApply(fixer, result, assumeYes, dryRun)
 		if (!ok) {
 			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict))
 			if (!silent) console.log(chalk.gray('    skipped'))
