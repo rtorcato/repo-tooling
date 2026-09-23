@@ -147,7 +147,7 @@ this block matches it, so the two cannot diverge.
 Also once per repo, keep the status file out of git:
 
 ```bash
-grep -qxF '.claude/ai-loop-status' .gitignore || echo '.claude/ai-loop-status' >> .gitignore
+grep -qxF '.claude/ai-loop-status' "$ROOT/.gitignore" || echo '.claude/ai-loop-status' >> "$ROOT/.gitignore"
 ```
 
 ```
@@ -1627,7 +1627,8 @@ worktree in this pass. Never fall back to `EnterWorktree`.
 Never skip this pass, **including on an idle tick**. An unobservable loop is
 indistinguishable from a dead one.
 
-Compose `SUMMARY` from what Passes 1–4 already counted — no extra `gh` calls.
+Compose `SUMMARY` from what Passes 1–4 already counted — no extra `gh` calls
+(the triage digest's one `gh issue list` below is the only exception).
 Middle dot separated, zero segments omitted, stall counts first with a `⚠`:
 
 | State | `SUMMARY` |
@@ -1640,10 +1641,18 @@ Middle dot separated, zero segments omitted, stall counts first with a `⚠`:
 Then diff against last tick and decide whether to notify:
 
 ```bash
-STATUS=".claude/ai-loop-status"
+STATUS="$ROOT/.claude/ai-loop-status"   # absolute — a pinned tick's cwd is a worktree
 PREV=$(head -1 "$STATUS" 2>/dev/null)
-IDLE=$(sed -n 2p "$STATUS" 2>/dev/null || echo 0)
+IDLE=$(sed -n 2p "$STATUS" 2>/dev/null); IDLE=${IDLE:-0}
+PREV_SUGGESTED=$(sed -n 3p "$STATUS" 2>/dev/null)
+DIGEST=$(gh issue list -R "$OWNER_REPO" --label ai-suggested --state open --limit 100 \
+  --json number,title --jq 'sort_by(.number) | .[] | "#\(.number) \(.title)"')
+SUGGESTED=$(printf '%s\n' "$DIGEST" | grep -o '^#[0-9]*' | tr -d '#' | paste -sd, -)
 ```
+
+`IDLE=${IDLE:-0}` rather than `|| echo 0`: `sed` on a file shorter than two
+lines exits 0 with no output, so the `||` branch never fires and `IDLE+1` would
+run on an empty string.
 
 - **`SUMMARY` != `PREV`** → notify, and `IDLE=0`.
 - **`SUMMARY` == `idle`** → `IDLE=$((IDLE+1))`; notify **only when `IDLE` is
@@ -1666,7 +1675,7 @@ When `SUMMARY` carries a `⚠` (anything `blocked`, `ci-red`, or `rebuild`), app
 `sound name "Basso"` so a stall is audibly different from routine progress.
 
 Write the file **last** — summary, idle counter, and the sorted `ai-suggested`
-numbers the digest rule above compares against:
+numbers the digest rule below compares against:
 
 ```bash
 printf '%s\n%s\n%s\n' "$SUMMARY" "$IDLE" "$SUGGESTED" > "$STATUS"
@@ -1685,12 +1694,11 @@ cleaned up, sent to review, picked up, blocked. Nothing else; this repeats every
 which ones need reading before they are merged — that is the one place the notes
 reach a human who is not already looking at GitHub.
 
-**End with the triage digest** — the open `ai-suggested` queue, one line per
-issue, straight from `gh issue list --label ai-suggested --state open --json
-number,title`. No new state, no extra prose: a list scanned in one glance is what
-makes a human promote or close something. Skip the digest when the queue is empty
-or unchanged since the last tick (compare against a third line in `$STATUS`: the
-sorted issue numbers).
+**End with the triage digest** — print `$DIGEST` (the open `ai-suggested`
+queue, one line per issue, fetched above). No new state, no extra prose: a list
+scanned in one glance is what makes a human promote or close something. Skip the
+digest when `$SUGGESTED` is empty or equals `$PREV_SUGGESTED` (line 3 of
+`$STATUS` from the last tick).
 
 **The digest is a deadline, not an archive** — Pass 2 closes any item untouched
 for 30 days, so anything listed here that nobody engages with will expire on its
