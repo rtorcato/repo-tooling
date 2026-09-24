@@ -120,9 +120,15 @@ async function ensureWorkspace(targetDir: string): Promise<string | null> {
 	return rel
 }
 
-/** The GitHub Pages base path Docusaurus serves under, e.g. `/repo-tooling/`. */
-function siteBaseUrl(meta: SiteMeta): string {
-	return `/${meta.repo ?? meta.title}/`
+/**
+ * A JS string literal in the Biome preset's quote style: single quotes, unless
+ * the value holds more single than double quotes — the same pick Biome makes.
+ */
+function jsString(value: string): string {
+	const singles = value.split("'").length - 1
+	const doubles = value.split('"').length - 1
+	if (singles > doubles) return JSON.stringify(value)
+	return `'${JSON.stringify(value).slice(1, -1).replaceAll('\\"', '"').replaceAll("'", "\\'")}'`
 }
 
 function docusaurusConfig(meta: SiteMeta, typedocModules: string[]): string {
@@ -135,111 +141,111 @@ function docusaurusConfig(meta: SiteMeta, typedocModules: string[]): string {
 		? "import { getTypedocPlugins } from '@rtorcato/repo-tooling/docusaurus'\n"
 		: ''
 	const typedocPlugins = typedocModules.length
-		? `    ...getTypedocPlugins(${JSON.stringify(typedocModules)}),\n`
+		? `\t\t...getTypedocPlugins([${typedocModules.map(jsString).join(', ')}]),\n`
 		: ''
 	return `import type * as Preset from '@docusaurus/preset-classic'
 import type { Config } from '@docusaurus/types'
 import { themes as prismThemes } from 'prism-react-renderer'
 ${typedocImport}
 const config: Config = {
-  title: '${meta.title}',
-  tagline: ${JSON.stringify(meta.tagline)},
-  favicon: 'img/favicon.ico',
+\ttitle: '${meta.title}',
+\ttagline: ${jsString(meta.tagline)},
+\tfavicon: 'img/favicon.ico',
 
-  url: 'https://${owner}.github.io',
-  baseUrl: '/${repo}/',
+\turl: 'https://${owner}.github.io',
+\tbaseUrl: '/${repo}/',
 
-  organizationName: '${owner}',
-  projectName: '${repo}',
+\torganizationName: '${owner}',
+\tprojectName: '${repo}',
 
-  onBrokenLinks: 'warn',
+\tonBrokenLinks: 'warn',
 
-  markdown: {
-    format: 'detect',
-    hooks: {
-      onBrokenMarkdownLinks: 'warn',
-    },
-  },
+\tmarkdown: {
+\t\tformat: 'detect',
+\t\thooks: {
+\t\t\tonBrokenMarkdownLinks: 'warn',
+\t\t},
+\t},
 
-  i18n: {
-    defaultLocale: 'en',
-    locales: ['en'],
-  },
+\ti18n: {
+\t\tdefaultLocale: 'en',
+\t\tlocales: ['en'],
+\t},
 
-  presets: [
-    [
-      'classic',
-      {
-        docs: {
-          sidebarPath: './sidebars.ts',
-          routeBasePath: '/docs',
-          editUrl: '${ghUrl}/edit/main/apps/docs/',
-        },
-        blog: false,
-        theme: {
-          customCss: './src/css/custom.css',
-        },
-      } satisfies Preset.Options,
-    ],
-  ],
+\tpresets: [
+\t\t[
+\t\t\t'classic',
+\t\t\t{
+\t\t\t\tdocs: {
+\t\t\t\t\tsidebarPath: './sidebars.ts',
+\t\t\t\t\trouteBasePath: '/docs',
+\t\t\t\t\teditUrl: '${ghUrl}/edit/main/apps/docs/',
+\t\t\t\t},
+\t\t\t\tblog: false,
+\t\t\t\ttheme: {
+\t\t\t\t\tcustomCss: './src/css/custom.css',
+\t\t\t\t},
+\t\t\t} satisfies Preset.Options,
+\t\t],
+\t],
 
-  plugins: [
-${typedocPlugins}    [
-      '@easyops-cn/docusaurus-search-local',
-      {
-        hashed: true,
-        indexDocs: true,
-        indexBlog: false,
-        docsRouteBasePath: '/docs',
-        highlightSearchTermsOnTargetPage: true,
-        searchBarShortcutHint: false,
-      },
-    ],
-  ],
+\tplugins: [
+${typedocPlugins}\t\t[
+\t\t\t'@easyops-cn/docusaurus-search-local',
+\t\t\t{
+\t\t\t\thashed: true,
+\t\t\t\tindexDocs: true,
+\t\t\t\tindexBlog: false,
+\t\t\t\tdocsRouteBasePath: '/docs',
+\t\t\t\thighlightSearchTermsOnTargetPage: true,
+\t\t\t\tsearchBarShortcutHint: false,
+\t\t\t},
+\t\t],
+\t],
 
-  themeConfig: {
-    colorMode: {
-      defaultMode: 'dark',
-      respectPrefersColorScheme: true,
-    },
-    navbar: {
-      title: '${meta.title}',
-      items: [
-        { to: '/docs', position: 'left', label: 'Docs' },
-        {
-          href: '${ghUrl}',
-          label: 'GitHub',
-          position: 'right',
-        },
-      ],
-    },
-    footer: {
-      style: 'dark',
-      links: [
-        {
-          title: 'Docs',
-          items: [{ label: 'Getting Started', to: '/docs' }],
-        },
-        {
-          title: 'More',
-          items: [
-            { label: 'GitHub', href: '${ghUrl}' },
-            { label: 'Issues', href: '${ghUrl}/issues' },
-          ],
-        },
-      ],
-      copyright: \`Copyright © \${new Date().getFullYear()} ${meta.title}. Built with Docusaurus.\`,
-    },
-    // \`theme\` is the LIGHT-mode Prism theme and \`darkTheme\` the dark one. Both
-    // were vsDark here, which is why the shared stylesheet had to pin fenced
-    // blocks dark in light mode too (#324). Keep this pairing and the CSS in
-    // step — vsDark tokens on a light surface are unreadable.
-    prism: {
-      theme: prismThemes.vsLight,
-      darkTheme: prismThemes.vsDark,
-      additionalLanguages: ['bash', 'json', 'typescript'],
-    },
-  } satisfies Preset.ThemeConfig,
+\tthemeConfig: {
+\t\tcolorMode: {
+\t\t\tdefaultMode: 'dark',
+\t\t\trespectPrefersColorScheme: true,
+\t\t},
+\t\tnavbar: {
+\t\t\ttitle: '${meta.title}',
+\t\t\titems: [
+\t\t\t\t{ to: '/docs', position: 'left', label: 'Docs' },
+\t\t\t\t{
+\t\t\t\t\thref: '${ghUrl}',
+\t\t\t\t\tlabel: 'GitHub',
+\t\t\t\t\tposition: 'right',
+\t\t\t\t},
+\t\t\t],
+\t\t},
+\t\tfooter: {
+\t\t\tstyle: 'dark',
+\t\t\tlinks: [
+\t\t\t\t{
+\t\t\t\t\ttitle: 'Docs',
+\t\t\t\t\titems: [{ label: 'Getting Started', to: '/docs' }],
+\t\t\t\t},
+\t\t\t\t{
+\t\t\t\t\ttitle: 'More',
+\t\t\t\t\titems: [
+\t\t\t\t\t\t{ label: 'GitHub', href: '${ghUrl}' },
+\t\t\t\t\t\t{ label: 'Issues', href: '${ghUrl}/issues' },
+\t\t\t\t\t],
+\t\t\t\t},
+\t\t\t],
+\t\t\tcopyright: \`Copyright © \${new Date().getFullYear()} ${meta.title}. Built with Docusaurus.\`,
+\t\t},
+\t\t// \`theme\` is the LIGHT-mode Prism theme and \`darkTheme\` the dark one. Both
+\t\t// were vsDark here, which is why the shared stylesheet had to pin fenced
+\t\t// blocks dark in light mode too (#324). Keep this pairing and the CSS in
+\t\t// step — vsDark tokens on a light surface are unreadable.
+\t\tprism: {
+\t\t\ttheme: prismThemes.vsLight,
+\t\t\tdarkTheme: prismThemes.vsDark,
+\t\t\tadditionalLanguages: ['bash', 'json', 'typescript'],
+\t\t},
+\t} satisfies Preset.ThemeConfig,
 }
 
 export default config
@@ -251,7 +257,7 @@ const SIDEBARS = `import type { SidebarsConfig } from '@docusaurus/plugin-conten
 // Autogenerated from the docs/ folder structure — add markdown files and they
 // appear here. Swap for an explicit list when you want to control ordering.
 const sidebars: SidebarsConfig = {
-  docs: [{ type: 'autogenerated', dirName: '.' }],
+\tdocs: [{ type: 'autogenerated', dirName: '.' }],
 }
 
 export default sidebars
@@ -284,13 +290,13 @@ function customCss(accent: { light: string; dark: string }): string {
 @import "./_jt-tokens.css";
 
 :root {
-  --ifm-color-primary: ${accent.light};
-  --jt-accent: ${accent.light};
+\t--ifm-color-primary: ${accent.light};
+\t--jt-accent: ${accent.light};
 }
 
 [data-theme="dark"] {
-  --ifm-color-primary: ${accent.dark};
-  --jt-accent: ${accent.dark};
+\t--ifm-color-primary: ${accent.dark};
+\t--jt-accent: ${accent.dark};
 }
 `
 }
@@ -318,9 +324,6 @@ function docsPackageJson(meta: SiteMeta, typedoc: boolean): string {
 			serve: 'docusaurus serve',
 			clear: 'docusaurus clear',
 			typecheck: 'tsc --noEmit',
-			// Opt-in smoke test — builds, serves, and checks the site renders. Heavy
-			// browser install, so it's a manual/CI-gated run, not part of `build`.
-			'test:e2e': 'playwright test',
 		},
 		dependencies: {
 			'@docusaurus/core': '^3.10.2',
@@ -336,7 +339,6 @@ function docsPackageJson(meta: SiteMeta, typedoc: boolean): string {
 			'@docusaurus/module-type-aliases': '^3.10.2',
 			'@docusaurus/tsconfig': '^3.8.1',
 			'@docusaurus/types': '^3.10.2',
-			'@playwright/test': '^1.49.0',
 			'@rtorcato/repo-tooling': SELF_RANGE,
 			'@types/react': '^19.0.0',
 			typescript: '~5.6.3',
@@ -396,35 +398,6 @@ jobs:
 `
 }
 
-/**
- * Playwright config for the docs smoke test. Reuses the shipped preset, then
- * builds + serves the site on :3000 and points the base URL at the site's
- * GitHub Pages base path so routes resolve exactly as in production. One
- * browser keeps the CI browser install light.
- */
-function playwrightConfig(meta: SiteMeta): string {
-	const url = `http://localhost:3000${siteBaseUrl(meta)}`
-	return `import { defineConfig, devices } from '@playwright/test'
-import base from '@rtorcato/repo-tooling/playwright'
-
-export default defineConfig({
-  ...base,
-  testDir: './tests',
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  use: {
-    ...base.use,
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? '${url}',
-  },
-  webServer: {
-    command: 'pnpm run build && pnpm exec docusaurus serve --port 3000',
-    url: process.env.PLAYWRIGHT_BASE_URL ?? '${url}',
-    reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
-  },
-})
-`
-}
-
 // routeBasePath is '/docs', so the site root has no page of its own and the
 // navbar logo links to a 404 on every page (#664). Redirect it to the docs.
 // Tabs/no semicolons to match the Biome preset the consuming repo is linted with.
@@ -434,22 +407,6 @@ import useBaseUrl from '@docusaurus/useBaseUrl'
 export default function Home() {
 \treturn <Redirect to={useBaseUrl('/docs')} />
 }
-`
-
-const SMOKE_SPEC = `import { expect, test } from '@playwright/test'
-
-// Smoke test: assert the built site serves and its core UI renders. Deliberately
-// content-agnostic — it validates "the site builds and boots", not copy.
-test('homepage responds and renders the shell', async ({ page }) => {
-  const res = await page.goto('./')
-  expect(res?.ok()).toBeTruthy()
-  await expect(page.locator('.navbar')).toBeVisible()
-})
-
-test('the starter doc renders a heading', async ({ page }) => {
-  await page.goto('./')
-  await expect(page.locator('h1')).toBeVisible()
-})
 `
 
 /**
@@ -493,8 +450,6 @@ export async function generateDocsSite(
 		[`${DOCS_APP}/src/css/custom.css`, customCss(accent)],
 		[`${DOCS_APP}/src/pages/index.tsx`, HOME_PAGE],
 		[`${DOCS_APP}/docs/intro.md`, introDoc(meta, badges)],
-		[`${DOCS_APP}/playwright.config.ts`, playwrightConfig(meta)],
-		[`${DOCS_APP}/tests/smoke.spec.ts`, SMOKE_SPEC],
 		['.github/workflows/docs.yml', docsWorkflow(meta)],
 	]
 	// TypeDoc emits docs/api/<id> on build — keep the generated tree out of git.
