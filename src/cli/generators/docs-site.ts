@@ -423,6 +423,17 @@ export default defineConfig({
 `
 }
 
+// routeBasePath is '/docs', so the site root has no page of its own and the
+// navbar logo links to a 404 on every page (#664). Redirect it to the docs.
+// Tabs/no semicolons to match the Biome preset the consuming repo is linted with.
+const HOME_PAGE = `import { Redirect } from '@docusaurus/router'
+import useBaseUrl from '@docusaurus/useBaseUrl'
+
+export default function Home() {
+\treturn <Redirect to={useBaseUrl('/docs')} />
+}
+`
+
 const SMOKE_SPEC = `import { expect, test } from '@playwright/test'
 
 // Smoke test: assert the built site serves and its core UI renders. Deliberately
@@ -478,6 +489,7 @@ export async function generateDocsSite(
 		[`${DOCS_APP}/sidebars.ts`, SIDEBARS],
 		[`${DOCS_APP}/tsconfig.json`, TSCONFIG],
 		[`${DOCS_APP}/src/css/custom.css`, customCss(accent)],
+		[`${DOCS_APP}/src/pages/index.tsx`, HOME_PAGE],
 		[`${DOCS_APP}/docs/intro.md`, introDoc(meta, badges)],
 		[`${DOCS_APP}/playwright.config.ts`, playwrightConfig(meta)],
 		[`${DOCS_APP}/tests/smoke.spec.ts`, SMOKE_SPEC],
