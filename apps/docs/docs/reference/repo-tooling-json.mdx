@@ -171,6 +171,19 @@ Three rules keep it from becoming a mute button:
 A bulk `fix` / `fix --yes` skips declared checks; a targeted `fix <target>` still applies,
 since naming the fixer is an explicit override.
 
+### `rules.brand` — brand asset inputs
+
+<Fields schema={lockfileSchema.properties.rules.properties.brand} />
+
+`fix brand` puts `tagline` on the banners and social card. Without it the `package.json`
+`description` stands in, which is usually a full sentence written for npm and too long for a
+banner. Keep the tagline to two lines of about 42 characters; `fix brand` warns on stderr
+when it runs longer, since the mobile banner would cut it off.
+
+```json
+"rules": { "brand": { "tagline": "Every JS/TS preset, one install." } }
+```
+
 ## Comparing against another repo
 
 There is **no guideline package**, and there never will be: the rules are unique to each repo,

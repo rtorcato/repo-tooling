@@ -311,6 +311,17 @@
 						"minLength": 1
 					},
 					"description": "Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift."
+				},
+				"brand": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "Inputs to `fix brand`, which scaffolds the banner and social-card SVGs.",
+					"properties": {
+						"tagline": {
+							"type": "string",
+							"description": "Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer."
+						}
+					}
 				}
 			}
 		}

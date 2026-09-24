@@ -337,8 +337,8 @@ export const BASE_FIXERS: Fixer[] = [
 		// image paths — hand-edited art is never clobbered.
 		riskLevel: 'safe-merge',
 		canFixDrift: true,
-		async run({ targetDir, pkg }) {
-			const filesWritten = await generateBrand(pkg, targetDir)
+		async run({ targetDir, pkg, lock }) {
+			const filesWritten = await generateBrand(pkg, targetDir, lock?.rules?.brand?.tagline)
 			if (filesWritten.some((f) => f.endsWith('.svg'))) {
 				console.error(
 					chalk.dim(

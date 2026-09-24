@@ -58,7 +58,9 @@ brew install librsvg                   # rsvg-convert, what render.sh drives
 ./brand/render.sh                      # re-render every PNG from source
 ```
 
-The scaffolded SVGs derive the project name and tagline from `package.json` and
+The scaffolded SVGs derive the project name from `package.json`, the tagline
+from [`rules.brand.tagline`](../reference/repo-tooling-json.mdx#rulesbrand--brand-asset-inputs)
+in `.repo-tooling.json` (falling back to the `package.json` description), and
 the accent from the repo's own docs theme or favicon, falling back to a neutral
 grey. They're a starting point — edit them, then re-render. `render.sh` never
 overwrites a source, and `fix brand` writes only files that are missing, so
