@@ -615,6 +615,7 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'vscode-extensions',
+		selfSafe: true,
 		description:
 			'Recommend the VS Code extensions matching the enabled tools (.vscode/extensions.json)',
 		appliesTo: ['VS Code extensions'],
@@ -629,6 +630,7 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'nvmrc',
+		selfSafe: true,
 		description: 'Scaffold .nvmrc pinned to Node 22',
 		appliesTo: ['Node version pin'],
 		outputs: ['.nvmrc'],
@@ -979,6 +981,7 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'lockfile',
+		selfSafe: true,
 		description: `Scaffold ${LOCKFILE_NAME} recording current tool choices`,
 		appliesTo: ['lockfile'],
 		outputs: [LOCKFILE_NAME],
