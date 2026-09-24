@@ -1,11 +1,12 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { checkBrand } from '../../../src/base/checks.js'
 import {
 	generateBrand,
 	repointReadmeBanners,
 	resolveBrandMeta,
+	taglineFits,
 	wrapText,
 } from '../../../src/cli/generators/brand.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -107,6 +108,39 @@ describe('resolveBrandMeta', () => {
 		const meta = await resolveBrandMeta(null, dir)
 		expect(meta.name).toBe(dir.split('/').pop())
 		expect(meta.install).toBeNull()
+	})
+})
+
+describe('tagline (#666)', () => {
+	const LONG =
+		'A one-package JavaScript and TypeScript tooling distribution with every preset plus a CLI to scaffold and audit projects.'
+
+	it('prefers rules.brand.tagline over the package.json description', async () => {
+		const meta = await resolveBrandMeta(PKG, newTmpDir(), 'Short and sweet.')
+		expect(meta.tagline).toBe('Short and sweet.')
+	})
+
+	it('falls back to the package.json description', async () => {
+		const meta = await resolveBrandMeta(PKG, newTmpDir(), undefined)
+		expect(meta.tagline).toBe('Widgets for everyone, everywhere.')
+	})
+
+	it('taglineFits allows two lines of the mobile budget and no more', () => {
+		expect(taglineFits('Widgets for everyone, everywhere.')).toBe(true)
+		expect(taglineFits(LONG)).toBe(false)
+	})
+
+	it('warns on stderr when the tagline will be cut off, and stays quiet otherwise', async () => {
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			await generateBrand({ ...PKG, description: LONG }, newTmpDir())
+			expect(spy.mock.calls.flat().join('\n')).toContain('rules.brand.tagline')
+			spy.mockClear()
+			await generateBrand({ ...PKG, description: LONG }, newTmpDir(), 'Short and sweet.')
+			expect(spy).not.toHaveBeenCalled()
+		} finally {
+			spy.mockRestore()
+		}
 	})
 })
 

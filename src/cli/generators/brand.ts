@@ -6,8 +6,9 @@
  * PNG, so a banner can be recoloured, retitled or resized instead of being a
  * committed binary nobody can regenerate.
  *
- * Everything in the emitted SVGs is derived from the consuming repo — name and
- * tagline from its package.json, accent from its own docs theme or favicon —
+ * Everything in the emitted SVGs is derived from the consuming repo — name from
+ * its package.json, tagline from `rules.brand.tagline` in .repo-tooling.json or
+ * else the package.json description (#666), accent from its own docs theme or favicon —
  * and falls back to a neutral grey. Nothing about any particular org is baked
  * in; the templates are meant to be hand-edited afterwards.
  */
@@ -109,7 +110,28 @@ async function accentFromFavicon(targetDir: string): Promise<string | null> {
 	return null
 }
 
-export async function resolveBrandMeta(pkg: Pkg, targetDir: string): Promise<BrandMeta> {
+/**
+ * The narrowest tagline budget any canvas uses (the mobile banner). A tagline
+ * that needs more than two lines of it crowds the layout and gets cut off.
+ */
+const TAGLINE_MAX_CHARS = 42
+
+/** True when `tagline` fits in two lines on every canvas, without an ellipsis. */
+export function taglineFits(tagline: string): boolean {
+	const words = tagline.split(/\s+/).filter(Boolean).join(' ')
+	return wrapText(tagline, TAGLINE_MAX_CHARS, 2).join(' ') === words
+}
+
+/**
+ * `tagline` is `rules.brand.tagline` from .repo-tooling.json: a short line
+ * written for the banner. Without it the package.json description stands in,
+ * which is often a full sentence too long for the canvas (#666).
+ */
+export async function resolveBrandMeta(
+	pkg: Pkg,
+	targetDir: string,
+	tagline?: string
+): Promise<BrandMeta> {
 	const pkgName = typeof pkg?.name === 'string' ? pkg.name : undefined
 	const name = pkgName?.split('/').pop() ?? path.basename(path.resolve(targetDir))
 	const description = typeof pkg?.description === 'string' ? pkg.description : ''
@@ -117,7 +139,8 @@ export async function resolveBrandMeta(pkg: Pkg, targetDir: string): Promise<Bra
 		(await accentFromDocsTheme(targetDir)) ?? (await accentFromFavicon(targetDir)) ?? NEUTRAL_ACCENT
 	return {
 		name,
-		tagline: description || 'Add a one-line tagline to package.json "description".',
+		tagline:
+			tagline || description || 'Add a short tagline as rules.brand.tagline in .repo-tooling.json.',
 		accent,
 		install: pkgName && pkg?.private !== true ? pkgName : null,
 	}
@@ -302,8 +325,12 @@ export async function repointReadmeBanners(targetDir: string): Promise<string | 
  * README still on the old root-level paths. Every file is written only when
  * absent, so `fix brand` is idempotent.
  */
-export async function generateBrand(pkg: Pkg, targetDir: string): Promise<string[]> {
-	const meta = await resolveBrandMeta(pkg, targetDir)
+export async function generateBrand(
+	pkg: Pkg,
+	targetDir: string,
+	tagline?: string
+): Promise<string[]> {
+	const meta = await resolveBrandMeta(pkg, targetDir, tagline)
 	const written: string[] = []
 	const files: Array<[string, string, number?]> = [
 		['brand/banner.svg', bannerSvg(meta)],
@@ -314,6 +341,12 @@ export async function generateBrand(pkg: Pkg, targetDir: string): Promise<string
 	for (const [rel, contents, mode] of files) {
 		const w = await writeIfMissing(targetDir, rel, contents, mode)
 		if (w) written.push(w)
+	}
+	// stderr, not stdout: `fix --json` owns stdout (#357).
+	if (written.some((f) => f.endsWith('.svg')) && !taglineFits(meta.tagline)) {
+		console.error(
+			'   warning: the tagline needs more than two lines and will be cut off on the mobile banner — set a shorter one as rules.brand.tagline in .repo-tooling.json'
+		)
 	}
 	const readme = await repointReadmeBanners(targetDir)
 	if (readme) written.push(readme)

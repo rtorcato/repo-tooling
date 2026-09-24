@@ -106,6 +106,14 @@ export interface LockfileRules {
 	 * so a typo or a renamed check can't silently mute (or un-mute) anything.
 	 */
 	exceptions?: Record<string, string>
+	/** Inputs to `fix brand` (#666). */
+	brand?: {
+		/**
+		 * Short line for the banners and social card, in place of the
+		 * package.json description — which is often a sentence too long to fit.
+		 */
+		tagline?: string
+	}
 }
 
 export interface Lockfile {
@@ -260,6 +268,18 @@ export function lockfileSchema() {
 						additionalProperties: { type: 'string', minLength: 1 },
 						description:
 							'Declared exceptions: doctor check name → the reason this repo deliberately deviates. The reason is mandatory and non-empty — doctor shows the check as `declared` with it (never hidden) and stops failing the run for it. An entry naming a check doctor does not run is itself reported as drift.',
+					},
+					brand: {
+						type: 'object',
+						additionalProperties: false,
+						description: 'Inputs to `fix brand`, which scaffolds the banner and social-card SVGs.',
+						properties: {
+							tagline: {
+								type: 'string',
+								description:
+									'Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer.',
+							},
+						} satisfies Record<keyof NonNullable<LockfileRules['brand']>, object>,
 					},
 				} satisfies Record<keyof LockfileRules, object>,
 			},
