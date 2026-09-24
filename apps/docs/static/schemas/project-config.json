@@ -188,6 +188,9 @@
 		"tailwind": {
 			"type": "boolean"
 		},
+		"docsSite": {
+			"type": "boolean"
+		},
 		"bun": {
 			"type": "boolean"
 		}

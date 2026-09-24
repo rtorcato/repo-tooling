@@ -223,6 +223,7 @@ export const CONFIG_SCHEMA = {
 		turborepo: { type: 'boolean' },
 		nx: { type: 'boolean' },
 		tailwind: { type: 'boolean' },
+		docsSite: { type: 'boolean' },
 		bun: { type: 'boolean' },
 	},
 } as const
