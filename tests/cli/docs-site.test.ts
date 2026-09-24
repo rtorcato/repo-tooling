@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
@@ -7,6 +8,7 @@ import { generateDocsSite } from '../../src/cli/generators/docs-site.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
+const ROOT = join(import.meta.dirname, '../..')
 
 const PKG = {
 	name: '@rtorcato/repo-tooling',
@@ -29,8 +31,6 @@ describe('generateDocsSite', () => {
 			'apps/docs/src/pages/index.tsx',
 			'apps/docs/src/css/_jt-tokens.css',
 			'apps/docs/docs/intro.md',
-			'apps/docs/playwright.config.ts',
-			'apps/docs/tests/smoke.spec.ts',
 			'scripts/sync-changelog.mjs',
 			'.github/workflows/docs.yml',
 			'pnpm-workspace.yaml',
@@ -43,19 +43,12 @@ describe('generateDocsSite', () => {
 		const docsPkg = await fs.readJson(join(dir, 'apps/docs/package.json'))
 		expect(docsPkg.name).toBe('@rtorcato/repo-tooling-docs')
 		expect(docsPkg.scripts.build).toMatch(/sync-changelog/)
-		expect(docsPkg.scripts['test:e2e']).toBe('playwright test')
-		expect(docsPkg.devDependencies['@playwright/test']).toBeTruthy()
 
 		// The guard that stops this rotting again: the self-pin handed to a
 		// scaffolded site must track the running version. It had been a literal
 		// `^2.47.0` — two majors stale — so new sites were given a pre-rename
 		// version predating the peer-dependency split.
 		expect(docsPkg.devDependencies['@rtorcato/repo-tooling']).toBe(`^${selfPackageJson.version}`)
-
-		// Smoke test reuses the shipped preset and targets the site's base path.
-		const pw = await fs.readFile(join(dir, 'apps/docs/playwright.config.ts'), 'utf-8')
-		expect(pw).toContain("import base from '@rtorcato/repo-tooling/playwright'")
-		expect(pw).toContain('http://localhost:3000/js-tooling/')
 
 		// Config infers org/repo → GitHub Pages url + baseUrl.
 		const config = await fs.readFile(join(dir, 'apps/docs/docusaurus.config.ts'), 'utf-8')
@@ -83,6 +76,30 @@ describe('generateDocsSite', () => {
 		const css = await fs.readFile(join(dir, 'apps/docs/src/css/custom.css'), 'utf-8')
 		expect(css).toContain('@import "./_jt-tokens.css"')
 		expect(css).toMatch(/--ifm-color-primary/)
+	})
+
+	// #662: `pnpm verify` failed right after `fix docs-site` — the scaffold was
+	// 2-space indented against a tabs preset, and vitest collected the Playwright
+	// smoke spec. Check the output with the repo's own Biome and shipped preset.
+	it('emits files that pass the shipped Biome preset and no spec files (#662)', async () => {
+		const dir = newTmpDir()
+		const pkg = { ...PKG, description: `It's "quoted"`, exports: { './errors': './e.js' } }
+		const written = await generateDocsSite(pkg, dir, { typedoc: true })
+		expect(written.filter((rel) => rel.endsWith('.spec.ts'))).toEqual([])
+		expect(await fs.pathExists(join(dir, 'apps/docs/playwright.config.ts'))).toBe(false)
+
+		const res = spawnSync(
+			join(ROOT, 'node_modules/.bin/biome'),
+			[
+				'check',
+				`--config-path=${join(ROOT, 'tooling/biome/preset.json')}`,
+				'--vcs-enabled=false',
+				'.',
+			],
+			{ cwd: dir, encoding: 'utf8' }
+		)
+		expect(res.stdout + res.stderr).not.toMatch(/Found \d+ (error|warning)/)
+		expect(res.status).toBe(0)
 	})
 
 	it('honours a primary-color override', async () => {
@@ -210,7 +227,7 @@ describe('generateDocsSite', () => {
 		expect(config).toContain(
 			"import { getTypedocPlugins } from '@rtorcato/repo-tooling/docusaurus'"
 		)
-		expect(config).toContain('getTypedocPlugins(["errors","env"])')
+		expect(config).toContain("getTypedocPlugins(['errors', 'env'])")
 		expect(config).not.toContain('typescript/base')
 
 		const docsPkg = await fs.readJson(join(dir, 'apps/docs/package.json'))
