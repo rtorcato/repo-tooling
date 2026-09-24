@@ -3,8 +3,10 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import { checkPnpmWorkspace } from '../../../src/languages/js/checks.js'
 import {
+	DOCS_SITE_BUILDS,
 	ensurePnpmSettings,
 	familyGlob,
+	mergeAllowBuilds,
 	missingPnpmSettings,
 	upsertPnpmSettings,
 } from '../../../src/cli/generators/pnpm-workspace.js'
@@ -179,5 +181,28 @@ describe('checkPnpmWorkspace', () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
 		expect((await checkPnpmWorkspace(dir, {})).status).toBe('optional-missing')
+	})
+})
+
+describe('mergeAllowBuilds', () => {
+	it('appends an allowBuilds block when the file has none', () => {
+		const after = mergeAllowBuilds("packages:\n  - 'apps/*'\n", DOCS_SITE_BUILDS)
+		expect(after).toBe(
+			"packages:\n  - 'apps/*'\n\nallowBuilds:\n  core-js: false\n  core-js-pure: false\n  esbuild: true\n  sharp: true\n"
+		)
+	})
+
+	// #663: never a second `allowBuilds:` key, never a flipped user decision.
+	it('adds only undecided packages under the existing block', () => {
+		const before = 'allowBuilds:\n  sharp: false\n  core-js: true\n'
+		const after = mergeAllowBuilds(before, DOCS_SITE_BUILDS)
+		expect(after.match(/^allowBuilds:/gm)).toHaveLength(1)
+		expect(after).toContain('sharp: false')
+		expect(after).toContain('core-js: true')
+		expect(after).not.toContain('sharp: true')
+		expect(after).not.toContain('core-js: false')
+		expect(after).toContain('core-js-pure: false')
+		expect(after).toContain('esbuild: true')
+		expect(mergeAllowBuilds(after, DOCS_SITE_BUILDS)).toBe(after)
 	})
 })

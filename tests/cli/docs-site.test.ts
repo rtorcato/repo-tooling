@@ -112,6 +112,20 @@ describe('generateDocsSite', () => {
 		expect(ws2.match(/apps\/\*/g)?.length).toBe(1)
 	})
 
+	// #663: Docusaurus pulls in core-js/core-js-pure/esbuild/sharp, and pnpm 11
+	// fails the install on any build script left undecided.
+	it('approves the docs build scripts without touching existing decisions', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: false\n')
+		await generateDocsSite(PKG, dir)
+		const ws = await fs.readFile(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
+		expect(ws.match(/^allowBuilds:/gm)).toHaveLength(1)
+		expect(ws).toContain('esbuild: false')
+		expect(ws).not.toContain('esbuild: true')
+		expect(ws).toContain('core-js: false')
+		expect(ws).toContain('sharp: true')
+	})
+
 	it('produces a site the doctor Docs site check reports as ok', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), PKG)

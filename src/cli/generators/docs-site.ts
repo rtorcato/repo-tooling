@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import selfPackageJson from '../../../package.json' with { type: 'json' }
 import { copyPreset, PRESETS } from '../utils/copy-preset.js'
 import { buildBadgeRow, parseRepository } from './badges.js'
+import { DOCS_SITE_BUILDS, mergeAllowBuilds } from './pnpm-workspace.js'
 import { inferSubpathsFromExports } from './treeshake.js'
 
 type Pkg = Record<string, unknown> | null
@@ -98,23 +99,24 @@ async function writeIfMissing(
 	return rel
 }
 
-/** Ensure `pnpm-workspace.yaml` lists `apps/*` (idempotent). */
+/**
+ * Ensure `pnpm-workspace.yaml` lists `apps/*` and approves the site's build
+ * scripts (idempotent).
+ */
 async function ensureWorkspace(targetDir: string): Promise<string | null> {
 	const rel = 'pnpm-workspace.yaml'
 	const file = path.join(targetDir, rel)
-	if (await fs.pathExists(file)) {
-		const body = await fs.readFile(file, 'utf8')
-		// Already a workspace covering apps/* (either `apps/*` or a broader glob).
-		if (/^\s*-\s*['"]?apps\/\*/m.test(body)) return null
-		if (/^packages:/m.test(body)) {
-			const next = body.replace(/^packages:\n/m, "packages:\n  - 'apps/*'\n")
-			await fs.writeFile(file, next)
-			return rel
-		}
-		await fs.writeFile(file, `packages:\n  - 'apps/*'\n\n${body}`)
-		return rel
+	const body = (await fs.pathExists(file)) ? await fs.readFile(file, 'utf8') : ''
+	let next = body
+	// Already a workspace covering apps/* (either `apps/*` or a broader glob).
+	if (!/^\s*-\s*['"]?apps\/\*/m.test(body)) {
+		next = /^packages:/m.test(body)
+			? body.replace(/^packages:\n/m, "packages:\n  - 'apps/*'\n")
+			: `packages:\n  - 'apps/*'\n${body ? `\n${body}` : ''}`
 	}
-	await fs.writeFile(file, "packages:\n  - 'apps/*'\n")
+	next = mergeAllowBuilds(next, DOCS_SITE_BUILDS)
+	if (next === body) return null
+	await fs.writeFile(file, next)
 	return rel
 }
 

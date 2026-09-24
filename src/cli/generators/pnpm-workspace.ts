@@ -185,6 +185,32 @@ function insertUnder(yaml: string, key: string, item: string): string {
 	return lines.join('\n')
 }
 
+/**
+ * The build-script decisions a Docusaurus site needs under pnpm 11 (#663): it
+ * pulls in all four, and an undecided one fails the install. core-js's
+ * postinstall is only a banner, so it is declined; esbuild and sharp compile.
+ */
+export const DOCS_SITE_BUILDS: Record<string, boolean> = {
+	'core-js': false,
+	'core-js-pure': false,
+	esbuild: true,
+	sharp: true,
+}
+
+/**
+ * Merge `builds` into the `allowBuilds:` map, adding only the packages that
+ * carry no decision yet — an existing value, whichever way it went, stays.
+ */
+export function mergeAllowBuilds(yaml: string, builds: Record<string, boolean>): string {
+	const entries = Object.entries(builds)
+		.filter(([name]) => !approved(yaml, name))
+		.map(([name, allow]) => `  ${asKey(name)}: ${allow}`)
+		.join('\n')
+	if (!entries) return yaml
+	if (section(yaml, 'allowBuilds')) return insertUnder(yaml, 'allowBuilds', entries)
+	return `${yaml.replace(/\n*$/, '\n')}\nallowBuilds:\n${entries}\n`
+}
+
 /** Merge every missing managed setting into `yaml` and return the new contents. */
 export function upsertPnpmSettings(
 	yaml: string,
