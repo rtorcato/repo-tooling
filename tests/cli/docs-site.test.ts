@@ -26,6 +26,7 @@ describe('generateDocsSite', () => {
 			'apps/docs/sidebars.ts',
 			'apps/docs/tsconfig.json',
 			'apps/docs/src/css/custom.css',
+			'apps/docs/src/pages/index.tsx',
 			'apps/docs/src/css/_jt-tokens.css',
 			'apps/docs/docs/intro.md',
 			'apps/docs/playwright.config.ts',
@@ -71,6 +72,12 @@ describe('generateDocsSite', () => {
 		const wf = await fs.readFile(join(dir, '.github/workflows/docs.yml'), 'utf-8')
 		expect(wf).toContain('rtorcato/repo-tooling/.github/workflows/docs-deploy.yml@main')
 		expect(wf).toContain("build-filter: '@rtorcato/repo-tooling-docs'")
+
+		// #664: the site root redirects to the docs instead of 404ing.
+		const home = await fs.readFile(join(dir, 'apps/docs/src/pages/index.tsx'), 'utf-8')
+		expect(home).toBe(
+			"import { Redirect } from '@docusaurus/router'\nimport useBaseUrl from '@docusaurus/useBaseUrl'\n\nexport default function Home() {\n\treturn <Redirect to={useBaseUrl('/docs')} />\n}\n"
+		)
 
 		// custom.css imports the shared tokens, then overrides the accent.
 		const css = await fs.readFile(join(dir, 'apps/docs/src/css/custom.css'), 'utf-8')
