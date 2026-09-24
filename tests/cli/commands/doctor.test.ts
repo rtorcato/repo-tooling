@@ -9,11 +9,6 @@ import {
 } from '../../../src/cli/commands/doctor.js'
 import { checkBuildApprovals, pnpmStoreDirToName } from '../../../src/languages/js/checks.js'
 import {
-	installClaudeSkill,
-	SHIPPED_SKILL,
-	SHIPPED_SKILLS,
-} from '../../../src/cli/generators/claude-skills.js'
-import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
 	generateDependabotConfig,
 } from '../../../src/cli/generators/security.js'
@@ -1896,76 +1891,6 @@ describe('checkBuildApprovals', () => {
 			expect(detail.match(/esbuild/g)).toHaveLength(1)
 			expect(detail).not.toContain('transitive')
 		})
-	})
-})
-
-// #485: `--skills-dir` used to be honoured only on the write path, so a repo
-// that installs anywhere but ~/.claude/skills got a permanent false
-// `optional-missing`. Both directions are asserted, so reverting the threading
-// fails one of them whichever way the real ~/.claude/skills happens to look.
-describe('doctor --skills-dir', () => {
-	const claudeSkills = async (dir: string, skillsDir: string) =>
-		(await runDoctor(dir, skillsDir)).find((r) => r.check === 'Claude skills')
-
-	it('reports the skill as installed from a custom skills dir', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		const skillsDir = join(dir, 'custom-skills')
-		for (const name of SHIPPED_SKILLS) await installClaudeSkill(skillsDir, name)
-
-		const result = await claudeSkills(dir, skillsDir)
-		expect(result?.status).toBe('ok')
-		expect(result?.detail).toContain('installed')
-	})
-
-	it('reports it missing when the custom skills dir has not got it', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-
-		const result = await claudeSkills(dir, join(dir, 'empty-skills'))
-		expect(result?.status).toBe('optional-missing')
-		expect(result?.detail).toContain('not installed')
-	})
-})
-
-// #484: the fork hint said "diff it against the shipped copy" and named neither
-// file, in the one case the reader most wants to look before deciding whether to
-// --force-skills. Both paths are asserted, so dropping either fails a test.
-describe('doctor: a forked Claude skill', () => {
-	const skillFile = (skillsDir: string) => join(skillsDir, SHIPPED_SKILL, 'SKILL.md')
-	const claudeSkills = async (dir: string, skillsDir: string) =>
-		(await runDoctor(dir, skillsDir)).find((r) => r.check === 'Claude skills')
-
-	it('names the installed and the shipped file in a runnable diff', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		const skillsDir = join(dir, 'custom-skills')
-		for (const name of SHIPPED_SKILLS.slice(1)) await installClaudeSkill(skillsDir, name)
-		const { shippedFile } = await installClaudeSkill(skillsDir)
-		await fs.appendFile(skillFile(skillsDir), '\nlocal edit\n')
-
-		const result = await claudeSkills(dir, skillsDir)
-		expect(result?.status).toBe('ok')
-		// Single-quoted: the paths are user-influenced and the line is meant to be
-		// pasted into a shell (#493). skillDiffCommand's own tests cover the escaping.
-		expect(result?.hint).toContain(`diff '${skillFile(skillsDir)}' '${shippedFile}'`)
-	})
-
-	// stow symlinks at file level, so the installed path is routinely a link into
-	// a dotfiles checkout. Diffing the link's own path sends the reader nowhere.
-	it('names the symlink target rather than the link', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		const skillsDir = join(dir, 'custom-skills')
-		for (const name of SHIPPED_SKILLS.slice(1)) await installClaudeSkill(skillsDir, name)
-		const dotfiles = join(dir, 'dotfiles', 'SKILL.md')
-		await fs.outputFile(dotfiles, `---\nname: ${SHIPPED_SKILL}\n---\n\nmy fork\n`)
-		await fs.ensureDir(join(skillsDir, SHIPPED_SKILL))
-		await fs.symlink(dotfiles, skillFile(skillsDir))
-
-		const result = await claudeSkills(dir, skillsDir)
-		expect(result?.hint).toContain(await fs.realpath(dotfiles))
-		expect(result?.hint).not.toContain(skillFile(skillsDir))
 	})
 })
 

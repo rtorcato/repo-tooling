@@ -277,8 +277,8 @@ const EXAMPLES: Example[] = [
   Dependabot (optional-missing) → dependabot
   ✅ wrote .github/dependabot.yml, .github/workflows/dependabot-automerge.yml
      ↻ .repo-tooling.json updated to reflect the new choice
-  Claude skills (optional-missing) → claude-skills
-    skipped — run \`fix claude-skills\` explicitly
+  EditorConfig (optional-missing) → editorconfig
+    skipped — run \`fix editorconfig\` explicitly
 
   Summary: 2 applied, 1 skipped, 1 unsupported`,
 	},

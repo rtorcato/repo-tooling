@@ -11,19 +11,10 @@
  * language-shaped (CI steps, recorded tool choices), so each module ships its
  * own — see src/base/ci.ts for the shell they share.
  */
-import os from 'node:os'
 import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
-import inquirer from 'inquirer'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
-import {
-	installClaudeSkill,
-	resolveSkillsDir,
-	SHIPPED_SKILLS,
-	skillDiffCommand,
-	type SkillInstallResult,
-} from '../cli/generators/claude-skills.js'
 import { generateBrand } from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
@@ -43,14 +34,12 @@ import { copyPreset } from '../cli/utils/copy-preset.js'
 import { detectAuditLanguage } from '../cli/utils/detect-language.js'
 import type { Lockfile } from '../cli/utils/lockfile.js'
 import { resolveLanguageModule } from '../languages/registry.js'
-import { SETTINGS_LOCAL, setupAgentIdentity } from './ai-loop-identity.js'
 import {
 	applyGithubSettings,
 	applyReleaseEnvironment,
 	RELEASE_ENV_CHECK,
 	RELEASE_GATE_CHECK,
 } from './github-settings.js'
-import { applyLoopLabels } from './labels.js'
 import { closeCompletedMilestones } from './milestones.js'
 import type { CheckResult } from './types.js'
 
@@ -64,12 +53,6 @@ interface FixerContext {
 	pkg: Pkg
 	result: CheckResult
 	lock: Lockfile | null
-	/** `--skills-dir`, for the one fixer that writes user-global state (#404). */
-	skillsDir?: string
-	/** `--force-skills`: overwrite a locally forked skill anyway (#480). */
-	forceSkills?: boolean
-	/** `--gh-config-dir`: the agent's gh profile for `fix ai-loop-identity` (#638). */
-	ghConfigDir?: string
 	/** True under `--yes` / `--json`, so a fixer knows a prompt is not available. */
 	assumeYes: boolean
 }
@@ -135,55 +118,6 @@ async function moduleFor(targetDir: string) {
 			dependabotEcosystem: null,
 		}
 	)
-}
-
-/**
- * Where to install user-global skills, asking only when nothing resolves. Under
- * `--yes` / `--json` a prompt is not available — `--json` would have its payload
- * corrupted by one — and guessing at a directory the user never mentioned is not
- * an option either, so the run fails: `--skills-dir` is required in that case
- * (#411). It used to warn and no-op, which exited 0 with an empty `filesWritten`
- * that no `--json` consumer could tell apart from "already up to date".
- */
-async function resolveInstallDir(explicit: string | undefined, assumeYes: boolean) {
-	const { dir } = await resolveSkillsDir(explicit)
-	if (dir) return dir
-	if (assumeYes) {
-		throw new FixerAbort(
-			'no-skills-dir',
-			'no ~/.claude/skills found, and --yes/--json cannot prompt for one',
-			'pass --skills-dir <path>'
-		)
-	}
-	const { answer } = await inquirer.prompt([
-		{
-			type: 'input',
-			name: 'answer',
-			message: 'Install agent skills where?',
-			default: path.join(os.homedir(), '.claude', 'skills'),
-		},
-	])
-	const trimmed = typeof answer === 'string' ? answer.trim() : ''
-	return trimmed ? path.resolve(trimmed) : null
-}
-
-/**
- * Why the install refused, and what to do about it. A bare "skipped" would be
- * its own failure mode: the user still wants the update, and nothing on screen
- * would say how to get it or what they would be giving up (#480).
- */
-function describeSkillFork(result: SkillInstallResult): string[] {
-	const target = result.viaSymlink ? `${result.file} → ${result.realFile}` : result.realFile
-	const why =
-		result.contentState === 'modified'
-			? `its content has diverged from the ${result.installedVersion} release it was installed from`
-			: 'it carries no content record, so a local fork and a stale copy are indistinguishable'
-	return [
-		`skipped — ${result.name} was not overwritten with ${result.shippedVersion}: ${why}`,
-		`  ${target}`,
-		`  compare:  ${skillDiffCommand(result)}`,
-		'  overwrite anyway:  fix claude-skills --force-skills',
-	]
 }
 
 export const BASE_FIXERS: Fixer[] = [
@@ -358,20 +292,6 @@ export const BASE_FIXERS: Fixer[] = [
 		},
 	},
 	{
-		target: 'labels',
-		description:
-			'Repair ai-issue-loop label colours and descriptions on GitHub via `gh label edit` (mutates the remote repo, not files). No-ops on a repo that does not use the loop',
-		appliesTo: ['AI loop labels'],
-		outputs: ['GitHub labels (remote, via gh label edit)'],
-		// safe-add for the same reason github-settings is: it exempts this fixer
-		// from the `--diff` shadow-run, which executes run() for a mere preview.
-		riskLevel: 'safe-add',
-		canFixDrift: true,
-		async run({ targetDir }) {
-			return { filesWritten: await applyLoopLabels(targetDir) }
-		},
-	},
-	{
 		target: 'codeowners',
 		description: 'Scaffold .github/CODEOWNERS with commented examples',
 		appliesTo: ['CODEOWNERS'],
@@ -465,70 +385,6 @@ export const BASE_FIXERS: Fixer[] = [
 		async run({ targetDir }) {
 			const result = await copyPreset('claude-skill', targetDir)
 			return { filesWritten: [result.target] }
-		},
-	},
-	{
-		target: 'claude-skills',
-		description: `Install the ${SHIPPED_SKILLS.join(', ')} Claude Code skills into the user-level skills dir (~/.claude/skills, or --skills-dir). Writes outside the repo`,
-		appliesTo: ['Claude skills'],
-		outputs: SHIPPED_SKILLS.map((name) => `~/.claude/skills/${name}/SKILL.md`),
-		// safe-add is load-bearing for the same reason it is on github-settings:
-		// it exempts this fixer from the `--diff` shadow-run, which copies the repo
-		// to tmp and *executes* run() — here that would write to the real home dir
-		// during what the user asked to be a preview.
-		riskLevel: 'safe-add',
-		explicitOnly: true,
-		canFixDrift: true,
-		async run({ skillsDir, forceSkills, assumeYes }) {
-			const dir = await resolveInstallDir(skillsDir, assumeYes)
-			if (!dir) return { filesWritten: [] }
-			const filesWritten: string[] = []
-			for (const name of SHIPPED_SKILLS) {
-				const result = await installClaudeSkill(dir, name, { force: forceSkills })
-				if (result.status === 'declined-downgrade') {
-					// Say what was compared, not what is newer: the version is a label,
-					// and on a git checkout it can understate the content behind it
-					// (#522). Naming the escape hatch matters for exactly that case.
-					console.error(
-						chalk.yellow(
-							`   skipped — ${result.file} is stamped ${result.installedVersion}, above the ${result.shippedVersion} this package reports; not overwritten`
-						)
-					)
-					console.error(chalk.yellow('   overwrite anyway:  fix claude-skills --force-skills'))
-					continue
-				}
-				if (result.status === 'declined-fork') {
-					// Name `realFile`: through a stow symlink the overwrite would land in a
-					// *second* repo's working tree, and that is the path to look at (#480).
-					for (const line of describeSkillFork(result)) console.error(chalk.yellow(`   ${line}`))
-					continue
-				}
-				if (result.status === 'up-to-date') continue
-				// Report the resolved real path when the skill is a stow symlink: the bytes
-				// landed in a dotfiles checkout, and that is where the user has to commit them.
-				if (result.viaSymlink) {
-					console.error(chalk.dim(`   wrote through a symlink — commit ${result.realFile}`))
-				}
-				filesWritten.push(result.realFile)
-			}
-			return { filesWritten }
-		},
-	},
-	{
-		target: 'ai-loop-identity',
-		description:
-			"Point this checkout's Claude sessions at a gh profile signed in as rules.aiLoop.agentUser (~/.config/gh-<agentUser>, or --gh-config-dir) via .claude/settings.local.json. Every session in the checkout then runs as the agent",
-		appliesTo: ['AI loop identity'],
-		outputs: [SETTINGS_LOCAL, '.gitignore'],
-		// safe-add keeps it out of the `--diff` shadow-run, which would spawn gh;
-		// explicitOnly because it changes who every session here acts as.
-		riskLevel: 'safe-add',
-		explicitOnly: true,
-		canFixDrift: true,
-		async run({ targetDir, ghConfigDir }) {
-			return {
-				filesWritten: await setupAgentIdentity(targetDir, { ghConfigDir, home: os.homedir() }),
-			}
 		},
 	},
 	{

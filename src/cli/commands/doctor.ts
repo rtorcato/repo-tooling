@@ -12,9 +12,7 @@ import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
 import { type DetectedLanguage, detectAuditLanguage } from '../utils/detect-language.js'
-import { checkAgentUser } from '../../base/agent-user.js'
 import { checkGitHubSettings } from '../../base/github-settings.js'
-import { checkLoopLabels } from '../../base/labels.js'
 import { checkMilestones } from '../../base/milestones.js'
 import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
@@ -26,7 +24,6 @@ import {
 	checkAiSetup,
 	checkBrand,
 	checkCodeowners,
-	checkClaudeSkills,
 	checkCodeQL,
 	checkCommunityHealth,
 	checkCoverageUpload,
@@ -40,7 +37,6 @@ import {
 	checkPrePushHook,
 	checkReadmeBadges,
 	checkRecommendedMcp,
-	checkRequiredSkills,
 	COMMITLINT_FILE_CHECK,
 	type GitHooksProfile,
 } from '../../base/checks.js'
@@ -88,8 +84,6 @@ export { evaluateNodeVersion }
 export interface DoctorOptions {
 	directory?: string
 	json?: boolean
-	/** `--skills-dir`, mirroring `fix` — the read side of the same flag (#485). */
-	skillsDir?: string
 	/** `--rules-from <owner/repo>`: report how this repo's rules differ from that repo's (#563). */
 	rulesFrom?: string
 }
@@ -276,13 +270,6 @@ interface BaseCheckOptions {
 	language: DetectedLanguage
 	/** The module's `codeqlLanguages`; empty means CodeQL can't analyse it (#289). */
 	codeqlLanguages: readonly string[]
-	/**
-	 * The run's `--skills-dir` — the one field here that isn't language-shaped.
-	 * It rides along because it is the only way the user-global skills check
-	 * hears about the flag, and threading it as a separate parameter reformats
-	 * every call site for no gain (#485).
-	 */
-	skillsDir?: string
 }
 
 // The language-agnostic checks (src/base): repo hygiene, git hooks, CI,
@@ -317,24 +304,11 @@ async function runBaseChecks(
 	results.push(...(await checkGitHubSettings(dir)))
 	// Milestone hygiene (#397) — same seam, same self-skip.
 	results.push(await checkMilestones(dir))
-	// ai-issue-loop label colours/descriptions (#446) — same seam, same self-skip.
-	results.push(await checkLoopLabels(dir))
-	// aiLoop.agentUser assignability (#530) — same seam, same self-skip.
-	results.push(await checkAgentUser(dir, lock?.rules?.aiLoop?.agentUser))
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
 	results.push(await checkCommunityHealth(dir))
 	results.push(await checkBrand(dir))
 	results.push(await checkAiSetup(dir))
-	// User-global, not repo state — see checkClaudeSkills on why it never returns drift.
-	results.push(await checkClaudeSkills(opts.skillsDir))
-	// #533: gated on `aiLoop.agentUser`, which is the "this repo uses the pipeline"
-	// signal, so a repo that doesn't gets no line at all rather than an empty one.
-	// The key itself no longer says that — since #571 every repo is scaffolded with
-	// an empty `aiLoop`, and the skills have always read the login, not the key.
-	if (lock?.rules?.aiLoop?.agentUser && lock.rules.requiredSkills?.length) {
-		results.push(await checkRequiredSkills(lock.rules.requiredSkills, opts.skillsDir))
-	}
 	// #534: advisory. Absent `mcp.recommended` means the repo has nothing to say
 	// about MCP, which is not a finding.
 	if (lock?.rules?.mcp?.recommended?.length) {
@@ -347,7 +321,7 @@ async function runBaseChecks(
 	return results
 }
 
-export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckResult[]> {
+export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	const targetDir = path.resolve(dir)
 
 	const lock = await readLockfile(targetDir)
@@ -378,7 +352,6 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 				presetWorkflow: null,
 				language,
 				codeqlLanguages: languageModule?.codeqlLanguages ?? [],
-				skillsDir,
 			})),
 		]
 		return applyExceptions(demoteDeclined(results, lock), lock)
@@ -402,7 +375,6 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 				presetWorkflow: renderSwiftWorkflow(await readSwiftPackage(targetDir)),
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
-				skillsDir,
 			})),
 			...(await runSwiftChecks(targetDir)),
 		]
@@ -427,7 +399,6 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 				presetWorkflow: renderPythonWorkflow(await readPyproject(targetDir)),
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
-				skillsDir,
 			})),
 			...(await runPythonChecks(targetDir)),
 		]
@@ -454,7 +425,6 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 				presetWorkflow: renderPerlWorkflow(await readPerlProject(targetDir)),
 				language,
 				codeqlLanguages: languageModule.codeqlLanguages,
-				skillsDir,
 			})),
 			...(await runPerlChecks(targetDir)),
 		]
@@ -530,7 +500,6 @@ export async function runDoctor(dir: string, skillsDir?: string): Promise<CheckR
 			),
 			language,
 			codeqlLanguages: languageModule.codeqlLanguages,
-			skillsDir,
 		}))
 	)
 
@@ -635,7 +604,7 @@ function printRulesComparison(comparison: RulesComparison) {
 
 export async function doctorCommand(options: DoctorOptions = {}) {
 	const dir = options.directory ?? process.cwd()
-	const results = await runDoctor(dir, options.skillsDir)
+	const results = await runDoctor(dir)
 	const comparison = options.rulesFrom
 		? await compareRulesWithReference(dir, options.rulesFrom)
 		: null

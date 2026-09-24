@@ -32,7 +32,6 @@ export const FIX_TARGETS: Record<string, string> = {
 	'Workflow permissions': 'github-settings',
 	'Code-scanning gate': 'github-settings',
 	Milestones: 'milestones',
-	'AI loop labels': 'labels',
 	CODEOWNERS: 'codeowners',
 	'GitLab CI': 'gitlab-ci',
 	Turborepo: 'turborepo',
@@ -50,13 +49,11 @@ export const FIX_TARGETS: Record<string, string> = {
 	TypeDoc: 'typedoc',
 	'AI setup': 'ai',
 	'Claude worktree settings': 'ai',
-	'Claude skills': 'claude-skills',
 	'Copied assets': 'copied-assets',
-	// `Required skills` (#533) and `Recommended MCP` (#534) are deliberately
-	// absent. Both are driven by committed repo config and both would act outside
-	// the repo — installing into `~/.claude`, enabling a code-executing MCP
-	// server. Staying out of this map keeps them out of `fix`'s footer suggestions
-	// and out of every lookup a fixer path makes; their own hints name the command
+	// `Recommended MCP` (#534) is deliberately absent. It is driven by committed
+	// repo config and would act outside the repo — enabling a code-executing MCP
+	// server. Staying out of this map keeps it out of `fix`'s footer suggestions
+	// and out of every lookup a fixer path makes; its own hint names the command
 	// a human runs by hand.
 }
 

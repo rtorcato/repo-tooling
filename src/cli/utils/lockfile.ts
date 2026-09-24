@@ -2,7 +2,6 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { CONFIG_SCHEMA, validateProjectConfig } from '../commands/setup-presets.js'
 import type { ProjectConfig } from '../commands/setup.js'
-import { SHIPPED_SKILLS } from '../generators/claude-skills.js'
 import { getToolVersion } from './version.js'
 
 export const LOCKFILE_NAME = '.repo-tooling.json'
@@ -87,14 +86,9 @@ export interface LockfileRules {
 		agentUser?: string
 	}
 	/**
-	 * Agent skills this repo's workflows depend on (#533), from `SHIPPED_SKILLS`.
-	 * Absence of a skill fails loudly; a stale installed copy fails silently, and
-	 * staleness is the one that hurts — so `doctor` compares each listed skill's
-	 * stamped hash against what this package ships.
-	 *
-	 * Check and hint only. A committed file that directs writes into `~/` is the
-	 * shape of a supply-chain attack even when the content is benign, so nothing
-	 * here ever runs `fix claude-skills`; doctor says stale, the human runs it.
+	 * Agent skills this repo's workflows depend on (#533). Read and audited by
+	 * `@rtorcato/repo-ai doctor` since the loop moved there (#658); this package
+	 * only carries the key forward.
 	 */
 	requiredSkills?: string[]
 	/**
@@ -146,9 +140,8 @@ export const DEFAULT_RULES: LockfileRules = {
  * `pnpm schema:generate` and gated by tests/cli/utils/lockfile-schema.test.ts.
  *
  * A function, not a const: lockfile.ts sits in an import cycle with
- * setup-presets.ts (via the swift scaffolder) and with claude-skills.ts (via
- * copy-preset.ts), so CONFIG_SCHEMA and SHIPPED_SKILLS are both in their TDZ
- * while this module evaluates. Reading them here, at call time, is safe.
+ * setup-presets.ts (via the swift scaffolder), so CONFIG_SCHEMA is in its TDZ
+ * while this module evaluates. Reading it here, at call time, is safe.
  */
 // ponytail: key sets are compiler-checked against the type; a changed field
 // *type* (string → number) still needs both lines edited by hand.
@@ -213,7 +206,7 @@ export function lockfileSchema() {
 						type: 'object',
 						additionalProperties: false,
 						description:
-							'Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.',
+							'Settings for the ai-issue-loop skills from @rtorcato/repo-ai. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.',
 						properties: {
 							agentUser: {
 								type: 'string',
@@ -224,9 +217,9 @@ export function lockfileSchema() {
 					},
 					requiredSkills: {
 						type: 'array',
-						items: { type: 'string', enum: SHIPPED_SKILLS },
+						items: { type: 'string' },
 						description:
-							'Agent skills this repo\'s workflows depend on. doctor compares each installed copy\'s stamped hash against the shipped one and reports a missing or stale skill — always as "not configured", never drift, because it probes the machine rather than the repo. It never runs the fixer for you.',
+							"Agent skills this repo's workflows depend on. Audited by `npx @rtorcato/repo-ai doctor`, which reports a missing or stale installed copy; it never installs one for you.",
 					},
 					mcp: {
 						type: 'object',
