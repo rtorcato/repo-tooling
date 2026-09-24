@@ -211,8 +211,8 @@ importers:
         specifier: ^3.10.2
         version: 3.10.2(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.26))(esbuild@0.28.2)(html-minifier-terser@7.2.0)(postcss@8.5.26)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@rtorcato/shared-docs':
-        specifier: ^1.7.0
-        version: 1.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.8.0
+        version: 1.8.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
@@ -3160,8 +3160,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rtorcato/shared-docs@1.7.0':
-    resolution: {integrity: sha512-9QapDG7+TknF9yCuREyDPTLhYMMXzO89y4OS4Ly5f1er5F+sjjlz7P2RCD7fhY1AyKrijfmqBngv/yPkVlz7Cw==}
+  '@rtorcato/shared-docs@1.8.0':
+    resolution: {integrity: sha512-+Nr+fPw9zqxE3p/N4NitGU1fFwi1RxuVgoWG9WhHpqYxRcAbfk2V9bKhjckZahquGYNSLlc0WZ+i9o3B1G8+hQ==}
     engines: {node: '>=22'}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
@@ -13569,7 +13569,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.63.1':
     optional: true
 
-  '@rtorcato/shared-docs@1.7.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@rtorcato/shared-docs@1.8.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
