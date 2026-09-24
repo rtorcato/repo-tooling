@@ -190,19 +190,22 @@ throwaway fixtures) — in any session:
 /plugin install repo-tooling@repo-tooling
 ```
 
-### The AI issue loop
+### Optional: agents on your issue queue (repo-ai)
 
-The label-driven `ai-ready` issue → PR pipeline (the `ai-workflow`,
-`ai-issue-loop`, `ai-issue` and `ai-loop-status` skills, and the `loop`
-commands they call) moved to its own package,
-[`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai), so this one can be
-used without it:
+repo-tooling works entirely on its own. If you also want agents working your
+GitHub issues, the optional companion
+[`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) runs a label-driven
+loop: an `ai-ready` issue becomes a worktree, a PR and two agent reviews, then
+waits for you to merge. It builds on the repo standard repo-tooling sets up
+(branch protection, the release gate, worktree config) and keeps its settings in
+the same `.repo-tooling.json`:
 
 ```bash
-npx @rtorcato/repo-ai fix claude-skills   # → ~/.claude/skills/{ai-issue-loop,ai-workflow,ai-issue,ai-loop-status}/SKILL.md
+npx @rtorcato/repo-ai setup
 ```
 
-Its settings stay in `.repo-tooling.json` (`rules.aiLoop`, `rules.requiredSkills`).
+See [Using with repo-ai](https://rtorcato.github.io/repo-tooling/guides/ai-issue-loop/)
+for how the two fit together. The loop shipped inside repo-tooling until 4.0.0.
 
 ### Use with other AI tools (Cursor / Copilot / Codex)
 
