@@ -1,23 +1,13 @@
 #!/usr/bin/env node
 
-import path from 'node:path'
 import chalk from 'chalk'
 import { Command } from 'commander'
-import fs from 'fs-extra'
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand } from './commands/fix.js'
 import { setupProject } from './commands/setup.js'
+import { selfRepoRefusal } from './self-repo.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
 import { getToolVersion } from './utils/version.js'
-
-async function isSelfRepo(dir: string): Promise<boolean> {
-	try {
-		const pkg = await fs.readJson(path.join(dir, 'package.json'))
-		return pkg.name === '@rtorcato/repo-tooling'
-	} catch {
-		return false
-	}
-}
 
 const program = new Command()
 
@@ -388,35 +378,19 @@ program
 	})
 
 program.hook('preAction', async (_, actionCommand) => {
-	const name = actionCommand.name()
-	if (name === 'setup' || name === 'doctor' || name === 'fix') {
-		// `fix --list` is read-only and safe to run anywhere, including this repo.
-		if (name === 'fix' && actionCommand.opts().list) return
-		// Dogfood escape hatch (#273): allow read-only `doctor` against this repo
-		// so CI can audit our own config the same way it does consumers'. Scoped
-		// to doctor — the mutating setup/fix stay blocked even with the flag set.
-		if (name === 'doctor' && process.env.REPO_TOOLING_ALLOW_SELF === '1') return
-		// One mutating exception (#531): `fix lockfile` writes only
-		// .repo-tooling.json — no scaffolding — so our own lockfile can be
-		// migrated by the fixer we ship instead of by hand.
-		if (
-			name === 'fix' &&
-			actionCommand.args[0] === 'lockfile' &&
-			process.env.REPO_TOOLING_ALLOW_SELF === '1'
+	const refusal = await selfRepoRefusal(
+		actionCommand.name(),
+		actionCommand.args[0],
+		actionCommand.opts()
+	)
+	if (refusal) {
+		console.log(
+			chalk.yellow(
+				'\n⚠️  This command cannot be run inside the @rtorcato/repo-tooling repo itself.\n'
+			)
 		)
-			return
-		const dir = (actionCommand.opts().directory as string | undefined) ?? process.cwd()
-		if (await isSelfRepo(dir)) {
-			console.log(
-				chalk.yellow(
-					'\n⚠️  This command cannot be run inside the @rtorcato/repo-tooling repo itself.\n'
-				)
-			)
-			console.log(
-				chalk.gray('   setup and doctor are for consumer projects, not for the tooling repo.\n')
-			)
-			process.exit(0)
-		}
+		console.log(chalk.gray(`   ${refusal}\n`))
+		process.exit(0)
 	}
 })
 

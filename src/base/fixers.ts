@@ -80,6 +80,13 @@ export interface Fixer {
 	 */
 	explicitOnly?: boolean
 	/**
+	 * The output neither imports nor depends on `@rtorcato/repo-tooling`, so the
+	 * fixer may run inside this repo itself under `REPO_TOOLING_ALLOW_SELF=1`
+	 * (#673). Everything else stays blocked there: a config that extends our own
+	 * preset can't resolve in the repo that ships it.
+	 */
+	selfSafe?: boolean
+	/**
 	 * Advisories printed from here go to `console.error`, never `console.log`:
 	 * stdout is the `--json` payload's channel and a stray line lands in the
 	 * middle of it, breaking every parser downstream (#357). They're diagnostics,
@@ -142,6 +149,7 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'editorconfig',
+		selfSafe: true,
 		description: 'Scaffold .editorconfig (UTF-8, LF, tab indent)',
 		appliesTo: ['EditorConfig'],
 		outputs: ['.editorconfig'],
@@ -221,6 +229,7 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'codeql',
+		selfSafe: true,
 		description: 'Scaffold .github/workflows/codeql.yml (security scanning)',
 		appliesTo: ['CodeQL'],
 		outputs: ['.github/workflows/codeql.yml'],
@@ -293,6 +302,7 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'codeowners',
+		selfSafe: true,
 		description: 'Scaffold .github/CODEOWNERS with commented examples',
 		appliesTo: ['CODEOWNERS'],
 		outputs: ['.github/CODEOWNERS'],
@@ -305,6 +315,7 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'community-health',
+		selfSafe: true,
 		description: 'Scaffold CONTRIBUTING.md, SECURITY.md, PR + issue templates',
 		appliesTo: ['Community health'],
 		outputs: [
@@ -323,6 +334,7 @@ export const BASE_FIXERS: Fixer[] = [
 	},
 	{
 		target: 'brand',
+		selfSafe: true,
 		description:
 			'Scaffold brand/ — banner, mobile-banner and social-card SVG sources + render.sh, and repoint a README still on root-level banner paths',
 		appliesTo: ['Brand assets'],
