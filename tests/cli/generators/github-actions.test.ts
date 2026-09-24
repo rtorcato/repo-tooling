@@ -154,6 +154,16 @@ describe('generateGitHubActions', () => {
 		expect(content).not.toContain('Build project')
 	})
 
+	it('keeps the build job for bundler none when the repo has a build script (#661)', async () => {
+		const dir = newTmpDir()
+		await generateGitHubActions(baseConfig({ bundler: 'none' }), dir, {
+			scripts: { build: 'tsc' },
+		})
+
+		const content = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
+		expect(content).toContain('Build project')
+	})
+
 	it('includes release job for library + semanticRelease', async () => {
 		const dir = newTmpDir()
 		await generateGitHubActions(

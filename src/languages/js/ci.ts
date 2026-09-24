@@ -111,6 +111,14 @@ function hasScript(opts: JobOptions, script: string): boolean {
 	return !opts.scripts || script in opts.scripts
 }
 
+/**
+ * A bundler, or a known `build` script — a plain-`tsc` repo records `bundler:
+ * 'none'` (#661) but still has a build to run.
+ */
+function buildsSomething(config: ProjectConfig, opts: JobOptions): boolean {
+	return config.bundler !== 'none' || (opts.scripts !== undefined && 'build' in opts.scripts)
+}
+
 /** Emit a step only when the script it runs exists (or we can't know yet). */
 function stepFor(opts: JobOptions, script: string, step: string): string | null {
 	return hasScript(opts, script) ? step : null
@@ -130,7 +138,7 @@ function jobSteps(steps: (string | null)[]): string | null {
 export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[] {
 	const hasTypeScript = config.typescript.enabled
 	const hasTests = config.testing.framework !== 'none'
-	const hasBuild = config.bundler !== 'none'
+	const hasBuild = buildsSomething(config, opts)
 	const isLibrary = config.projectType === 'library'
 	const hasCoverage = usesCoverage(config)
 
@@ -288,7 +296,7 @@ export function gitlabSpec(config: ProjectConfig, opts: JobOptions = {}): GitLab
 	const hasTypeScript = config.typescript.enabled
 	const hasTests = config.testing.framework !== 'none'
 	const hasLint = config.linting.tool !== 'none'
-	const hasBuild = config.bundler !== 'none'
+	const hasBuild = buildsSomething(config, opts)
 	const test = gitlabTest(config)
 
 	const jobs: GitLabSpec['jobs'] = [
