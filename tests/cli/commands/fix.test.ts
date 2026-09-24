@@ -1352,6 +1352,32 @@ describe('fix + lockfile', () => {
 		expect(lock.record.config.linting.tool).toBe('biome')
 	})
 
+	it('fix lockfile records bundler none and language js for a plain-tsc repo (#661)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { build: 'tsc' } })
+		await fixCommand('lockfile', { directory: dir, yes: true })
+		const { config } = (await fs.readJson(join(dir, '.repo-tooling.json'))).record
+		expect(config.bundler).toBe('none')
+		expect(config.language).toBe('js')
+	})
+
+	it('fix lockfile detects the bundler from a dependency or a config file (#661)', async () => {
+		const fromDep = newTmpDir()
+		await seedPackageJson(fromDep, { dependencies: { rollup: '^4.0.0' } })
+		await fixCommand('lockfile', { directory: fromDep, yes: true })
+		expect((await fs.readJson(join(fromDep, '.repo-tooling.json'))).record.config.bundler).toBe(
+			'rollup'
+		)
+
+		const fromConfig = newTmpDir()
+		await seedPackageJson(fromConfig)
+		await fs.outputFile(join(fromConfig, 'tsup.config.ts'), 'export default {}\n')
+		await fixCommand('lockfile', { directory: fromConfig, yes: true })
+		expect((await fs.readJson(join(fromConfig, '.repo-tooling.json'))).record.config.bundler).toBe(
+			'tsup'
+		)
+	})
+
 	it('fix lockfile --yes migrates an older lockfile in place, keeping its config (#531)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

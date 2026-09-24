@@ -117,8 +117,40 @@ import type { ProjectConfig } from '../../cli/commands/setup.js'
 // module (#286) — import it from there.
 import { FixerAbort, type Fixer, type Pkg } from '../../base/fixers.js'
 
+// The bundlers ProjectConfig can record, in the order a repo carrying more than
+// one is attributed to (a vite app that also pulls in esbuild is a vite app).
+const BUNDLERS = ['tsup', 'vite', 'rolldown', 'rollup', 'esbuild'] as const
+const BUNDLER_CONFIGS: Record<(typeof BUNDLERS)[number], string[]> = {
+	tsup: [
+		'tsup.config.ts',
+		'tsup.config.mts',
+		'tsup.config.js',
+		'tsup.config.mjs',
+		'tsup.config.json',
+	],
+	vite: ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs'],
+	rolldown: ['rolldown.config.ts', 'rolldown.config.mjs', 'rolldown.config.js'],
+	rollup: ['rollup.config.ts', 'rollup.config.mjs', 'rollup.config.js'],
+	esbuild: ['build.mjs'],
+}
+
+/**
+ * The bundler the repo actually uses, from its deps or (given `dir`) its config
+ * file — `none` when there is neither. Never a preset default: a plain-`tsc`
+ * repo used to be recorded as tsup (#661).
+ */
+function detectBundler(deps: Record<string, string>, dir?: string): ProjectConfig['bundler'] {
+	return (
+		BUNDLERS.find(
+			(b) =>
+				b in deps ||
+				(dir !== undefined && BUNDLER_CONFIGS[b].some((f) => fs.existsSync(path.join(dir, f))))
+		) ?? 'none'
+	)
+}
+
 /** Exported so doctor can render the preset ci.yml it compares against (#349). */
-export function inferProjectConfig(pkg: Pkg): ProjectConfig {
+export function inferProjectConfig(pkg: Pkg, dir?: string): ProjectConfig {
 	const deps = {
 		...((pkg?.dependencies as Record<string, string> | undefined) ?? {}),
 		...((pkg?.devDependencies as Record<string, string> | undefined) ?? {}),
@@ -129,6 +161,7 @@ export function inferProjectConfig(pkg: Pkg): ProjectConfig {
 
 	return {
 		projectName: (pkg?.name as string) ?? 'project',
+		language: 'js',
 		projectType,
 		typescript: {
 			enabled: true,
@@ -147,7 +180,7 @@ export function inferProjectConfig(pkg: Pkg): ProjectConfig {
 		commitLint: true,
 		semanticRelease: pkg?.private !== true,
 		securityAutomation: true,
-		bundler: 'tsup',
+		bundler: detectBundler(deps, dir),
 	}
 }
 
@@ -959,7 +992,9 @@ export const FIXERS: Fixer[] = [
 				console.error(chalk.yellow('   no package.json found — skipping'))
 				return { filesWritten: [] }
 			}
-			const config = lock ? lock.record.config : inferProjectConfig(pkg as Record<string, unknown>)
+			const config = lock
+				? lock.record.config
+				: inferProjectConfig(pkg as Record<string, unknown>, targetDir)
 			// Recorded hashes win: they capture the pristine content at copy time,
 			// which a byte-match against today's shipped asset can only approximate.
 			const assets = { ...(await identifiablePresetHashes(targetDir)), ...lock?.record.assets }
