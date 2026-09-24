@@ -73,8 +73,9 @@ README content is never touched, and repos without a `skills/` dir get nothing.
 
 ## `rules.aiLoop` and `rules.requiredSkills`: read by repo-ai
 
-The ai-issue-loop pipeline moved to its own package,
-[`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai). Its two settings
+The ai-issue-loop pipeline lives in the optional package
+[`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) (see
+[Using with repo-ai](./ai-issue-loop.md)). Its two settings
 still live in `.repo-tooling.json`, and repo-tooling carries them forward
 verbatim like everything else under `rules`:
 

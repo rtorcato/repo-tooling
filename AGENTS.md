@@ -8,7 +8,7 @@ A one-package JavaScript / TypeScript tooling distribution. Ships every preset (
 
 **Swift** repos (detected via `Package.swift`) are covered end to end: `setup --preset swift-library` scaffolds a SwiftPM package, and `doctor`/`fix` run the language-agnostic checks plus SwiftLint / Periphery / `.gitignore` / `Package.swift`. **Python** repos (detected via `pyproject.toml` / `setup.py`) get `doctor`/`fix` — Ruff / mypy / pytest / `.gitignore` / CI / git hooks — but no `setup` preset yet. **Perl** distributions (detected via `cpanfile` / `Makefile.PL` / `dist.ini`) get the same deal: Perl::Critic / perltidy / `.gitignore` / CI / git hooks, no `setup` preset. See `src/languages/` — one directory per language module, `src/base/` for what's shared.
 
-The **ai-issue-loop** pipeline (the `loop` commands, its skills, and the label / agent-user / skills checks) lives in [`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai) since #658. `repo-tooling loop` now only prints a pointer there. Its settings still sit in this package's `.repo-tooling.json` under `rules.aiLoop` and `rules.requiredSkills`, which repo-tooling carries forward without reading.
+repo-tooling stands alone. The **ai-issue-loop** pipeline (the `loop` commands, its skills, and the label / agent-user / skills checks) is an optional companion package, [`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/), since #658. Nothing here requires it or checks for it; `repo-tooling loop` only prints a pointer there. Its settings sit in this package's `.repo-tooling.json` under `rules.aiLoop` and `rules.requiredSkills`, which repo-tooling carries forward without reading. See `apps/docs/docs/guides/ai-issue-loop.md` for how the two fit together.
 
 ## CLI surface (agent-friendly)
 

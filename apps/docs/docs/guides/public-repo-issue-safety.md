@@ -19,6 +19,9 @@ and privilege-escalation vector. An anonymous user can open an issue that says
 that was never authorized. Without gating, automation would act on both. This
 standard closes that by gating on signals an attacker **cannot forge**.
 
+This standard applies to any agent that acts on issues. The optional
+[`@rtorcato/repo-ai`](./ai-issue-loop.md) loop implements it.
+
 ## 1. The two hard gates — both must hold
 
 Only execute an issue as an AI task when **both** are true:

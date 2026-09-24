@@ -62,7 +62,7 @@ puts every intermediate branch commit on `main`:
 - **semantic-release reads them all.** Squash yields one commit per PR whose
   subject is the reviewed PR title. A merge commit lands subjects nobody
   reviewed — a stray `fix:` inside a docs-only PR cuts a release.
-- **Agent worktrees leak.** `ai-issue-loop` confirms work landed by finding the
+- **Agent worktrees leak.** repo-ai's `ai-issue-loop` ([optional](./ai-issue-loop.md)) confirms work landed by finding the
   `(#N)` squash subject on `main`; without it, cleanup silently finds nothing.
 
 ### Required status checks
