@@ -6,13 +6,6 @@ import { Command } from 'commander'
 import fs from 'fs-extra'
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand } from './commands/fix.js'
-import { loopCleanupCommand } from './commands/loop-cleanup.js'
-import { loopEnvCommand } from './commands/loop-env.js'
-import { loopGuardCommand } from './commands/loop-guard.js'
-import { loopCommentCommand, loopVerdictCommand } from './commands/loop-marker.js'
-import { loopReapCommand } from './commands/loop-reap.js'
-import { loopTickCommand } from './commands/loop-tick.js'
-import { loopWorktreeAddCommand } from './commands/loop-worktree.js'
 import { setupProject } from './commands/setup.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
 import { getToolVersion } from './utils/version.js'
@@ -321,13 +314,6 @@ const TOOL_CATALOG: ToolCatalogEntry[] = [
 		exports: [],
 		fixTarget: 'ai',
 	},
-	{
-		name: 'Claude skills',
-		description:
-			'Install the ai-issue-loop skill into ~/.claude/skills (user-global, opt-in — see --skills-dir)',
-		exports: [],
-		fixTarget: 'claude-skills',
-	},
 ]
 
 program
@@ -354,12 +340,6 @@ program
 	.description('🩺 Diagnose project alignment with @rtorcato/repo-tooling presets')
 	.option('-d, --directory <path>', 'Target directory to diagnose', process.cwd())
 	.option('--json', 'Emit machine-readable JSON output')
-	// The read side of `fix --skills-dir` (#485). No --yes/--json requirement
-	// here: doctor never writes, so an unresolved directory is just reported.
-	.option(
-		'--skills-dir <path>',
-		'Where `fix claude-skills` installs user-global agent skills (default: ~/.claude/skills). Pass the same path `fix` was given, or the skill reports as not installed'
-	)
 	// Rules are per-repo (#563): this compares them against another repo's, and
 	// only reports. Never drift, never a fixer, never part of the exit code.
 	.option(
@@ -378,20 +358,6 @@ program
 	.option('--list', 'List all registered fix targets and exit')
 	.option('--resync', 'Re-scaffold every file recorded in .repo-tooling.json')
 	.option('--diff', 'Show a unified diff of each change before confirming')
-	.option(
-		'--skills-dir <path>',
-		'Where `fix claude-skills` installs user-global agent skills (default: ~/.claude/skills). Required with --yes/--json when that directory does not exist'
-	)
-	// Deliberately not folded into --yes: unattended runs pass --yes, and this is
-	// the one overwrite that destroys work living outside the repo (#480).
-	.option(
-		'--force-skills',
-		'Let `fix claude-skills` overwrite a locally modified skill instead of refusing'
-	)
-	.option(
-		'--gh-config-dir <path>',
-		'gh profile signed in as rules.aiLoop.agentUser, for `fix ai-loop-identity` (default: ~/.config/gh-<agentUser>)'
-	)
 	.action((target: string | undefined, options) =>
 		fixCommand(target, {
 			directory: options.directory,
@@ -401,125 +367,25 @@ program
 			list: options.list,
 			resync: options.resync,
 			diff: options.diff,
-			skillsDir: options.skillsDir,
-			forceSkills: options.forceSkills,
-			ghConfigDir: options.ghConfigDir,
 		})
 	)
 
-// Mechanics the ai-issue-loop skill used to describe in prose-with-shell (#519).
-// Deliberately outside the isSelfRepo hook below: the loop runs against this
-// repo like any other, and a guard that refuses here would guard nothing.
-const loop = program.command('loop').description('🔁 ai-issue-loop mechanics as tested commands')
-
-loop
-	.command('guard')
-	.description('🛡️  Repair a wrongly-bare main checkout and gate the node_modules rebuild')
-	.option('--root <path>', 'Main checkout the loop branches worktrees from', process.cwd())
-	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
-	.option('--removed', 'A worktree was removed this tick — consider rebuilding node_modules')
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		'\nExit codes:\n' +
-			'  0  root is a usable work tree (healthy, or repaired in place) — continue the tick\n' +
-			'  1  repair was attempted and failed; the root is still bare — halt the tick\n' +
-			'  2  root is not a repairable main checkout (bare clone, linked worktree, or not a repo) — halt the tick\n'
-	)
-	.action(loopGuardCommand)
-
-loop
-	.command('env')
-	.description('🧭 Resolve ROOT, WT_ROOT, OWNER_REPO, AGENT_USER, HUMAN_USER and ME once')
-	.option(
-		'-d, --dir <path>',
-		'Directory to resolve from — main checkout or any worktree',
-		process.cwd()
-	)
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		"\nWithout --json, prints KEY='value' lines for eval. Empty means none.\n" +
-			'Exits 1 when the checkout or its GitHub repo cannot be resolved.\n'
-	)
-	.action(loopEnvCommand)
-
-loop
-	.command('cleanup')
-	.description('🧹 Remove ai-* worktrees whose PR landed on main or was closed')
-	.option('--root <path>', 'Main checkout the loop branches worktrees from', process.cwd())
-	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		'\nPass `removed` from --json to `loop guard --removed`.\n' +
-			'Exits 1 when a worktree removal failed.\n'
-	)
-	.action(loopCleanupCommand)
-
-loop
-	.command('worktree')
-	.description('🌳 Loop worktree mechanics')
-	.command('add <slug>')
-	.description(
-		'🌱 Create ai-<issue>-<slug> off origin/main, link its deps, assert none are missing'
-	)
-	.option('--root <path>', 'Main checkout to branch the worktree from', process.cwd())
-	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
-	.option('--base <ref>', 'Ref to branch from', 'origin/main')
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		'\nExit 1 when the worktree was not created or a symlinkDirectories entry is left\n' +
-			'unlinked — do not spawn an implementer. needsInstall means no list was declared.\n'
-	)
-	.action(loopWorktreeAddCommand)
-
-loop
-	.command('reap')
-	.description('🪦 Report agents stalled past 45 minutes and what to do about each')
-	.option('--root <path>', 'Main checkout the loop branches worktrees from', process.cwd())
-	.option('--worktree-root <path>', 'Where ai-* worktrees live (default: <root>-worktrees)')
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		'\nRead-only: prints a verdict per stall (block / drop-label / remove-worktree).\n' +
-			'Exits 1 when a gh query failed and the report is incomplete.\n'
-	)
-	.action(loopReapCommand)
-
-loop
-	.command('comment <pr>')
-	.description("💬 Upsert the loop's one decision-marker comment on a PR")
-	.requiredOption('--body-file <path>', 'Comment text, without the marker (- for stdin)')
-	.option('-d, --dir <path>', 'Directory to resolve the GitHub repo from', process.cwd())
-	.option('--json', 'Emit machine-readable JSON output')
-	.action(loopCommentCommand)
-
-loop
-	.command('verdict <pr>')
-	.description("⚖️  Read a reviewer arm's verdict marker for the PR's current head")
-	.requiredOption('--arm <arm>', 'Reviewer arm: code or sec')
-	.option('-d, --dir <path>', 'Directory to resolve the GitHub repo from', process.cwd())
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		'\nPrints PASS, PASS-NOTES, CHANGES, or an empty line when none is posted.\n' +
-			'Exits 1 when the PR or its reviews cannot be read.\n'
-	)
-	.action(loopVerdictCommand)
-
-loop
-	.command('tick')
-	.description("📋 Compute one tick's work list — guard, cleanup, reap, verdicts, pickups")
-	.option('--root <path>', 'Main checkout, or any worktree of it', process.cwd())
-	.option('--json', 'Emit machine-readable JSON output')
-	.addHelpText(
-		'after',
-		'\nWrites no GitHub state: the caller applies every label, comment and spawn.\n' +
-			"Exit 1 or 2 halts the tick (loop guard's codes, or an unresolvable checkout).\n"
-	)
-	.action(loopTickCommand)
+// The ai-issue-loop pipeline moved to @rtorcato/repo-ai (#658). Kept as a
+// pointer so a stale skill calling `repo-tooling loop …` fails loudly with the
+// fix, instead of commander's generic "unknown command".
+program
+	.command('loop', { hidden: true })
+	.argument('[args...]')
+	.allowUnknownOption()
+	.helpOption(false)
+	.action(() => {
+		console.error(
+			chalk.red('`repo-tooling loop` moved to @rtorcato/repo-ai.') +
+				'\n  Run `npx @rtorcato/repo-ai loop …`, and refresh the skills with' +
+				'\n  `npx @rtorcato/repo-ai fix claude-skills --force-skills`.'
+		)
+		process.exitCode = 1
+	})
 
 program.hook('preAction', async (_, actionCommand) => {
 	const name = actionCommand.name()

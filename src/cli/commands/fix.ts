@@ -63,12 +63,6 @@ export interface FixOptions {
 	list?: boolean
 	resync?: boolean
 	diff?: boolean
-	/** Destination for the user-global agent skills `fix claude-skills` writes. */
-	skillsDir?: string
-	/** Overwrite a locally forked skill instead of refusing (#480). */
-	forceSkills?: boolean
-	/** The agent's gh profile for `fix ai-loop-identity` (#638). */
-	ghConfigDir?: string
 }
 
 export type FixActionStatus = 'applied' | 'dry-run' | 'skipped' | 'already-ok' | 'unsupported'
@@ -320,7 +314,7 @@ async function applyFixer(
 	lock: Lockfile | null,
 	dryRun: boolean,
 	silent: boolean,
-	opts: { skillsDir?: string; forceSkills?: boolean; ghConfigDir?: string; assumeYes: boolean }
+	opts: { assumeYes: boolean }
 ): Promise<{ filesWritten: string[]; dryRun: boolean }> {
 	if (dryRun) {
 		const files = await dryRunFiles(fixer, result, targetDir, pkg, lock)
@@ -503,9 +497,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 	const pkg = await readPackageJson(targetDir)
 	const lock = await readLockfile(targetDir)
 	const fixers = fixersForLanguage(await detectAuditLanguage(targetDir))
-	// Same --skills-dir the claude-skills fixer writes to, so the diagnosis fix
-	// acts on and the install it performs agree on one directory (#485).
-	const results = await runDoctor(targetDir, options.skillsDir)
+	const results = await runDoctor(targetDir)
 	const actions: FixActionRecord[] = []
 
 	const noteLockConflict = (check: string): boolean => {
@@ -602,9 +594,6 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		// is the whole outcome of the command. The bulk loop below takes the other
 		// branch and records a skip, since one refusal must not abandon the rest.
 		const outcome = await applyFixer(fixer, effectiveResult, targetDir, pkg, lock, dryRun, silent, {
-			skillsDir: options.skillsDir,
-			forceSkills: options.forceSkills,
-			ghConfigDir: options.ghConfigDir,
 			assumeYes,
 		}).catch((err: unknown) => {
 			if (!(err instanceof FixerAbort)) throw err
@@ -697,9 +686,6 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		let outcome: Awaited<ReturnType<typeof applyFixer>>
 		try {
 			outcome = await applyFixer(fixer, result, targetDir, pkg, lock, dryRun, silent, {
-				skillsDir: options.skillsDir,
-				forceSkills: options.forceSkills,
-				ghConfigDir: options.ghConfigDir,
 				assumeYes,
 			})
 		} catch (err) {

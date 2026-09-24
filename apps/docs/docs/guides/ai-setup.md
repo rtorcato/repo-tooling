@@ -71,65 +71,28 @@ auto-writes this same install section into your `README.md` — one
 `package.json`'s `repository`. It's a merge-safe delimited block, so your own
 README content is never touched, and repos without a `skills/` dir get nothing.
 
-## `rules.aiLoop`: the agent account for the issue loop
+## `rules.aiLoop` and `rules.requiredSkills`: read by repo-ai
 
-If you run the `ai-issue-loop` / `ai-workflow` skills, `.repo-tooling.json` can
-name the account that in-flight work is assigned to, so `assignee` says whose
-turn it is. Like everything under `rules`, it's yours to edit by hand — the
-tool carries the subtree forward verbatim and never stamps it:
-
-```json
-{
-  "rules": {
-    "aiLoop": {
-      "agentUser": "your-bot-account"
-    }
-  }
-}
-```
-
-It's repo-scoped on purpose: the agent account is a collaborator on *this*
-repo, so committed config travels with the repo and survives a new laptop,
-where an env var would not. The field is optional — leave it out and the
-single-identity model (everything under your own account) is the default.
-
-The account must be an **assignable collaborator**. The skills verify that at
-runtime and silently assign nothing when it isn't — so a deleted bot, a typo,
-or a bot never invited to a new repo has no visible symptom in the loop
-itself. `doctor` closes that gap: the `AI loop agent` check verifies the login
-against your repo's own remote (`gh api repos/{owner}/{repo}/assignees/<user>`)
-and reports drift when it isn't assignable. Absent field ⇒ `ok`, not
-applicable.
-
-## `rules.requiredSkills`: catching a *stale* skill, not just a missing one
-
-A repo whose workflows depend on the shipped skills can say so:
+The ai-issue-loop pipeline moved to its own package,
+[`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai). Its two settings
+still live in `.repo-tooling.json`, and repo-tooling carries them forward
+verbatim like everything else under `rules`:
 
 ```json
 {
   "rules": {
+    "aiLoop": { "agentUser": "your-bot-account" },
     "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
   }
 }
 ```
 
-Absence isn't the interesting failure — a skill that isn't installed fails loudly
-the moment something reaches for it. Staleness is. An installed copy several
-releases behind runs happily to completion while missing whatever the newer
-releases added, and nothing complains. So `doctor` compares each listed skill's
-installed `SKILL.md` — its stamped `repo-tooling-hash`, under `~/.claude/skills`
-or wherever `--skills-dir` points — against the copy this package ships, and
-reports anything missing, stale, or matching no shipped version at all.
+- **`aiLoop.agentUser`** is the account in-flight loop work is assigned to.
+- **`requiredSkills`** lists the loop skills the repo's workflows depend on.
 
-Two rules keep the field safe to commit:
-
-- **It never fails your build.** The check probes your machine, not the repo, so
-  it reports "not configured" and never `drift` or `missing` — a contributor
-  without Claude installed doesn't fail this repo's `doctor`. It's also skipped
-  entirely unless the file has a `rules.aiLoop` key.
-- **It only ever hints.** `doctor` names `fix claude-skills`; running it is
-  yours. Committed repo config that directs writes into your home directory is
-  the shape of a supply-chain attack even when the content is benign.
+`npx @rtorcato/repo-ai doctor` audits both: it checks that the agent account is
+an assignable collaborator, and that each required skill is installed and
+current. `repo-tooling doctor` no longer reports on either.
 
 ## `rules.mcp.recommended`: names and reasons, never an install directive
 

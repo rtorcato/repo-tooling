@@ -247,7 +247,7 @@
 				"aiLoop": {
 					"type": "object",
 					"additionalProperties": false,
-					"description": "Settings for the ai-issue-loop skills. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.",
+					"description": "Settings for the ai-issue-loop skills from @rtorcato/repo-ai. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.",
 					"properties": {
 						"agentUser": {
 							"type": "string",
@@ -258,16 +258,9 @@
 				"requiredSkills": {
 					"type": "array",
 					"items": {
-						"type": "string",
-						"enum": [
-							"ai-issue-loop",
-							"ai-workflow",
-							"ai-issue",
-							"ai-loop-status",
-							"dogfood"
-						]
+						"type": "string"
 					},
-					"description": "Agent skills this repo's workflows depend on. doctor compares each installed copy's stamped hash against the shipped one and reports a missing or stale skill — always as \"not configured\", never drift, because it probes the machine rather than the repo. It never runs the fixer for you."
+					"description": "Agent skills this repo's workflows depend on. Audited by `npx @rtorcato/repo-ai doctor`, which reports a missing or stale installed copy; it never installs one for you."
 				},
 				"mcp": {
 					"type": "object",

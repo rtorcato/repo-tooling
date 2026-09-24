@@ -8,6 +8,8 @@ A one-package JavaScript / TypeScript tooling distribution. Ships every preset (
 
 **Swift** repos (detected via `Package.swift`) are covered end to end: `setup --preset swift-library` scaffolds a SwiftPM package, and `doctor`/`fix` run the language-agnostic checks plus SwiftLint / Periphery / `.gitignore` / `Package.swift`. **Python** repos (detected via `pyproject.toml` / `setup.py`) get `doctor`/`fix` — Ruff / mypy / pytest / `.gitignore` / CI / git hooks — but no `setup` preset yet. **Perl** distributions (detected via `cpanfile` / `Makefile.PL` / `dist.ini`) get the same deal: Perl::Critic / perltidy / `.gitignore` / CI / git hooks, no `setup` preset. See `src/languages/` — one directory per language module, `src/base/` for what's shared.
 
+The **ai-issue-loop** pipeline (the `loop` commands, its skills, and the label / agent-user / skills checks) lives in [`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai) since #658. `repo-tooling loop` now only prints a pointer there. Its settings still sit in this package's `.repo-tooling.json` under `rules.aiLoop` and `rules.requiredSkills`, which repo-tooling carries forward without reading.
+
 ## CLI surface (agent-friendly)
 
 Every command supports `--json` and a non-interactive mode. Combine with `--yes` for fully autonomous use.
@@ -26,12 +28,6 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `fix --dry-run` | ✅ | ✅ | Print what each fixer would write without writing. Combine with `--json`. |
 | `list --json` | ✅ | ✅ | Enumerate the library's surface area. Each entry has `{ name, description, exports, fixTarget }`. |
 | `copy <name>` | ✅ | text only | Copy a single preset (`biome`, `tsconfig`) into the current directory. |
-| `loop guard --root <path>` | ✅ | ✅ | Guard an `ai-issue-loop` tick: repair a wrongly-bare main checkout, gate the `node_modules` rebuild (`--removed`), and assert `gh` authenticates as the declared `rules.aiLoop.agentUser`. Exit `0` continue, `1` repair failed, `2` root is not a repairable checkout or the agent identity is wrong — both non-zero halt the tick. |
-| `loop env` | ✅ | ✅ | Resolve an `ai-issue-loop` tick's variables once: `root` (main checkout, correct from inside a worktree), `worktreeRoot`, `ownerRepo`, `agentUser` (empty unless an assignable collaborator), `humanUser` (empty for org repos), `me`. Without `--json`, prints `KEY='value'` lines for `eval`. Exit `1` when the checkout or its GitHub repo cannot be resolved. |
-| `loop worktree add <ai-N-slug>` | ✅ | ✅ | Create an `ai-issue-loop` worktree at `<root>-worktrees/<slug>` on a new branch off `origin/main` (`--base`), symlink every `worktree.symlinkDirectories` entry from `.claude/settings.json`, and add `node_modules` to `.git/info/exclude`. `needsInstall: true` when no list is declared. Exit `1` when the worktree was not created or an entry is left unlinked — do not spawn an implementer. |
-| `loop reap --json` | ✅ | ✅ | Report the `ai-issue-loop` Pass 2 stalls: a label that sat ≥45 minutes past its last application (per the issue timeline). Each entry is `{ kind, issue, pr, label, minutes, applications, action, worktree, reason }` — `kind` is `implementer` / `reviewer` / `fixer` / `orphan`, `action` is `block` / `drop-label` / `remove-worktree` (`block` once a claim has been applied ≥3 times). Read-only; exit `1` when a `gh` query failed. |
-| `loop tick --json` | ✅ | ✅ | One `ai-issue-loop` tick's work list: runs `loop guard`, `loop cleanup` (and `guard --removed`) and `loop reap`, reads verdicts, merge states, required checks and the `ai-ready` queue, and returns `{ halt, idle, adopt, disarm, handoffs, sendBacks, stripMergeReady, cleaned, stalled, decay, verdicts, reviewsToSpawn, fixRounds, slots, pickups, summary, errors }`. Writes no GitHub state — the skill applies every label, comment and spawn. Exit `1`/`2` halts the tick. |
-| `loop comment <pr> --body-file <path>` / `loop verdict <pr> --arm <code\|sec>` | ✅ | ✅ | The loop's hidden-marker protocols. `comment` upserts the one `<!-- ai-issue-loop:decision -->` comment (body from a file or `-` stdin, never argv). `verdict` prints the arm's `PASS` / `PASS-NOTES` / `CHANGES` for the PR's current head, or empty. Both only trust markers posted by `gh`'s own login. Exit `1` when GitHub cannot be read. |
 
 ## Recommended workflows
 
@@ -90,25 +86,13 @@ npx @rtorcato/repo-tooling fix dependabot --yes --json
 npx @rtorcato/repo-tooling fix engines --yes --json
 npx @rtorcato/repo-tooling fix docs-site --yes --json   # scaffold a Docusaurus docs site under apps/docs
 npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test config
-
-# Opt-in only — writes user-global state, so a bare `fix` / `fix --yes` skips it.
-# Installs the ai-issue-loop skill to ~/.claude/skills. Override with --skills-dir,
-# which is required alongside --yes/--json when that directory doesn't exist.
-npx @rtorcato/repo-tooling fix claude-skills --yes --json
-
-# Opt-in only. Points this checkout's Claude sessions at a gh profile signed in as
-# rules.aiLoop.agentUser (~/.config/gh-<agentUser>, or --gh-config-dir) by merging
-# env.GH_CONFIG_DIR into the gitignored .claude/settings.local.json. Every session
-# in the checkout then runs as the agent, hands-on ones included. Writes nothing
-# and prints the `gh auth login` command if the profile isn't that account.
-npx @rtorcato/repo-tooling fix ai-loop-identity --yes --json
 ```
 
 ## Drift policy (important)
 
 `fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
 
-Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `claude-skills` (writes outside the repo), `release-environment` (changes what a merge does), and `ai-loop-identity` (changes which account every session in the checkout acts as).
+Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `release-environment` (changes what a merge does).
 
 The same goes for every `optional-missing` finding: a bulk `fix` records it `skipped`, because optional tools are often mutually exclusive (Biome / ESLint / Prettier / Oxlint, semantic-release / Changesets / Release Please) and installing them all is never the intent (#630). Name the one you want — `fix editorconfig --yes`.
 
@@ -121,12 +105,6 @@ A fixer may also **refuse** — the target file holds something the generator ca
 - `src/cli/commands/doctor.ts` — all checks and the public `runDoctor(dir)` / `evaluateNodeVersion(version)` / `nextStepSuggestions(results)`
 - `src/cli/commands/fix.ts` — `Fixer` interface, fixer registry, `fixCommand`
 - `src/cli/commands/fix-targets.ts` — shared check → fix target map (used by both doctor's footer and fix's lookup)
-- `src/cli/commands/loop-guard.ts` — `loop guard`: the `--is-inside-work-tree` / `.git` invariant table and the `node_modules` rebuild gate, drained out of the ai-issue-loop skill's prose (#519)
-- `src/cli/commands/loop-env.ts` — `loop env`: the skill's Pass 0 variables resolved in one call (#615)
-- `src/cli/commands/loop-worktree.ts` — `loop worktree add`: Pass 4 worktree creation, dependency linking and the missing-link assertion (#616)
-- `src/cli/commands/loop-reap.ts` — `loop reap`: the skill's Pass 2 stalled-agent table as verdicts (#618)
-- `src/cli/commands/loop-tick.ts` — `loop tick`: composes the other `loop` helpers into one tick's work list, so the skill keeps only judgement and spawns (#620)
-- `src/cli/commands/loop-marker.ts` — `loop comment` / `loop verdict`: the decision-comment upsert and verdict read-back, with the author and head-commit gates (#619)
 - `src/cli/generators/` — one file per concern (linting, testing, build, git, github-actions, security, misc)
 - `tooling/` — every shipped preset, mirrored 1:1 with `package.json` `exports`
 

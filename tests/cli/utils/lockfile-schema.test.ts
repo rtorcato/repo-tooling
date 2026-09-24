@@ -72,8 +72,7 @@ describe("this repo's own lockfile", () => {
 		// The flat pre-#559 layout no longer validates as v4.
 		expect(validate({ ...lockfile, aiLoop: { agentUser: 'flat' } }, schema)).not.toEqual([])
 		expect(validate(withRules({ aiLoop: { agentUsr: 'typo' } }), schema)).not.toEqual([])
-		// #533: only skills this package ships, and only as an array.
-		expect(validate(withRules({ requiredSkills: ['not-a-skill'] }), schema)).not.toEqual([])
+		// #533: an array of names. Which names is repo-ai's call since #658.
 		expect(validate(withRules({ requiredSkills: 'ai-issue-loop' }), schema)).not.toEqual([])
 		expect(
 			validate(

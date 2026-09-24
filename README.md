@@ -92,7 +92,6 @@ See the [Getting Started guide](https://rtorcato.github.io/repo-tooling/guides/g
 | `copy <config>` | Copy a single config file into the current project. | `npx @rtorcato/repo-tooling copy biome` |
 | `doctor` | Diagnose an existing project for missing or drifted tooling. | `npx @rtorcato/repo-tooling doctor` |
 | `fix [target]` | Apply scaffolders for what `doctor` flagged (`--yes`, `--dry-run`, `--diff`). | `npx @rtorcato/repo-tooling fix` |
-| `loop guard` | Repair a main checkout that has gone `core.bare = true`, gate the `node_modules` rebuild after a worktree removal, and halt when `gh` is not authenticated as the `rules.aiLoop.agentUser` the repo declares. Exits `1` if the repair failed and `2` if the root is not a repairable checkout or the identity is wrong — see `--help`. | `npx @rtorcato/repo-tooling loop guard --root .` |
 
 Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
 
@@ -182,27 +181,28 @@ ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md 
 ### Use with Claude Code (plugin)
 
 This repo is also a self-hosted Claude Code marketplace. Install the plugin to
-get six skills — `repo-tooling` (adopt/audit the presets via the CLI),
-`npm-publish` (never hand-cut a release), `ai-workflow` (**the entry point** to
-the `ai-ready` issue → PR pipeline: bursts the queue in parallel worktrees, then
-schedules the engine below), `ai-issue-loop` (that engine — one stateless tick;
-it runs on a loop rather than being typed), `ai-issue` (file agent-executable
-issues) and `ai-loop-status` (read-only pipeline status) — in any session:
+get its skills — `repo-tooling` (adopt/audit the presets via the CLI),
+`npm-publish` (never hand-cut a release) and `dogfood` (run the tooling against
+throwaway fixtures) — in any session:
 
 ```
 /plugin marketplace add rtorcato/repo-tooling
 /plugin install repo-tooling@repo-tooling
 ```
 
-The four `ai-*` skills also install on their own, user-globally, so every repo
-on the machine shares one copy:
+### The AI issue loop
+
+The label-driven `ai-ready` issue → PR pipeline (the `ai-workflow`,
+`ai-issue-loop`, `ai-issue` and `ai-loop-status` skills, and the `loop`
+commands they call) moved to its own package,
+[`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai), so this one can be
+used without it:
 
 ```bash
-npx @rtorcato/repo-tooling fix claude-skills   # → ~/.claude/skills/{ai-issue-loop,ai-workflow,ai-issue,ai-loop-status}/SKILL.md
+npx @rtorcato/repo-ai fix claude-skills   # → ~/.claude/skills/{ai-issue-loop,ai-workflow,ai-issue,ai-loop-status}/SKILL.md
 ```
 
-It writes outside the repo, so it is opt-in: a bare `fix` skips it. See the
-[AI Issue Loop guide](https://rtorcato.github.io/repo-tooling/guides/ai-issue-loop/).
+Its settings stay in `.repo-tooling.json` (`rules.aiLoop`, `rules.requiredSkills`).
 
 ### Use with other AI tools (Cursor / Copilot / Codex)
 
@@ -239,10 +239,7 @@ MIT — see [LICENSE](LICENSE).
 Any agent that supports the [`skills`](https://www.npmjs.com/package/skills) CLI can install this repo's skills straight from GitHub — no clone, no package install:
 
 ```bash
-npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-issue'
-npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-issue-loop'
-npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-loop-status'
-npx skills add https://github.com/rtorcato/repo-tooling --skill 'ai-workflow'
+npx skills add https://github.com/rtorcato/repo-tooling --skill 'dogfood'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'npm-publish'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'repo-tooling'
 ```

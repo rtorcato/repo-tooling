@@ -106,34 +106,14 @@ whose humans have not stated one. An existing `rules` is carried forward untouch
 
 <Fields schema={lockfileSchema.properties.rules.properties.aiLoop} />
 
-See the [AI issue loop guide](../guides/ai-issue-loop.md) for how this is used.
+Read by [`@rtorcato/repo-ai`](https://github.com/rtorcato/repo-ai), which now owns the
+ai-issue-loop pipeline. repo-tooling carries the key forward and never reads it.
 
 ### `rules.requiredSkills` — agent skills this repo depends on
 
-A list of the skills this package ships (`ai-issue-loop`, `ai-workflow`, `ai-issue`,
-`ai-loop-status`) that the repo's workflows assume. It exists for **staleness**, not absence:
-a skill that isn't installed fails loudly the moment something reaches for it, while a copy
-three releases behind runs to completion without complaint.
-
-```json
-"rules": {
-  "requiredSkills": ["ai-issue-loop", "ai-workflow"]
-}
-```
-
-`doctor` compares each listed skill's installed `SKILL.md` — its stamped `repo-tooling-hash`,
-under `~/.claude/skills` or wherever `--skills-dir` points — against the hash of the copy this
-package ships, and reports anything missing, stale, or matching no shipped version at all.
-
-Two rules make it safe to commit:
-
-- **Never `drift`, never `missing`.** The check probes your machine, not the repo, so a
-  contributor with no Claude installed must not fail its `doctor`. It only ever reports
-  "not configured", which leaves the exit code alone. It is also skipped entirely unless the
-  file sets `rules.aiLoop.agentUser` — that login is the "this repo uses the pipeline" signal.
-- **Check and hint only.** `doctor` names `fix claude-skills`; it never runs it. Committed
-  repo config that directs writes into your home directory is the shape of a supply-chain
-  attack even when the content is benign, so that step stays a human's.
+The loop skills the repo's workflows assume, e.g. `["ai-issue-loop", "ai-workflow"]`.
+`npx @rtorcato/repo-ai doctor` reports a listed skill that is missing or stale on your
+machine. Like `aiLoop`, it is repo-ai's to read; repo-tooling only carries it forward.
 
 ### `rules.mcp` — recommended MCP servers
 

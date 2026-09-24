@@ -69,9 +69,7 @@ describe('swift fixers', () => {
 		// tests` is the same shape as `Package.swift`: half of it is a manifest
 		// edit (#311). `Monorepo` states the audit's own root-only scope (#317) —
 		// there is no drift for a fixer to close. `Release gate` and `Release
-		// environment` (#429) are covered by the base `release-environment` fixer.
-		// `AI loop agent` (#530) is unfixable by design — inviting a collaborator
-		// is the operator's call. `Swift targets` (#575) has two opposite repairs —
+		// environment` (#429) are covered by the base `release-environment` fixer. `Swift targets` (#575) has two opposite repairs —
 		// declare the target, or delete the directory — and only the project knows
 		// which, so there is nothing safe for a fixer to do.
 		expect(uncovered).toEqual([
@@ -79,7 +77,6 @@ describe('swift fixers', () => {
 			'Monorepo',
 			'Git identity',
 			'Git author history',
-			'AI loop agent',
 			'README badges',
 			'Coverage upload',
 			'Package.swift',
