@@ -68,6 +68,9 @@ importers:
       '@rollup/plugin-typescript':
         specifier: ^12.3.0
         version: 12.3.0(rollup@4.63.0)(tslib@2.8.1)(typescript@7.0.2)
+      '@rtorcato/repo-ai':
+        specifier: ^1.1.0
+        version: 1.1.0(@types/node@26.3.0)
       '@semantic-release/commit-analyzer':
         specifier: ^13.0.1
         version: 13.0.1(semantic-release@25.0.9(typescript@7.0.2))
@@ -3159,6 +3162,11 @@ packages:
     resolution: {integrity: sha512-at8QVep6S3h5Y6gSbdGU06bRY5WJkf6WUduM9YtvYMbYhB1MOFfUgc6kehitQXzOtMSaT70q7f9ydPhpqu821w==}
     cpu: [x64]
     os: [win32]
+
+  '@rtorcato/repo-ai@1.1.0':
+    resolution: {integrity: sha512-OVVjuPQGkyVE3XnUB8lZGBDcwY/ByBzGUMpuBe8QoowfGT8EARf3WJWvTPRPzEnhp0Da47hL5nXG71/6arSF8A==}
+    engines: {node: '>=22'}
+    hasBin: true
 
   '@rtorcato/shared-docs@1.8.2':
     resolution: {integrity: sha512-A7YNfXzqoBhN1d+9o1vF6ye/m9orcdbz0OPNPt7SjYRjWpnGtxy3yPqvNM9iDvwtRHKW7pF8APYXYBR8RgLqLA==}
@@ -13568,6 +13576,15 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.63.1':
     optional: true
+
+  '@rtorcato/repo-ai@1.1.0(@types/node@26.3.0)':
+    dependencies:
+      chalk: 6.0.0
+      commander: 15.0.0
+      fs-extra: 11.4.0
+      inquirer: 14.1.0(@types/node@26.3.0)
+    transitivePeerDependencies:
+      - '@types/node'
 
   '@rtorcato/shared-docs@1.8.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
