@@ -4,7 +4,11 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import selfPackageJson from '../../package.json' with { type: 'json' }
 import { runDoctor } from '../../src/cli/commands/doctor.js'
-import { DOCUSAURUS_RANGE, generateDocsSite, TYPESCRIPT_RANGE } from '../../src/cli/generators/docs-site.js'
+import {
+	DOCUSAURUS_RANGE,
+	generateDocsSite,
+	TYPESCRIPT_RANGE,
+} from '../../src/cli/generators/docs-site.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -28,7 +32,12 @@ describe('generateDocsSite dependency ranges', () => {
 		expect(ranges.length).toBeGreaterThan(1)
 		expect(new Set(ranges)).toEqual(new Set([DOCUSAURUS_RANGE]))
 		expect(all.typescript).toBe(TYPESCRIPT_RANGE)
-		const minor = (v: string) => v.replace(/^[^\d]*/, '').split('.').slice(0, 2).join('.')
+		const minor = (v: string) =>
+			v
+				.replace(/^[^\d]*/, '')
+				.split('.')
+				.slice(0, 2)
+				.join('.')
 		expect(minor(TYPESCRIPT_RANGE)).toBe(minor(selfPackageJson.devDependencies.typescript))
 	})
 })
@@ -81,6 +90,9 @@ describe('generateDocsSite', () => {
 		// Workflow drives the shared reusable deploy with the docs package filter.
 		const wf = await fs.readFile(join(dir, '.github/workflows/docs.yml'), 'utf-8')
 		expect(wf).toContain('rtorcato/repo-tooling/.github/workflows/docs-deploy.yml@main')
+		expect(wf).toContain('workflow_run:')
+		expect(wf).toContain("workflows: ['🚀 CI/CD Pipeline']")
+		expect(wf).not.toContain('types: [published]')
 		expect(wf).toContain("build-filter: '@rtorcato/repo-tooling-docs'")
 
 		// #664: the site root redirects to the docs instead of 404ing.
