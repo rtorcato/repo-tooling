@@ -266,7 +266,7 @@ async function checkBranchProtection(
  * enabled only makes them available on the merge button, and one mis-click puts
  * every intermediate branch commit on the default branch: semantic-release then
  * reads subjects nobody reviewed (a stray `fix:` inside a docs PR cuts a
- * release), and `ai-issue-loop`'s Pass 2 stops finding the `(#N)` squash subject
+ * release), and repo-ai's `ai-loop` cleanup stops finding the `(#N)` squash subject
  * it uses to confirm work landed, so worktrees leak. Observed on `js-common`
  * #204, whose CONTRIBUTING already said squash-only — the rule existed, nothing
  * enforced it.
@@ -799,8 +799,8 @@ const PROTECTION_BODY = JSON.stringify({
 	// any required_pull_request_reviews as drift, so `fix github-settings` PUTs it
 	// back to null. A repo that deliberately requires approvals will have that
 	// silently reverted by the next unrelated fix run, with nothing in the output
-	// naming the rule that was removed. Known downstream case: the ai-issue-loop
-	// pipeline works around it with approval labels precisely because of this.
+	// naming the rule that was removed. Known downstream case: @rtorcato/repo-ai's
+	// ai-loop pipeline works around it with approval labels precisely because of this.
 	// Loosen the standard here first if a repo ever genuinely needs review gating.
 	required_pull_request_reviews: null,
 	restrictions: null,
