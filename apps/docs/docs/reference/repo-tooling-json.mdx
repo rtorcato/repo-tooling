@@ -41,8 +41,8 @@ The file is **two documents sharing one name**, split by who writes them:
 
 - **`record`** — the tool-written half. `setup` creates it, `fix` keeps it current, and its
   `writtenBy`/`writtenAt` stamps are provenance claims about exactly this subtree.
-- **`rules`** — the human-written half: the repo's stated intent (`aiLoop`, `requiredSkills`,
-  `mcp`, `exceptions`), edited by hand and reviewed in PRs. The tool carries it forward
+- **`rules`** — the human-written half: the repo's stated intent (`mcp`,
+  `exceptions`, `brand`), edited by hand and reviewed in PRs. The tool carries it forward
   verbatim on every write and never stamps it.
 
 `doctor` reads both. Commit the file — it is the repo's memory of its own tooling choices
@@ -96,24 +96,11 @@ authorship of one — a hand edit to `rules` leaves the record's provenance true
 than a blank page — and `doctor --rules-from` has something local to compare:
 
 ```json
-"rules": { "aiLoop": {}, "requiredSkills": [], "mcp": { "recommended": [] }, "exceptions": {} }
+"rules": { "mcp": { "recommended": [] }, "exceptions": {} }
 ```
 
 Every value is empty on purpose. A default here would be this tool asserting a rule on a repo
 whose humans have not stated one. An existing `rules` is carried forward untouched.
-
-### `rules.aiLoop` — ai-issue-loop settings
-
-<Fields schema={lockfileSchema.properties.rules.properties.aiLoop} />
-
-Read by the optional [`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/), which owns the
-ai-issue-loop pipeline (see [Using with repo-ai](../guides/ai-issue-loop.md)). repo-tooling carries the key forward and never reads it.
-
-### `rules.requiredSkills` — agent skills this repo depends on
-
-The loop skills the repo's workflows assume, e.g. `["ai-issue-loop", "ai-workflow"]`.
-`npx @rtorcato/repo-ai doctor` reports a listed skill that is missing or stale on your
-machine. Like `aiLoop`, it is repo-ai's to read; repo-tooling only carries it forward.
 
 ### `rules.mcp` — recommended MCP servers
 
@@ -183,6 +170,21 @@ when it runs longer, since the mobile banner would cut it off.
 ```json
 "rules": { "brand": { "tagline": "Every JS/TS preset, one install." } }
 ```
+
+## Deprecated fields
+
+`rules.aiLoop` and `rules.requiredSkills` moved to `.repo-ai.json`, owned by the optional
+[`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) (see
+[Using with repo-ai](../guides/ai-issue-loop.md)). They still validate, so existing files keep
+working, and are removed in the next major. Move them with `npx @rtorcato/repo-ai fix config`.
+
+### `rules.aiLoop`
+
+<Fields schema={lockfileSchema.properties.rules.properties.aiLoop} />
+
+### `rules.requiredSkills`
+
+An array of skill names, e.g. `["ai-loop", "ai-issue"]`.
 
 ## Comparing against another repo
 

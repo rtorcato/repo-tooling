@@ -71,29 +71,21 @@ auto-writes this same install section into your `README.md` — one
 `package.json`'s `repository`. It's a merge-safe delimited block, so your own
 README content is never touched, and repos without a `skills/` dir get nothing.
 
-## `rules.aiLoop` and `rules.requiredSkills`: read by repo-ai
+## Loop settings live in `.repo-ai.json`
 
 The ai-issue-loop pipeline lives in the optional package
 [`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) (see
-[Using with repo-ai](./ai-issue-loop.md)). Its two settings
-still live in `.repo-tooling.json`, and repo-tooling carries them forward
-verbatim like everything else under `rules`:
+[Using with repo-ai](./ai-issue-loop.md)), and so do its settings: the agent
+account and the required skills go in repo-ai's own `.repo-ai.json`. See
+[repo-ai's config docs](https://rtorcato.github.io/repo-ai/).
 
-```json
-{
-  "rules": {
-    "aiLoop": { "agentUser": "your-bot-account" },
-    "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
-  }
-}
+`rules.aiLoop` and `rules.requiredSkills` in `.repo-tooling.json` are
+deprecated. They still validate, and are removed in the next major. To move
+them across, run:
+
+```bash
+npx @rtorcato/repo-ai fix config
 ```
-
-- **`aiLoop.agentUser`** is the account in-flight loop work is assigned to.
-- **`requiredSkills`** lists the loop skills the repo's workflows depend on.
-
-`npx @rtorcato/repo-ai doctor` audits both: it checks that the agent account is
-an assignable collaborator, and that each required skill is installed and
-current. `repo-tooling doctor` no longer reports on either.
 
 ## `rules.mcp.recommended`: names and reasons, never an install directive
 

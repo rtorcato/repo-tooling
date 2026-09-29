@@ -242,6 +242,9 @@ describe('rules survive a rewrite', () => {
 		const dir = newTmpDir()
 		await writeLockfile(dir, baseConfig())
 		expect((await fs.readJson(join(dir, '.repo-tooling.json'))).rules).toEqual(DEFAULT_RULES)
+		// #689: the loop's keys belong to .repo-ai.json now; never stamp them in.
+		expect(DEFAULT_RULES).not.toHaveProperty('aiLoop')
+		expect(DEFAULT_RULES).not.toHaveProperty('requiredSkills')
 	})
 
 	// #559: rewriting a flat v3 file migrates it on disk — the hand-edited fields

@@ -250,7 +250,8 @@
 				"aiLoop": {
 					"type": "object",
 					"additionalProperties": false,
-					"description": "Settings for the ai-issue-loop skills from @rtorcato/repo-ai. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.",
+					"deprecated": true,
+					"description": "Deprecated: moved to `.repo-ai.json`, owned by @rtorcato/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @rtorcato/repo-ai fix config` moves it across.",
 					"properties": {
 						"agentUser": {
 							"type": "string",
@@ -263,7 +264,8 @@
 					"items": {
 						"type": "string"
 					},
-					"description": "Agent skills this repo's workflows depend on. Audited by `npx @rtorcato/repo-ai doctor`, which reports a missing or stale installed copy; it never installs one for you."
+					"deprecated": true,
+					"description": "Deprecated: moved to `.repo-ai.json`, owned by @rtorcato/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @rtorcato/repo-ai fix config` moves it across."
 				},
 				"mcp": {
 					"type": "object",

@@ -72,10 +72,9 @@ export interface LockfileRecord {
  */
 export interface LockfileRules {
 	/**
-	 * Settings for the `ai-issue-loop` skills (#524). Repo-scoped on purpose: the
-	 * agent account is a collaborator on *this* repo, so a machine-wide env var
-	 * would be both the wrong granularity and invisible — committed here it
-	 * travels with the repo and survives a new laptop.
+	 * @deprecated Moved to `.repo-ai.json`, owned by `@rtorcato/repo-ai` (#689).
+	 * Still accepted so existing lockfiles validate; removed in the next major.
+	 * `npx @rtorcato/repo-ai fix config` moves it across.
 	 */
 	aiLoop?: {
 		/**
@@ -86,9 +85,8 @@ export interface LockfileRules {
 		agentUser?: string
 	}
 	/**
-	 * Agent skills this repo's workflows depend on (#533). Read and audited by
-	 * `@rtorcato/repo-ai doctor` since the loop moved there (#658); this package
-	 * only carries the key forward.
+	 * @deprecated Moved to `.repo-ai.json`, owned by `@rtorcato/repo-ai` (#689).
+	 * Still accepted so existing lockfiles validate; removed in the next major.
 	 */
 	requiredSkills?: string[]
 	/**
@@ -133,8 +131,6 @@ export interface Lockfile {
  * be this tool asserting a rule on a repo whose humans have not stated any.
  */
 export const DEFAULT_RULES: LockfileRules = {
-	aiLoop: {},
-	requiredSkills: [],
 	mcp: { recommended: [] },
 	exceptions: {},
 }
@@ -213,8 +209,9 @@ export function lockfileSchema() {
 					aiLoop: {
 						type: 'object',
 						additionalProperties: false,
+						deprecated: true,
 						description:
-							'Settings for the ai-issue-loop skills from @rtorcato/repo-ai. Repo-scoped on purpose: committed here they travel with the repo and survive a new laptop.',
+							'Deprecated: moved to `.repo-ai.json`, owned by @rtorcato/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @rtorcato/repo-ai fix config` moves it across.',
 						properties: {
 							agentUser: {
 								type: 'string',
@@ -226,8 +223,9 @@ export function lockfileSchema() {
 					requiredSkills: {
 						type: 'array',
 						items: { type: 'string' },
+						deprecated: true,
 						description:
-							"Agent skills this repo's workflows depend on. Audited by `npx @rtorcato/repo-ai doctor`, which reports a missing or stale installed copy; it never installs one for you.",
+							'Deprecated: moved to `.repo-ai.json`, owned by @rtorcato/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @rtorcato/repo-ai fix config` moves it across.',
 					},
 					mcp: {
 						type: 'object',
