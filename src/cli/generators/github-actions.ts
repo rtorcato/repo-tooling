@@ -38,7 +38,11 @@ export const CI_WORKFLOW = '.github/workflows/ci.yml'
 export async function generateGitHubActions(
 	config: ProjectConfig,
 	targetDir: string,
-	{ overwrite = false, scripts }: { overwrite?: boolean; scripts?: Record<string, string> } = {}
+	{
+		overwrite = false,
+		scripts,
+		bin,
+	}: { overwrite?: boolean; scripts?: Record<string, string>; bin?: boolean } = {}
 ): Promise<string[]> {
 	const workflowsDir = path.join(targetDir, '.github', 'workflows')
 	await fs.ensureDir(workflowsDir)
@@ -49,7 +53,7 @@ export async function generateGitHubActions(
 	// shared entry point would mean inventing a fake config to pass in. Both
 	// paths meet at renderGitHubWorkflow() in src/base/ci.ts, which is the seam
 	// that actually matters.
-	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts }))
+	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin }))
 	const ciPath = path.join(workflowsDir, 'ci.yml')
 	const existing = (await fs.pathExists(ciPath)) ? await fs.readFile(ciPath, 'utf-8') : null
 	const filesWritten: string[] = []
