@@ -185,11 +185,31 @@ export async function checkBrand(dir: string): Promise<CheckResult> {
 	if (problems.length > 0) {
 		return { check, status: 'drift', detail: problems.join('; '), hint: BRAND_HINT }
 	}
+	// Name the pieces still missing (#679). Severity is unchanged: brand is optional.
+	const missing: string[] = []
+	if (!(await has('brand/favicon.svg'))) missing.push('favicon (brand/favicon.svg)')
+	const unrendered: string[] = []
+	for (const n of ['banner', 'banner-mobile', 'social-card', 'favicon-512']) {
+		if (!(await has(`brand/${n}.png`))) unrendered.push(`${n}.png`)
+	}
+	if (unrendered.length > 0) missing.push(`rendered PNGs (brand/${unrendered.join(', ')})`)
+	const readmeFile = path.join(dir, 'README.md')
+	const readmeText = (await fs.pathExists(readmeFile)) ? await fs.readFile(readmeFile, 'utf-8') : ''
+	if (!/brand\/banner(?:-mobile)?\.png/.test(readmeText)) missing.push('README banner')
+
 	if (!brandDir) {
 		return {
 			check,
 			status: 'optional-missing',
-			detail: 'no brand/ folder — the repo ships no regenerable brand sources',
+			detail: `no brand/ folder — missing: ${missing.join('; ')}`,
+			hint: BRAND_HINT,
+		}
+	}
+	if (missing.length > 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `brand/ holds the SVG sources and render.sh; missing: ${missing.join('; ')}`,
 			hint: BRAND_HINT,
 		}
 	}
