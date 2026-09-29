@@ -42,6 +42,9 @@ themselves once CI is green — no human in the loop. Implemented by
 
 Everything else waits for a human, and the gate **fails closed**: an npm PR
 outside a group reports an empty `dependency-group` and so never matches.
+The workflow assigns such a PR to the repo owner and leaves one comment saying
+why — a major bump, a package that ships to consumers, or nothing it could
+verify — edited in place on later runs rather than repeated.
 
 > **The group name is not the gate.** `dependency-type: development` is
 > Dependabot's classification, and it files a package listed in *both*

@@ -174,6 +174,8 @@ export function dependabotIgnoreRules(content: string): string[] {
  * Everything else falls through to a human: production bumps ship to consumers
  * of a published package (#423), majors are breaking by definition, and an
  * ungrouped npm PR reports an empty \`dependency-group\`, so the gate fails closed.
+ * A PR that falls through is assigned to the repo owner with one upserted comment
+ * saying why (#694), so it never sits green and ownerless.
  *
  * CI action bumps are the one ungrouped case that is allowed through, matched on
  * \`package-ecosystem\` (#452): they reach no consumer of the published package
@@ -237,11 +239,13 @@ jobs:
           # No names reported means we cannot verify anything — fail closed.
           if [ -z "\${NAMES//[, ]/}" ]; then
             echo "::notice::no dependency names reported — leaving this PR for a human"
+            echo "reason=Dependabot reported no dependency names, so nothing could be verified" >> "$GITHUB_OUTPUT"
             safe=false
           fi
           for name in \${NAMES//,/ }; do
             if printf '%s\\n' "$ships" | grep -qxF -- "$name"; then
               echo "::notice::$name ships to consumers — leaving this PR for a human"
+              echo "reason=$name ships to consumers of this package" >> "$GITHUB_OUTPUT"
               safe=false
               break
             fi
@@ -258,6 +262,7 @@ jobs:
       # "ci(deps): …", which cuts no release. Majors still fall through to a
       # human — the update-type clause below applies to them too.
       - name: Auto-merge dev-dependency and CI action patch and minor updates
+        id: merge
         if: |
           steps.gate.outputs.safe == 'true' &&
           (steps.metadata.outputs.dependency-group == 'dev-minor' ||
@@ -268,6 +273,46 @@ jobs:
         env:
           PR_URL: \${{ github.event.pull_request.html_url }}
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+
+      # Everything the step above declines needs a human, and a notice in the
+      # Actions log is not one (#694). Assign the repo owner and say why in a
+      # single comment, edited in place on every later run rather than repeated.
+      - name: Hand the PR to a human
+        if: steps.merge.outcome == 'skipped'
+        env:
+          PR_URL: \${{ github.event.pull_request.html_url }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          REPO: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+          OWNER: \${{ github.repository_owner }}
+          REASON: \${{ steps.gate.outputs.reason }}
+          UPDATE_TYPE: \${{ steps.metadata.outputs.update-type }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$REASON" ]; then
+            case "$UPDATE_TYPE" in
+              version-update:semver-major) REASON="this is a major version bump" ;;
+              version-update:semver-minor | version-update:semver-patch)
+                REASON="this is neither a dev-minor group bump nor a CI action bump, so it may ship to consumers" ;;
+              *) REASON="Dependabot reported no update type, so nothing could be verified" ;;
+            esac
+          fi
+
+          marker='<!-- dependabot-automerge:manual-review -->'
+          body="$marker
+          Not auto-merged: $REASON. Leaving this for @$OWNER to review and merge by hand."
+
+          ids=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \\
+            --jq ".[] | select(.body | startswith(\\"$marker\\")) | .id")
+          if [ -n "$ids" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/\${ids%%$'\\n'*}" -f body="$body" > /dev/null
+          else
+            gh pr comment "$PR_URL" --body "$body"
+          fi
+
+          # An organisation login cannot be assigned; the comment still stands.
+          gh pr edit "$PR_URL" --add-assignee "$OWNER" || echo "::warning::could not assign $OWNER"
 `
 
 /** Relative paths this generator owns, in a stable order for \`filesWritten\`. */

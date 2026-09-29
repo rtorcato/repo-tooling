@@ -300,6 +300,60 @@ describe('findDependabotIgnoreRules', () => {
 	})
 })
 
+// #694: a PR the workflow declines gets an owner and one comment saying why.
+// Run the shell against a stub `gh` that logs its calls.
+describe('the auto-merge hand-off to a human', () => {
+	async function runHandOff(env: Record<string, string>, existing = ''): Promise<string> {
+		const step = DEPENDABOT_AUTOMERGE_WORKFLOW.split(/^ {6}- name: Hand the PR/m)[1]
+		const body = step?.match(/ {8}run: \|\n([\s\S]*)$/)?.[1]
+		if (!body) throw new Error('could not extract the hand-off script from the workflow')
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'hand.sh'), body.replace(/^ {10}/gm, ''))
+		await fs.outputFile(
+			join(dir, 'bin', 'gh'),
+			'#!/bin/bash\necho "gh $*" >> "$LOG"\n[ "$2" = --paginate ] && printf "%s" "$EXISTING"\nexit 0\n',
+			{ mode: 0o755 }
+		)
+		const { execFile } = await import('node:child_process')
+		const { promisify } = await import('node:util')
+		await promisify(execFile)('bash', ['hand.sh'], {
+			cwd: dir,
+			env: {
+				...process.env,
+				PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+				LOG: join(dir, 'log'),
+				EXISTING: existing,
+				REPO: 'o/r',
+				PR_NUMBER: '5',
+				PR_URL: 'https://github.com/o/r/pull/5',
+				OWNER: 'owner',
+				REASON: '',
+				UPDATE_TYPE: '',
+				...env,
+			},
+		})
+		return fs.readFile(join(dir, 'log'), 'utf-8')
+	}
+
+	it('comments why and assigns the owner on a major bump', async () => {
+		const log = await runHandOff({ UPDATE_TYPE: 'version-update:semver-major' })
+		expect(log).toMatch(/gh pr comment .*--body <!-- dependabot-automerge:manual-review -->/)
+		expect(log).toMatch(/major version bump/)
+		expect(log).toMatch(/gh pr edit .* --add-assignee owner/)
+	})
+
+	it("carries the gate's reason through", async () => {
+		const log = await runHandOff({ REASON: 'chalk ships to consumers of this package' })
+		expect(log).toMatch(/Not auto-merged: chalk ships to consumers/)
+	})
+
+	it('edits the existing comment instead of adding another', async () => {
+		const log = await runHandOff({ UPDATE_TYPE: 'version-update:semver-major' }, '111\n222')
+		expect(log).toMatch(/gh api -X PATCH repos\/o\/r\/issues\/comments\/111 /)
+		expect(log).not.toMatch(/gh pr comment/)
+	})
+})
+
 describe('generateCodeQLWorkflow', () => {
 	it('writes .github/workflows/codeql.yml referencing codeql-action', async () => {
 		const dir = newTmpDir()
