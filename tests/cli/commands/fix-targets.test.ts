@@ -21,7 +21,7 @@ const bare: ProjectConfig = {
 }
 
 describe('lockfilePatchForTarget', () => {
-	// #660: `docs-site` returned `{ docsSite: true }` before CONFIG_SCHEMA knew the
+	// #660: a fixer returned `{ docsSite: true }` before CONFIG_SCHEMA knew the
 	// key, so writeLockfile refused the patched config after every file was written.
 	it.each(getFixers().map((f) => f.target))('%s patches only schema-known keys', (target) => {
 		const lock = { version: 4, record: { config: bare } } as unknown as Lockfile

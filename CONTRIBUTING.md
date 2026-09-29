@@ -153,8 +153,8 @@ When adding support for a new development tool:
 - Include examples in tool documentation
 - Setting up a library docs site? See the
   [Docs site that stays in sync](apps/docs/docs/guides/docs-site.md) guide —
-  shared TypeDoc helper (`@rtorcato/repo-tooling/docusaurus`) + reusable
-  `docs-deploy.yml` workflow.
+  the scaffold now lives in `@rtorcato/shared-docs`; the reusable
+  `docs-deploy.yml` workflow stays here.
 
 ## 🧪 Testing
 

@@ -104,7 +104,10 @@ export interface LockfileRules {
 	 * so a typo or a renamed check can't silently mute (or un-mute) anything.
 	 */
 	exceptions?: Record<string, string>
-	/** Inputs to `fix brand` (#666). */
+	/**
+	 * @deprecated The brand scaffold moved to `@rtorcato/shared-docs` (#718).
+	 * Still accepted so existing lockfiles validate; removed in the next major.
+	 */
 	brand?: {
 		/**
 		 * Short line for the banners and social card, in place of the
@@ -112,7 +115,11 @@ export interface LockfileRules {
 		 */
 		tagline?: string
 	}
-	/** Inputs to `fix docs-site` (#676). */
+	/**
+	 * @deprecated The docs-site scaffold moved to `@rtorcato/shared-docs` (#718),
+	 * which carries the sibling list natively. Still accepted so existing
+	 * lockfiles validate; removed in the next major.
+	 */
 	docs?: {
 		/**
 		 * Sibling projects to link from the scaffolded site's navbar, footer and
@@ -284,19 +291,23 @@ export function lockfileSchema() {
 					brand: {
 						type: 'object',
 						additionalProperties: false,
-						description: 'Inputs to `fix brand`, which scaffolds the banner and social-card SVGs.',
+						deprecated: true,
+						description:
+							'Deprecated: the brand scaffold moved to @rtorcato/shared-docs. Still accepted so existing files validate; removed in the next major.',
 						properties: {
 							tagline: {
 								type: 'string',
 								description:
-									'Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer.',
+									'Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters.',
 							},
 						} satisfies Record<keyof NonNullable<LockfileRules['brand']>, object>,
 					},
 					docs: {
 						type: 'object',
 						additionalProperties: false,
-						description: 'Inputs to `fix docs-site`.',
+						deprecated: true,
+						description:
+							'Deprecated: the docs-site scaffold moved to @rtorcato/shared-docs, which has the sibling list natively. Still accepted so existing files validate; removed in the next major.',
 						properties: {
 							siblings: {
 								type: 'array',

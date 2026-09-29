@@ -15,13 +15,6 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
-import {
-	addReadmeBanner,
-	generateBrand,
-	renderBrand,
-	resolveBrandMeta,
-	syncBrandToDocs,
-} from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
 import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc.js'
@@ -336,41 +329,6 @@ export const BASE_FIXERS: Fixer[] = [
 		canFixDrift: false,
 		async run({ targetDir }) {
 			const filesWritten = await generateCommunityHealth(targetDir)
-			return { filesWritten }
-		},
-	},
-	{
-		target: 'brand',
-		selfSafe: true,
-		description:
-			'Scaffold brand/ — favicon, banner, mobile-banner and social-card SVG sources + render.sh — render the PNGs and favicon.ico when rsvg-convert is on PATH, and add the README banner',
-		appliesTo: ['Brand assets'],
-		outputs: [
-			'brand/favicon.svg',
-			'brand/banner.svg',
-			'brand/banner-mobile.svg',
-			'brand/social-card.svg',
-			'brand/render.sh',
-			'brand/banner.png',
-			'brand/banner-mobile.png',
-			'brand/social-card.png',
-			'brand/favicon-512.png',
-			'brand/favicon.ico',
-			'README.md',
-		],
-		// Every SVG is written only when absent, PNGs are re-rendered only when
-		// older than their source, and the README edit is a delimited block (or
-		// two image paths) — hand-edited art is never clobbered.
-		riskLevel: 'safe-merge',
-		canFixDrift: true,
-		async run({ targetDir, pkg, lock }) {
-			const tagline = lock?.rules?.brand?.tagline
-			const filesWritten = await generateBrand(pkg, targetDir, tagline)
-			filesWritten.push(...((await renderBrand(targetDir)) ?? []))
-			filesWritten.push(...(await syncBrandToDocs(targetDir)))
-			const { name } = await resolveBrandMeta(pkg, targetDir, tagline)
-			const readme = await addReadmeBanner(targetDir, name)
-			if (readme && !filesWritten.includes(readme)) filesWritten.push(readme)
 			return { filesWritten }
 		},
 	},

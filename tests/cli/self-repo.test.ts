@@ -21,7 +21,6 @@ describe('selfRepoRefusal (#673)', () => {
 			.map((f) => f.target)
 			.sort()
 		expect(safe).toEqual([
-			'brand',
 			'codeowners',
 			'codeql',
 			'community-health',
@@ -43,9 +42,6 @@ describe('selfRepoRefusal (#673)', () => {
 		const refusal = await selfRepoRefusal('fix', 'biome', { directory }, ALLOW)
 		expect(refusal).toContain('fix biome')
 		expect(refusal).toContain('not self-safe')
-		expect(await selfRepoRefusal('fix', 'docs-site', { directory }, ALLOW)).toContain(
-			'fix docs-site'
-		)
 	})
 
 	it('keeps refusing a bare fix and setup even with the env set', async () => {

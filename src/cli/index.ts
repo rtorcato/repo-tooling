@@ -201,12 +201,6 @@ const TOOL_CATALOG: ToolCatalogEntry[] = [
 		fixTarget: 'typedoc',
 	},
 	{
-		name: 'Docs site',
-		description: 'Docusaurus docs site (apps/docs) with shared tokens + GitHub Pages deploy',
-		exports: [],
-		fixTarget: 'docs-site',
-	},
-	{
 		name: 'esbuild',
 		description: 'Fast JavaScript bundler configuration',
 		exports: ['@rtorcato/repo-tooling/esbuild'],
@@ -377,7 +371,19 @@ program
 		process.exitCode = 1
 	})
 
+// The docs-site and brand scaffolds moved to @rtorcato/shared-docs (#718). The
+// fix targets stay as hidden pointers so old instructions fail with the fix.
+const MOVED_TARGETS = ['docs-site', 'brand']
+
 program.hook('preAction', async (_, actionCommand) => {
+	const target = actionCommand.args[0]
+	if (actionCommand.name() === 'fix' && target && MOVED_TARGETS.includes(target)) {
+		console.error(
+			chalk.red(`\`repo-tooling fix ${target}\` moved to @rtorcato/shared-docs.`) +
+				`\n  Run \`npx @rtorcato/shared-docs …\` (see its README).`
+		)
+		process.exit(1)
+	}
 	const refusal = await selfRepoRefusal(
 		actionCommand.name(),
 		actionCommand.args[0],

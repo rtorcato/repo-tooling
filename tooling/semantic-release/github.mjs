@@ -84,7 +84,7 @@ export default {
 // and the `version` field in package.json stop moving on the default branch.**
 // The git tag, the npm publish and the GitHub Release are unaffected and are
 // the source of truth for what shipped. Build any user-facing changelog from
-// GitHub Releases — `repo-tooling copy docusaurus-sync-changelog` does exactly
+// GitHub Releases — `@rtorcato/shared-docs`'s sync-changelog script does exactly
 // that — never from the frozen file.
 //
 // Adding a bypass actor to the ruleset would also make the push succeed. It is

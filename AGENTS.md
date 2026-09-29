@@ -84,7 +84,6 @@ npx @rtorcato/repo-tooling doctor --json -d ./existing-repo
 # Apply one fixer from the list (run `list --json` for every target)
 npx @rtorcato/repo-tooling fix dependabot --yes --json
 npx @rtorcato/repo-tooling fix engines --yes --json
-npx @rtorcato/repo-tooling fix docs-site --yes --json   # scaffold a Docusaurus docs site under apps/docs
 npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test config
 ```
 

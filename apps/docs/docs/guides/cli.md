@@ -33,7 +33,7 @@ npx @rtorcato/repo-tooling copy biome     # → biome.json
 npx @rtorcato/repo-tooling copy tsconfig  # → tsconfig.json
 ```
 
-Available presets: `biome`, `tsconfig`, `bun`, `nx`, `changesets`, `release-please`, `oxlint`, `claude-skill`, `claude-sync-agents`, `mcp-example`, `docusaurus-sync-changelog`, `docusaurus-docs-helpers`, `docusaurus-theme-tokens`, `docusaurus-theme`.
+Available presets: `biome`, `tsconfig`, `bun`, `nx`, `changesets`, `release-please`, `oxlint`, `claude-skill`, `claude-sync-agents`, `mcp-example`.
 
 `claude-sync-agents` copies `scripts/sync-agents.mjs`, which regenerates `AGENTS.md` from `skills/<package>/SKILL.md` so the two can't drift. It is zero-config — the skill directory comes from the root `package.json` `name` with the npm scope stripped (`@rtorcato/js-common` → `skills/js-common/`). Wire `node scripts/sync-agents.mjs --check` into CI to fail on a stale `AGENTS.md`.
 
@@ -238,8 +238,6 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | Target | Scaffolds |
 |---|---|
 | `typedoc` | `typedoc.json` + `.github/workflows/docs.yml` (GitHub Pages) |
-| `docs-site` | a Docusaurus site under `apps/docs` (config/sidebars/tokens + Pages deploy) — see [Docs site](./docs-site.md) |
-| `brand` | `brand/` — favicon, banner, mobile-banner and social-card SVG sources + `render.sh`; renders the PNGs and `favicon.ico` when `rsvg-convert` is on PATH, adds the README banner, and repoints a README still on root-level banner paths — see [Brand assets](./brand-assets.md) |
 
 **AI agents** _(opt-in)_
 
