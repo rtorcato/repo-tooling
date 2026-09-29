@@ -35,6 +35,10 @@ const DOCS_APP = 'apps/docs'
 /** Docusaurus's neutral green — the default accent, meant to be branded over. */
 const DEFAULT_ACCENT = { light: '#2e8555', dark: '#25c2a0' }
 
+// One range for every @docusaurus/* package; TypeScript tracks repo-tooling's own devDependency (tested).
+export const DOCUSAURUS_RANGE = '^3.10.2'
+export const TYPESCRIPT_RANGE = '~7.0.2'
+
 export interface DocsSiteOptions {
 	/** Accent colour override, e.g. Cloudflare orange. Falls back per project. */
 	primaryColor?: { light: string; dark: string }
@@ -326,8 +330,8 @@ function docsPackageJson(meta: SiteMeta, typedoc: boolean): string {
 			typecheck: 'tsc --noEmit',
 		},
 		dependencies: {
-			'@docusaurus/core': '^3.10.2',
-			'@docusaurus/preset-classic': '^3.8.1',
+			'@docusaurus/core': DOCUSAURUS_RANGE,
+			'@docusaurus/preset-classic': DOCUSAURUS_RANGE,
 			'@easyops-cn/docusaurus-search-local': '^0.55.2',
 			'@mdx-js/react': '^3.1.0',
 			clsx: '^2.1.1',
@@ -336,12 +340,12 @@ function docsPackageJson(meta: SiteMeta, typedoc: boolean): string {
 			'react-dom': '^19.0.0',
 		},
 		devDependencies: {
-			'@docusaurus/module-type-aliases': '^3.10.2',
-			'@docusaurus/tsconfig': '^3.8.1',
-			'@docusaurus/types': '^3.10.2',
+			'@docusaurus/module-type-aliases': DOCUSAURUS_RANGE,
+			'@docusaurus/tsconfig': DOCUSAURUS_RANGE,
+			'@docusaurus/types': DOCUSAURUS_RANGE,
 			'@rtorcato/repo-tooling': SELF_RANGE,
 			'@types/react': '^19.0.0',
-			typescript: '~5.6.3',
+			typescript: TYPESCRIPT_RANGE,
 			...typedocDevDeps,
 		},
 		browserslist: {
