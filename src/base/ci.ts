@@ -45,7 +45,9 @@ on:
 
 concurrency:
   group: \${{ github.workflow }}-\${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: a newer push would kill a release that is waiting on
+  # approval or halfway through publishing.
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
 
 jobs:
 `
