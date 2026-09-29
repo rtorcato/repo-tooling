@@ -332,6 +332,35 @@
 							"description": "Accent colour as #rrggbb, used by `fix docs-site` for the site theme in both colour modes."
 						}
 					}
+				},
+				"docs": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "Inputs to `fix docs-site`.",
+					"properties": {
+						"siblings": {
+							"type": "array",
+							"description": "Sibling projects to link from the scaffolded docs site (navbar, footer, intro page). Opt-in: when absent the scaffold emits no such links.",
+							"items": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": [
+									"label",
+									"href"
+								],
+								"properties": {
+									"label": {
+										"type": "string",
+										"minLength": 1
+									},
+									"href": {
+										"type": "string",
+										"minLength": 1
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}

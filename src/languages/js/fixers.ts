@@ -111,7 +111,7 @@ import { generateDocsSite } from '../../cli/generators/docs-site.js'
 import { generateTypedocConfig, generateTypedocWorkflow } from '../../cli/generators/typedoc.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { identifiablePresetHashes } from '../../cli/utils/copied-assets.js'
-import { LOCKFILE_NAME, writeLockfile } from '../../cli/utils/lockfile.js'
+import { LOCKFILE_NAME, readLockfile, writeLockfile } from '../../cli/utils/lockfile.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 // The fixer contract moved to src/base/fixers.ts when Swift became the second
@@ -860,6 +860,7 @@ export const FIXERS: Fixer[] = [
 			const filesWritten = await generateDocsSite(pkg, targetDir, {
 				typedoc,
 				primaryColor: accent ? { light: accent, dark: accent } : undefined,
+				siblings: (await readLockfile(targetDir))?.rules?.docs?.siblings,
 			})
 			return { filesWritten }
 		},

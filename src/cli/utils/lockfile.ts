@@ -114,6 +114,20 @@ export interface LockfileRules {
 		/** Accent colour (`#rrggbb`) `fix docs-site` themes the site with. */
 		accent?: string
 	}
+	/** Inputs to `fix docs-site` (#676). */
+	docs?: {
+		/**
+		 * Sibling projects to link from the scaffolded site's navbar, footer and
+		 * intro page. Opt-in: absent means the scaffold emits no such links.
+		 */
+		siblings?: DocsSibling[]
+	}
+}
+
+/** One sibling-project link for the docs site (`rules.docs.siblings`). */
+export interface DocsSibling {
+	label: string
+	href: string
 }
 
 export interface Lockfile {
@@ -286,6 +300,27 @@ export function lockfileSchema() {
 									'Accent colour as #rrggbb, used by `fix docs-site` for the site theme in both colour modes.',
 							},
 						} satisfies Record<keyof NonNullable<LockfileRules['brand']>, object>,
+					},
+					docs: {
+						type: 'object',
+						additionalProperties: false,
+						description: 'Inputs to `fix docs-site`.',
+						properties: {
+							siblings: {
+								type: 'array',
+								description:
+									'Sibling projects to link from the scaffolded docs site (navbar, footer, intro page). Opt-in: when absent the scaffold emits no such links.',
+								items: {
+									type: 'object',
+									additionalProperties: false,
+									required: ['label', 'href'],
+									properties: {
+										label: { type: 'string', minLength: 1 },
+										href: { type: 'string', minLength: 1 },
+									} satisfies Record<keyof DocsSibling, object>,
+								},
+							},
+						} satisfies Record<keyof NonNullable<LockfileRules['docs']>, object>,
 					},
 				} satisfies Record<keyof LockfileRules, object>,
 			},

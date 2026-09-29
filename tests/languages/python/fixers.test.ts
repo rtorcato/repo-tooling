@@ -71,6 +71,7 @@ describe('python fixers', () => {
 			'Monorepo',
 			'Git identity',
 			'Git author history',
+			'Repository secrets',
 			'README badges',
 			'Coverage upload',
 			'pyproject.toml',

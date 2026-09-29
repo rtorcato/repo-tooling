@@ -341,3 +341,29 @@ describe('docs-site ↔ brand wiring (#680)', () => {
 		expect(await tree(b)).toEqual(await tree(a))
 	})
 })
+
+describe('generateDocsSite sibling links (#676)', () => {
+	const SIBLINGS = [{ label: 'Sibling One', href: 'https://example.com/one/' }]
+
+	it('renders navbar, footer and intro links when siblings are set', async () => {
+		const dir = newTmpDir()
+		await generateDocsSite(PKG, dir, { siblings: SIBLINGS })
+		const cfg = await fs.readFile(join(dir, 'apps/docs/docusaurus.config.ts'), 'utf8')
+		expect(cfg).toContain(
+			"{ href: 'https://example.com/one/', label: 'Sibling One', position: 'left' }"
+		)
+		expect(cfg).toContain("title: 'Projects'")
+		const intro = await fs.readFile(join(dir, 'apps/docs/docs/intro.md'), 'utf8')
+		expect(intro).toContain('[Sibling One](https://example.com/one/)')
+	})
+
+	it('emits nothing when siblings are absent', async () => {
+		const dir = newTmpDir()
+		await generateDocsSite(PKG, dir)
+		const cfg = await fs.readFile(join(dir, 'apps/docs/docusaurus.config.ts'), 'utf8')
+		const intro = await fs.readFile(join(dir, 'apps/docs/docs/intro.md'), 'utf8')
+		expect(cfg).not.toContain('Projects')
+		expect(cfg).not.toContain('shared-docs')
+		expect(intro).not.toContain('Related projects')
+	})
+})
