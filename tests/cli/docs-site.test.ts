@@ -4,6 +4,7 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import selfPackageJson from '../../package.json' with { type: 'json' }
 import { runDoctor } from '../../src/cli/commands/doctor.js'
+import { generateBrand, syncBrandToDocs } from '../../src/cli/generators/brand.js'
 import {
 	DOCUSAURUS_RANGE,
 	generateDocsSite,
@@ -295,5 +296,34 @@ describe('generateDocsSite', () => {
 		const config = await fs.readFile(join(dir, 'apps/docs/docusaurus.config.ts'), 'utf-8')
 		expect(config).not.toContain('getTypedocPlugins')
 		expect(await fs.pathExists(join(dir, 'apps/docs/.gitignore'))).toBe(false)
+	})
+})
+
+describe('docs-site ↔ brand wiring (#680)', () => {
+	const tree = async (dir: string) => (await fs.readdir(join(dir, 'apps/docs/static/img'))).sort()
+
+	it('sets themeConfig.image and creates static/img even without brand/', async () => {
+		const dir = newTmpDir()
+		await generateDocsSite(PKG, dir)
+		expect(await fs.readFile(join(dir, 'apps/docs/docusaurus.config.ts'), 'utf-8')).toContain(
+			"image: 'img/social-card.png'"
+		)
+		expect(await tree(dir)).toEqual([])
+	})
+
+	it('gives the same static/img in either order of fix brand and fix docs-site', async () => {
+		const a = newTmpDir()
+		await generateBrand(PKG, a)
+		await fs.writeFile(join(a, 'brand/social-card.png'), 'png')
+		await generateDocsSite(PKG, a)
+
+		const b = newTmpDir()
+		await generateDocsSite(PKG, b)
+		await generateBrand(PKG, b)
+		await fs.writeFile(join(b, 'brand/social-card.png'), 'png')
+		await syncBrandToDocs(b)
+
+		expect(await tree(a)).toEqual(['favicon.svg', 'social-card.png'])
+		expect(await tree(b)).toEqual(await tree(a))
 	})
 })

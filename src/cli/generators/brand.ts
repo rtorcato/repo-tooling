@@ -460,6 +460,29 @@ export async function renderBrand(targetDir: string): Promise<string[] | null> {
 	return written
 }
 
+/** brand/ file → docs-site static/img file. The ico and card PNG exist only once rendered. */
+const DOCS_ASSETS = ['favicon.svg', 'favicon.ico', 'social-card.png']
+
+/**
+ * Copy the brand favicon and social card into the docs site's `static/img`
+ * (#680). Copy-if-missing, and a no-op without `apps/docs`, so `fix brand` and
+ * `fix docs-site` reach the same tree in either order — each calls it.
+ */
+export async function syncBrandToDocs(targetDir: string): Promise<string[]> {
+	if (!(await fs.pathExists(path.join(targetDir, 'apps', 'docs')))) return []
+	const img = path.join('apps', 'docs', 'static', 'img')
+	const written: string[] = []
+	for (const name of DOCS_ASSETS) {
+		const src = path.join(targetDir, 'brand', name)
+		const dest = path.join(targetDir, img, name)
+		if (!(await fs.pathExists(src)) || (await fs.pathExists(dest))) continue
+		await fs.ensureDir(path.dirname(dest))
+		await fs.copyFile(src, dest)
+		written.push(path.join(img, name))
+	}
+	return written
+}
+
 export const BANNER_START = '<!-- js-tooling:banner:start -->'
 export const BANNER_END = '<!-- js-tooling:banner:end -->'
 
