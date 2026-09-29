@@ -48,7 +48,7 @@ The tag, the npm publish and the GitHub Release are unaffected and are the sourc
 of truth for what shipped. Build any user-facing changelog from GitHub Releases:
 
 ```bash
-npx @rtorcato/shared-docs …   # the sync-changelog script now ships there (#718)
+npx @rtorcato/shared-docs init   # writes scripts/sync-changelog.mjs (#718)
 ```
 
 That script reads the Releases API, so it cannot freeze the way a file does. Its

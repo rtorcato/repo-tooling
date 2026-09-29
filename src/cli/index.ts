@@ -373,14 +373,14 @@ program
 
 // The docs-site and brand scaffolds moved to @rtorcato/shared-docs (#718). The
 // fix targets stay as hidden pointers so old instructions fail with the fix.
-const MOVED_TARGETS = ['docs-site', 'brand']
+const MOVED_TARGETS: Record<string, string> = { 'docs-site': 'init', brand: 'brand' }
 
 program.hook('preAction', async (_, actionCommand) => {
 	const target = actionCommand.args[0]
-	if (actionCommand.name() === 'fix' && target && MOVED_TARGETS.includes(target)) {
+	if (actionCommand.name() === 'fix' && target && Object.hasOwn(MOVED_TARGETS, target)) {
 		console.error(
 			chalk.red(`\`repo-tooling fix ${target}\` moved to @rtorcato/shared-docs.`) +
-				`\n  Run \`npx @rtorcato/shared-docs …\` (see its README).`
+				`\n  Run \`npx @rtorcato/shared-docs ${MOVED_TARGETS[target]}\` instead.`
 		)
 		process.exit(1)
 	}
