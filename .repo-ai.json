@@ -1,4 +1,10 @@
 {
   "$schema": "https://rtorcato.github.io/repo-ai/repo-ai.json",
-  "agentUser": "rtorcato-bot"
+  "agentUser": "rtorcato-bot",
+  "maxInFlight": 6,
+  "maxFixRounds": 2,
+  "maxTasksPerTick": 8,
+  "staleMinutes": 45,
+  "busyMinutes": 10,
+  "idleMinutes": 30
 }
