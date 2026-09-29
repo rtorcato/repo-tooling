@@ -74,6 +74,7 @@ describe('perl fixers', () => {
 			'Monorepo',
 			'Git identity',
 			'Git author history',
+			'Repository secrets',
 			'README badges',
 			'Coverage upload',
 			'Perl distribution',
