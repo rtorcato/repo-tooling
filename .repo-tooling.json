@@ -33,11 +33,5 @@
     },
     "writtenBy": "@rtorcato/repo-tooling@3.11.0",
     "writtenAt": "2026-08-27T00:34:30.140Z"
-  },
-  "rules": {
-    "aiLoop": {
-      "agentUser": "rtorcato-bot"
-    },
-    "requiredSkills": ["ai-issue-loop", "ai-workflow", "ai-issue", "ai-loop-status"]
   }
 }
