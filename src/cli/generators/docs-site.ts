@@ -1,6 +1,8 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import selfPackageJson from '../../../package.json' with { type: 'json' }
+import { coverageUploadWorkflow } from '../../base/checks.js'
+import { jsBadgeAudience } from '../../languages/js/checks.js'
 import { copyPreset, PRESETS } from '../utils/copy-preset.js'
 import { buildBadgeRow, parseRepository } from './badges.js'
 import { DOCS_SITE_BUILDS, mergeAllowBuilds } from './pnpm-workspace.js'
@@ -434,11 +436,15 @@ export async function generateDocsSite(
 	// The docs homepage carries the same badge set as the README (#169), derived
 	// from package.json + repo; visibility-aware (private repos drop npm/coverage).
 	// Plain row (no upsert delimiters) to stay MDX-safe in the generated intro.
+	// Bundlephobia only for a published library, Codecov only when CI uploads
+	// coverage — the same rules doctor's badge/coverage checks use (#675).
 	const badges = buildBadgeRow({
 		name: pkg?.name as string | undefined,
 		owner: meta.owner ?? undefined,
 		repo: meta.repo ?? undefined,
 		isPrivate: pkg?.private === true,
+		bundled: jsBadgeAudience(pkg) === 'public',
+		uploadsCoverage: (await coverageUploadWorkflow(targetDir)) !== null,
 	})
 
 	// Opt-in TypeDoc API section (#229): only wire it when enabled AND the

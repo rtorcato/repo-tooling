@@ -14,6 +14,10 @@ export interface BadgeInputs {
 	branch?: string
 	/** Private or unpublished: skip npm/bundlephobia/coverage (they would 404). */
 	isPrivate?: boolean
+	/** Ships a bundle worth sizing — drives bundlephobia. Default: true. */
+	bundled?: boolean
+	/** CI uploads coverage to Codecov — drives the coverage badge. Default: true. */
+	uploadsCoverage?: boolean
 }
 
 /**
@@ -47,7 +51,15 @@ export function parseRepository(repository: unknown): { owner: string; repo: str
  * repo-specific is derivable, so a badge row isn't worth adding.
  */
 export function buildBadgeRow(inputs: BadgeInputs): string {
-	const { name, owner, repo, branch = 'main', isPrivate = false } = inputs
+	const {
+		name,
+		owner,
+		repo,
+		branch = 'main',
+		isPrivate = false,
+		bundled = true,
+		uploadsCoverage = true,
+	} = inputs
 	const slug = owner && repo ? `${owner}/${repo}` : null
 	const badges: string[] = []
 	let specific = false
@@ -66,11 +78,13 @@ export function buildBadgeRow(inputs: BadgeInputs): string {
 		badges.push(
 			`[![npm downloads](https://img.shields.io/npm/dm/${name})](https://www.npmjs.com/package/${name})`
 		)
+	}
+	if (!isPrivate && name && bundled) {
 		badges.push(
 			`[![Bundle size](https://img.shields.io/bundlephobia/minzip/${name})](https://bundlephobia.com/package/${name})`
 		)
 	}
-	if (!isPrivate && slug) {
+	if (!isPrivate && slug && uploadsCoverage) {
 		badges.push(
 			`[![Coverage](https://codecov.io/gh/${slug}/branch/${branch}/graph/badge.svg)](https://codecov.io/gh/${slug})`
 		)

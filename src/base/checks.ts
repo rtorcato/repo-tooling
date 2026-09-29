@@ -435,6 +435,23 @@ export async function checkCodeQL(dir: string, languages: readonly string[]): Pr
 	}
 }
 
+/** The workflow file that uploads coverage via codecov-action, or null when none does. */
+export async function coverageUploadWorkflow(dir: string): Promise<string | null> {
+	const workflowsDir = path.join(dir, '.github', 'workflows')
+	try {
+		const files = (await fs.readdir(workflowsDir)).filter(
+			(f) => f.endsWith('.yml') || f.endsWith('.yaml')
+		)
+		for (const f of files) {
+			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
+			if (/codecov\/codecov-action/.test(content)) return f
+		}
+	} catch {
+		// no workflows dir
+	}
+	return null
+}
+
 // A README that advertises a Codecov badge but a CI that never uploads coverage
 // leaves the badge permanently red. Only flags when the badge is actually present
 // (no badge → nothing to back, so it's not applicable).
@@ -449,24 +466,12 @@ export async function checkCoverageUpload(dir: string): Promise<CheckResult> {
 		}
 	}
 
-	const workflowsDir = path.join(dir, '.github', 'workflows')
-	if (await fs.pathExists(workflowsDir)) {
-		try {
-			const files = (await fs.readdir(workflowsDir)).filter(
-				(f) => f.endsWith('.yml') || f.endsWith('.yaml')
-			)
-			for (const f of files) {
-				const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
-				if (/codecov\/codecov-action/.test(content)) {
-					return {
-						check: 'Coverage upload',
-						status: 'ok',
-						detail: `coverage badge backed by codecov-action in .github/workflows/${f}`,
-					}
-				}
-			}
-		} catch {
-			// fall through to drift
+	const workflow = await coverageUploadWorkflow(dir)
+	if (workflow) {
+		return {
+			check: 'Coverage upload',
+			status: 'ok',
+			detail: `coverage badge backed by codecov-action in .github/workflows/${workflow}`,
 		}
 	}
 

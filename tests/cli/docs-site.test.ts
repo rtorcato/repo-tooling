@@ -215,6 +215,26 @@ describe('generateDocsSite', () => {
 		expect(intro).toContain('License: MIT')
 	})
 
+	it('skips bundlephobia and codecov on a CLI with no bundle or coverage upload (#675)', async () => {
+		const dir = newTmpDir()
+		await generateDocsSite({ ...PKG, bin: { tool: './dist/cli.js' } }, dir)
+		const intro = await fs.readFile(join(dir, 'apps/docs/docs/intro.md'), 'utf-8')
+		expect(intro).not.toMatch(/bundlephobia|codecov\.io/)
+		expect(intro).toContain('img.shields.io/npm/v/@rtorcato/repo-tooling')
+	})
+
+	it('adds bundlephobia and codecov for a bundled library that uploads coverage (#675)', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(
+			join(dir, '.github/workflows/ci.yml'),
+			'jobs:\n  test:\n    steps:\n      - uses: codecov/codecov-action@v7\n'
+		)
+		await generateDocsSite({ ...PKG, exports: { '.': './dist/index.js' } }, dir)
+		const intro = await fs.readFile(join(dir, 'apps/docs/docs/intro.md'), 'utf-8')
+		expect(intro).toContain('bundlephobia.com/package/@rtorcato/repo-tooling')
+		expect(intro).toContain('codecov.io/gh/rtorcato/js-tooling')
+	})
+
 	it('omits TypeDoc wiring by default', async () => {
 		const dir = newTmpDir()
 		await generateDocsSite(PKG, dir)
