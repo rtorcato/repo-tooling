@@ -23,7 +23,7 @@ agents working your issue queue. Leave it out otherwise.
 | **Needed by the other?** | No | Builds on the repo standard below |
 | **CLI** | `repo-tooling setup / doctor / fix` | `repo-ai loop … / doctor / fix` |
 | **Claude Code skills** | `repo-tooling`, `npm-publish`, `dogfood` | `ai-workflow`, `ai-issue-loop`, `ai-issue`, `ai-loop-status` |
-| **Config** | `.repo-tooling.json` | The same file, under `rules.aiLoop` and `rules.requiredSkills` |
+| **Config** | `.repo-tooling.json` | `.repo-ai.json` |
 
 ## What repo-ai relies on from repo-tooling
 
@@ -37,9 +37,10 @@ standard repo-tooling sets up, and each piece of that has its own `fix` target:
   so a merge never reaches npm without a person approving it.
 - **Worktree dependency links** in `.claude/settings.json` (`fix ai`), so each
   agent's worktree builds without a fresh install.
-- **`.repo-tooling.json`**: repo-ai reads `rules.aiLoop.agentUser` and
-  `rules.requiredSkills` from it. repo-tooling carries those keys forward and
-  never reads them.
+- **Nothing in `.repo-tooling.json`**: repo-ai keeps its own settings in
+  `.repo-ai.json`. Older repos that still have `rules.aiLoop` or
+  `rules.requiredSkills` there can move them across with
+  `npx @rtorcato/repo-ai fix config`.
 
 You can meet the same standard by hand. repo-tooling is just the quickest way.
 
