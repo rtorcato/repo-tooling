@@ -15,7 +15,12 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
-import { generateBrand } from '../cli/generators/brand.js'
+import {
+	addReadmeBanner,
+	generateBrand,
+	renderBrand,
+	resolveBrandMeta,
+} from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
 import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc.js'
@@ -337,28 +342,33 @@ export const BASE_FIXERS: Fixer[] = [
 		target: 'brand',
 		selfSafe: true,
 		description:
-			'Scaffold brand/ — banner, mobile-banner and social-card SVG sources + render.sh, and repoint a README still on root-level banner paths',
+			'Scaffold brand/ — favicon, banner, mobile-banner and social-card SVG sources + render.sh — render the PNGs and favicon.ico when rsvg-convert is on PATH, and add the README banner',
 		appliesTo: ['Brand assets'],
 		outputs: [
+			'brand/favicon.svg',
 			'brand/banner.svg',
 			'brand/banner-mobile.svg',
 			'brand/social-card.svg',
 			'brand/render.sh',
+			'brand/banner.png',
+			'brand/banner-mobile.png',
+			'brand/social-card.png',
+			'brand/favicon-512.png',
+			'brand/favicon.ico',
 			'README.md',
 		],
-		// Every SVG is written only when absent and the README edit rewrites two
-		// image paths — hand-edited art is never clobbered.
+		// Every SVG is written only when absent, PNGs are re-rendered only when
+		// older than their source, and the README edit is a delimited block (or
+		// two image paths) — hand-edited art is never clobbered.
 		riskLevel: 'safe-merge',
 		canFixDrift: true,
 		async run({ targetDir, pkg, lock }) {
-			const filesWritten = await generateBrand(pkg, targetDir, lock?.rules?.brand?.tagline)
-			if (filesWritten.some((f) => f.endsWith('.svg'))) {
-				console.error(
-					chalk.dim(
-						'   next: run `brand/render.sh` to render the PNGs (needs librsvg — `brew install librsvg`)'
-					)
-				)
-			}
+			const tagline = lock?.rules?.brand?.tagline
+			const filesWritten = await generateBrand(pkg, targetDir, tagline)
+			filesWritten.push(...((await renderBrand(targetDir)) ?? []))
+			const { name } = await resolveBrandMeta(pkg, targetDir, tagline)
+			const readme = await addReadmeBanner(targetDir, name)
+			if (readme && !filesWritten.includes(readme)) filesWritten.push(readme)
 			return { filesWritten }
 		},
 	},

@@ -138,7 +138,7 @@ export async function checkCommunityHealth(dir: string): Promise<CheckResult> {
 }
 
 const BRAND_HINT =
-	'Run `npx @rtorcato/repo-tooling fix brand` to scaffold brand/ (SVG sources + render.sh), then run `brand/render.sh`'
+	'Run `npx @rtorcato/repo-tooling fix brand` to scaffold brand/ (SVG sources + render.sh) and render the PNGs (needs librsvg)'
 
 /** The two banners the README consumes — the pair `brand/` exists to keep regenerable. */
 const BANNERS = ['banner', 'banner-mobile'] as const

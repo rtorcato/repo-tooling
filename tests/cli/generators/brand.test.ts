@@ -1,9 +1,16 @@
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it, vi } from 'vitest'
 import { checkBrand } from '../../../src/base/checks.js'
 import {
+	addReadmeBanner,
+	BANNER_START,
+	buildBannerBlock,
 	generateBrand,
+	packIco,
+	renderBrand,
+	upsertBanner,
 	repointReadmeBanners,
 	resolveBrandMeta,
 	taglineFits,
@@ -21,6 +28,7 @@ describe('generateBrand', () => {
 		const written = await generateBrand(PKG, dir)
 
 		expect(written).toEqual([
+			'brand/favicon.svg',
 			'brand/banner.svg',
 			'brand/banner-mobile.svg',
 			'brand/social-card.svg',
@@ -76,6 +84,117 @@ describe('generateBrand', () => {
 		expect(svg).not.toContain('"only"')
 		// the attribute must still be a single balanced pair, not three
 		expect(svg.match(/aria-label="[^"]*"/)?.[0]).toContain('&quot;only&quot;')
+	})
+})
+
+describe('favicon (#678)', () => {
+	it('emits a favicon tile that every canvas draws', async () => {
+		const dir = newTmpDir()
+		await generateBrand(PKG, dir)
+
+		const favicon = await fs.readFile(join(dir, 'brand/favicon.svg'), 'utf-8')
+		expect(favicon).toContain('viewBox="0 0 32 32"')
+		expect(favicon).toContain('>W</text>')
+		for (const svg of ['banner', 'banner-mobile', 'social-card']) {
+			const canvas = await fs.readFile(join(dir, `brand/${svg}.svg`), 'utf-8')
+			expect(canvas).toContain('href="favicon.svg"')
+		}
+	})
+
+	it("copies the repo's own favicon instead of the initial tile", async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'favicon.svg'), '<svg>REAL</svg>')
+		await generateBrand(PKG, dir)
+		expect(await fs.readFile(join(dir, 'brand/favicon.svg'), 'utf-8')).toBe('<svg>REAL</svg>')
+	})
+})
+
+const hasRsvg = !spawnSync('rsvg-convert', ['--version']).error
+
+describe('renderBrand (#678)', () => {
+	it('skips rendering with the install hint when rsvg-convert is not on PATH', async () => {
+		const dir = newTmpDir()
+		await generateBrand(PKG, dir)
+		const path = process.env.PATH
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		process.env.PATH = join(dir, 'empty-bin')
+		try {
+			expect(await renderBrand(dir)).toBeNull()
+			expect(spy.mock.calls.flat().join('\n')).toContain('brew install librsvg')
+			expect(await fs.pathExists(join(dir, 'brand/banner.png'))).toBe(false)
+		} finally {
+			process.env.PATH = path
+			spy.mockRestore()
+		}
+	})
+
+	it('does nothing when there are no sources', async () => {
+		expect(await renderBrand(newTmpDir())).toEqual([])
+	})
+
+	it.skipIf(!hasRsvg)('renders the PNGs and favicon.ico, then nothing once fresh', async () => {
+		const dir = newTmpDir()
+		await generateBrand(PKG, dir)
+
+		expect(await renderBrand(dir)).toEqual([
+			'brand/banner.png',
+			'brand/banner-mobile.png',
+			'brand/social-card.png',
+			'brand/favicon-512.png',
+			'brand/favicon.ico',
+		])
+		const ico = await fs.readFile(join(dir, 'brand/favicon.ico'))
+		expect(ico.readUInt16LE(4)).toBe(2)
+		expect(await renderBrand(dir)).toEqual([])
+	})
+})
+
+describe('packIco', () => {
+	it('writes an ICO directory pointing at each PNG frame', () => {
+		const a = Buffer.from('AAAA')
+		const b = Buffer.from('BBBBBB')
+		const ico = packIco([
+			[16, a],
+			[256, b],
+		])
+		expect(ico.readUInt16LE(2)).toBe(1)
+		expect(ico.readUInt16LE(4)).toBe(2)
+		expect(ico[6]).toBe(16)
+		expect(ico[22]).toBe(0) // 256 is stored as 0
+		expect(ico.readUInt32LE(6 + 12)).toBe(38)
+		expect(ico.subarray(38, 42).toString()).toBe('AAAA')
+		expect(ico.subarray(42).toString()).toBe('BBBBBB')
+	})
+})
+
+describe('README banner block (#678)', () => {
+	const block = buildBannerBlock('widget-kit')
+
+	it('prepends the block once and is idempotent', () => {
+		const once = upsertBanner('# widget-kit\n', block)
+		expect(once.startsWith(BANNER_START)).toBe(true)
+		expect(once).toContain('alt="widget-kit banner"')
+		expect(upsertBanner(once, block)).toBe(once)
+	})
+
+	it('refreshes an existing block in place', () => {
+		const old = upsertBanner('# x\n', buildBannerBlock('old'))
+		expect(upsertBanner(old, block)).toBe(upsertBanner('# x\n', block))
+	})
+
+	it('leaves a hand-written banner alone', () => {
+		const readme = '<picture><img src="./brand/banner.png"></picture>\n# x\n'
+		expect(upsertBanner(readme, block)).toBe(readme)
+	})
+
+	it('waits for a rendered banner before touching the README', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'README.md'), '# x\n')
+		expect(await addReadmeBanner(dir, 'x')).toBeNull()
+
+		await fs.outputFile(join(dir, 'brand/banner.png'), 'PNG')
+		expect(await addReadmeBanner(dir, 'x')).toBe('README.md')
+		expect(await addReadmeBanner(dir, 'x')).toBeNull()
 	})
 })
 

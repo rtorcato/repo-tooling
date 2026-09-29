@@ -41,22 +41,35 @@ keeps the repo root clean.
 
 ```
 brand/
+  favicon.svg          source — the logo tile every canvas draws
   banner.svg           source
   banner-mobile.svg    source
   social-card.svg      source
   render.sh            renders -> brand/*.png + apps/docs/static/img/*
   banner.png           rendered  (README: src="./brand/banner.png")
   banner-mobile.png    rendered
+  social-card.png      rendered
+  favicon-512.png      rendered
+  favicon.ico          rendered  (16 + 32, by `fix brand`)
 ```
 
-`social-card.png` and the favicons keep their home under
-`apps/docs/static/img/` — they're consumed by the docs site, not the README.
+`favicon.svg` is copied from the repo's own favicon when it has one, and is
+otherwise a tile carrying the project's initial. The banners and social card
+draw it with `<image href="favicon.svg">`, so swapping in a real glyph is a
+one-file edit.
 
 ```bash
-npx @rtorcato/repo-tooling fix brand   # scaffold the three SVGs + render.sh
-brew install librsvg                   # rsvg-convert, what render.sh drives
-./brand/render.sh                      # re-render every PNG from source
+brew install librsvg                   # rsvg-convert, what the render step drives
+npx @rtorcato/repo-tooling fix brand   # scaffold the SVGs, render the PNGs, add the README banner
+./brand/render.sh                      # or re-render every PNG from source by hand
 ```
+
+`fix brand` renders only when `rsvg-convert` is on PATH, and only outputs that
+are missing or older than their source; without it, it prints the install hint
+and stops at the SVGs. Once `brand/banner.png` exists it adds the `<picture>`
+banner to the top of the README inside a
+`<!-- js-tooling:banner:start -->` / `end` block — unless the README already
+shows a banner.
 
 The scaffolded SVGs derive the project name from `package.json`, the tagline
 from [`rules.brand.tagline`](../reference/repo-tooling-json.mdx#rulesbrand--brand-asset-inputs)
