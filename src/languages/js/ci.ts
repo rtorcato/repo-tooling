@@ -105,6 +105,13 @@ const DEPENDENCIES_JOB: CiJob = {
  */
 export interface JobOptions {
 	scripts?: Record<string, string>
+	/** The package declares a `bin`, so CI smoke-tests the packed tarball (#693). */
+	bin?: boolean
+}
+
+/** `JobOptions.bin` for a real repo. */
+export function hasBin(pkg: Record<string, unknown> | null): boolean {
+	return Boolean(pkg?.bin)
 }
 
 /**
@@ -218,6 +225,21 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
 		const publint = config.publint
 			? '\n      - name: 🔍 Validate package with publint\n        run: pnpm exec publint --strict\n'
 			: ''
+		// npm's own `bin[…] invalid and removed` warning and a bin pnpm never
+		// links both hide until the tarball is installed somewhere else (#693).
+		const packSmoke = opts.bin
+			? `
+      - name: 📦 Smoke-test the packed tarball
+        run: |
+          set -e
+          BIN=$(node -p "const p=require('./package.json');typeof p.bin==='string'?p.name.split('/').pop():Object.keys(p.bin)[0]")
+          TARBALL="$PWD/$(npm pack --silent | tail -n1)"
+          tar -tzf "$TARBALL" | grep -q . || { echo "::error::npm pack produced an empty tarball"; exit 1; }
+          SMOKE=$(mktemp -d)
+          cd "$SMOKE" && npm init -y >/dev/null && npm install "$TARBALL"
+          ./node_modules/.bin/"$BIN" --version
+`
+			: ''
 		jobs.push({
 			id: 'build',
 			needs: ['dependencies'],
@@ -225,7 +247,7 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
 
       - name: 🏗️ Build project
         run: pnpm build
-${attw}${publint}
+${attw}${publint}${packSmoke}
       - name: 📦 Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
