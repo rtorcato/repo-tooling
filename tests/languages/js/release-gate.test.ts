@@ -19,6 +19,8 @@ describe('generated release job (#690)', () => {
 		const yml = renderGitHubWorkflow(githubJobs(buildPresetConfig('library', 'x')))
 		expect(yml).toContain("startsWith(github.event.head_commit.message, 'feat')")
 		expect(yml).not.toContain('BREAKING')
+		// bash -e has no pipefail; without it a failed release piped to tee goes green.
+		expect(yml).toContain('set -o pipefail\n          npx semantic-release 2>&1 | tee release.log')
 		expect(yml).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
 	})
 })

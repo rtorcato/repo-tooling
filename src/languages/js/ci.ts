@@ -293,6 +293,7 @@ ${attw}${publint}
         env:
           GITHUB_TOKEN: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
+          set -o pipefail
           npx semantic-release 2>&1 | tee release.log
           # semantic-release exits 0 when main moved on since this run started,
           # publishing nothing (#690). Say so instead of going quietly green.
