@@ -20,6 +20,7 @@ import {
 	generateBrand,
 	renderBrand,
 	resolveBrandMeta,
+	syncBrandToDocs,
 } from '../cli/generators/brand.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
@@ -366,6 +367,7 @@ export const BASE_FIXERS: Fixer[] = [
 			const tagline = lock?.rules?.brand?.tagline
 			const filesWritten = await generateBrand(pkg, targetDir, tagline)
 			filesWritten.push(...((await renderBrand(targetDir)) ?? []))
+			filesWritten.push(...(await syncBrandToDocs(targetDir)))
 			const { name } = await resolveBrandMeta(pkg, targetDir, tagline)
 			const readme = await addReadmeBanner(targetDir, name)
 			if (readme && !filesWritten.includes(readme)) filesWritten.push(readme)

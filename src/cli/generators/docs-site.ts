@@ -5,6 +5,7 @@ import { coverageUploadWorkflow } from '../../base/checks.js'
 import { jsBadgeAudience } from '../../languages/js/checks.js'
 import { copyPreset, PRESETS } from '../utils/copy-preset.js'
 import { buildBadgeRow, parseRepository } from './badges.js'
+import { syncBrandToDocs } from './brand.js'
 import { DOCS_SITE_BUILDS, mergeAllowBuilds } from './pnpm-workspace.js'
 import { inferSubpathsFromExports } from './treeshake.js'
 
@@ -210,6 +211,7 @@ ${typedocPlugins}\t\t[
 \t],
 
 \tthemeConfig: {
+\t\timage: 'img/social-card.png',
 \t\tcolorMode: {
 \t\t\tdefaultMode: 'dark',
 \t\t\trespectPrefersColorScheme: true,
@@ -473,6 +475,11 @@ export async function generateDocsSite(
 		const w = await writeIfMissing(targetDir, rel, contents)
 		if (w) written.push(w)
 	}
+
+	// static/img always exists (the config points at img/favicon.ico); the brand
+	// assets go in when brand/ has them (#680).
+	await fs.ensureDir(path.join(targetDir, DOCS_APP, 'static', 'img'))
+	written.push(...(await syncBrandToDocs(targetDir)))
 
 	const ws = await ensureWorkspace(targetDir)
 	if (ws) written.push(ws)
