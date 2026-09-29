@@ -228,6 +228,9 @@ type TrustContext =
 	| { skip: string; unpublished?: boolean; guide?: NpmPublishGuide }
 	| { guide: NpmPublishGuide; nwo: string; job: NpmPublishJob }
 
+const NPM_NAME = /^(@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/
+const ENV_NAME = /^[\w.-]+$/
+
 /** What the check and the fixer both need, or why it can't be had. Network only past the offline gates. */
 async function trustContext(
 	dir: string,
@@ -238,6 +241,8 @@ async function trustContext(
 	if (!pkg || pkg.private === true) return { skip: 'private package — no npm publish' }
 	const name = typeof pkg.name === 'string' ? pkg.name : null
 	if (!name) return { skip: 'package.json has no name' }
+	// Untrusted (audited repo's package.json): reject anything npm could parse as a flag.
+	if (!NPM_NAME.test(name)) return { skip: 'package.json `name` is not a valid npm package name' }
 	let job: NpmPublishJob | null
 	try {
 		job = await findNpmPublishJob(dir)
@@ -245,12 +250,15 @@ async function trustContext(
 		return { skip: 'unable to read .github/workflows/' }
 	}
 	if (!job) return { skip: 'no workflow publishes to npm' }
+	if (job.environment && !ENV_NAME.test(job.environment)) {
+		return { skip: 'the publish job declares an environment with unsupported characters' }
+	}
 	const repo = parseRepository(pkg.repository)
 	if (!repo) return { skip: 'package.json `repository` names no GitHub repo' }
 	const nwo = `${repo.owner}/${repo.repo}`
 	const guide = npmPublishGuide({ name, ...repo, file: job.file, environment: job.environment })
 
-	const view = await npm(['view', name, 'version'])
+	const view = await npm(['view', '--', name, 'version'])
 	if (!view.ok) {
 		if (/E404|404 Not Found/i.test(view.stderr)) {
 			return { skip: `${name} is not on npm yet`, unpublished: true, guide }
@@ -291,7 +299,7 @@ export async function checkNpmTrustedPublisher(
 			}),
 		}
 	}
-	const list = await npm(['trust', 'list', ctx.guide.package, '--json'])
+	const list = await npm(['trust', 'list', '--json', '--', ctx.guide.package])
 	let entries: unknown[] | null = null
 	if (list.ok) {
 		try {
@@ -346,7 +354,6 @@ export async function applyNpmTrustedPublisher(
 	const args = [
 		'trust',
 		'github',
-		ctx.guide.package,
 		'--file',
 		ctx.job.file,
 		'--repo',
@@ -354,7 +361,9 @@ export async function applyNpmTrustedPublisher(
 		...(ctx.job.environment ? ['--env', ctx.job.environment] : []),
 		'--allow-publish',
 	]
-	const dry = await npm([...args, '--dry-run'])
+	// `--` last so the name can never be read as a flag.
+	const tail = ['--', ctx.guide.package]
+	const dry = await npm([...args, '--dry-run', ...tail])
 	if (!dry.ok) {
 		throw new FixerAbort('npm-trust-failed', `npm trust --dry-run failed: ${dry.stderr.trim()}`)
 	}
@@ -371,7 +380,7 @@ export async function applyNpmTrustedPublisher(
 		])
 		if (confirm !== true) return []
 	}
-	const real = await npm([...args, '--yes'])
+	const real = await npm([...args, '--yes', ...tail])
 	if (!real.ok) throw new FixerAbort('npm-trust-failed', `npm trust failed: ${real.stderr.trim()}`)
 	return [`npm trusted publisher for ${ctx.guide.package} (remote, via npm trust)`]
 }

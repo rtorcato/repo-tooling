@@ -186,10 +186,18 @@ describe('applyNpmTrustedPublisher', () => {
 		const out = await applyNpmTrustedPublisher(dir, PKG, true, npm)
 		expect(out).toHaveLength(1)
 		const calls = vi.mocked(npm).mock.calls.map((c) => c[0].join(' '))
-		const want =
-			'trust github @acme/lib --file ci.yml --repo acme/lib --env release --allow-publish'
-		expect(calls).toContain(`${want} --dry-run`)
-		expect(calls).toContain(`${want} --yes`)
+		const want = 'trust github --file ci.yml --repo acme/lib --env release --allow-publish'
+		expect(calls).toContain(`${want} --dry-run -- @acme/lib`)
+		expect(calls).toContain(`${want} --yes -- @acme/lib`)
+	})
+
+	it('refuses a flag-shaped package name without calling npm', async () => {
+		const dir = await seed(JOB(''))
+		const npm = fakeNpm()
+		await expect(
+			applyNpmTrustedPublisher(dir, { ...PKG, name: '--registry=https://evil' }, true, npm)
+		).rejects.toThrow()
+		expect(npm).not.toHaveBeenCalled()
 	})
 
 	it('refuses when the package is not on npm yet', async () => {
