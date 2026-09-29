@@ -65,6 +65,8 @@ export interface ProjectConfig {
 	tailwind?: boolean
 	/** Scaffold a Docusaurus docs site under apps/docs (deployed to GitHub Pages). */
 	docsSite?: boolean
+	/** Scaffold brand/ — banner + social-card SVG sources and render.sh, as `fix brand` does (#677). */
+	brand?: boolean
 	/**
 	 * Target the Bun runtime (#225): a runtime flag on the existing project types,
 	 * not a distinct projectType — most Bun consumers still ship Node-compatible
@@ -98,6 +100,7 @@ const REVIEWABLE_FEATURES = [
 	{ key: 'securityAutomation', label: 'Security automation (Dependabot + CodeQL)' },
 	{ key: 'badges', label: 'README status badges' },
 	{ key: 'aiSetup', label: 'AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot)' },
+	{ key: 'brand', label: 'Brand assets (brand/ banner + social-card SVGs, render.sh)' },
 ] as const satisfies ReadonlyArray<{ key: keyof ProjectConfig; label: string }>
 
 /**
@@ -568,6 +571,13 @@ async function promptForConfig(
 			default: seed?.aiSetup ?? true,
 		},
 		{
+			type: 'confirm',
+			name: 'brand',
+			message: '🎨 Add brand assets (brand/ banner + social-card SVG sources, render.sh)?',
+			// On by default for libraries — the ones that publish a README to npm.
+			default: (answers: any) => seed?.brand ?? answers.projectType === 'library',
+		},
+		{
 			type: 'select',
 			name: 'orchestrator',
 			message: '🚀 Monorepo task orchestrator?',
@@ -662,6 +672,7 @@ async function promptForConfig(
 		publint: answers.publint ?? false,
 		badges: answers.badges ?? false,
 		aiSetup: answers.aiSetup ?? false,
+		brand: answers.brand ?? false,
 		turborepo: answers.orchestrator === 'turbo',
 		nx: answers.orchestrator === 'nx',
 		tailwind: answers.tailwind ?? false,
