@@ -28,6 +28,7 @@ import {
 	generateVscodeExtensions,
 } from '../../cli/generators/misc.js'
 import { scriptsOf } from './ci.js'
+import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
 import { usesPnpm } from './checks.js'
 import {
 	SIZE_LIMIT_SCRIPTS,
@@ -499,7 +500,7 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'github-actions',
 		description: 'Scaffold .github/workflows/ci.yml (+ codecov.yml when tests run)',
-		appliesTo: ['GitHub Actions', 'Coverage upload', 'npm OIDC publish'],
+		appliesTo: ['GitHub Actions', 'Coverage upload', NPM_OIDC_CHECK],
 		outputs: [CI_WORKFLOW, 'codecov.yml', 'package.json (packageManager field)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg, result }) {
@@ -527,6 +528,7 @@ export const FIXERS: Fixer[] = [
 			return { filesWritten }
 		},
 	},
+	NPM_TRUST_FIXER,
 	{
 		target: 'gitlab-ci',
 		description: 'Scaffold .gitlab-ci.yml (lint/typecheck/test/build mirrored from GitHub Actions)',

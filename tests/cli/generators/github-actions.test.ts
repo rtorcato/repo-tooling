@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import { CI_WORKFLOW, generateGitHubActions } from '../../../src/cli/generators/github-actions.js'
+import { checkPublishJob, findNpmPublishJob } from '../../../src/languages/js/npm-trust.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -177,6 +178,18 @@ describe('generateGitHubActions', () => {
 		// Publishes via OIDC trusted publishing — id-token permission, no NPM_TOKEN secret.
 		expect(content).toContain('id-token: write')
 		expect(content).not.toContain('secrets.NPM_TOKEN')
+	})
+
+	it('release job can publish via OIDC: id-token + an npm >= 11.5.1 upgrade (#687)', async () => {
+		const dir = newTmpDir()
+		await generateGitHubActions(
+			baseConfig({ projectType: 'library', semanticRelease: true, bundler: 'tsup' }),
+			dir
+		)
+		const job = await findNpmPublishJob(dir)
+		expect(job?.body).toContain('id-token: write')
+		expect(job?.body).toContain('npm install -g npm@^11.5.1')
+		expect(job && checkPublishJob(job).status).toBe('ok')
 	})
 
 	it('omits release job when semanticRelease is false', async () => {

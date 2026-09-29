@@ -4,6 +4,12 @@ import fs from 'fs-extra'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { githubJobs, scriptsOf } from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
+import {
+	checkNpmTrustedPublisher,
+	checkPublishJob,
+	findNpmPublishJob,
+	NPM_OIDC_CHECK,
+} from '../../languages/js/npm-trust.js'
 import { PERL_GIT_HOOKS, runPerlChecks } from '../../languages/perl/checks.js'
 import { readPerlProject, renderPerlWorkflow } from '../../languages/perl/ci.js'
 import { PYTHON_GIT_HOOKS, runPythonChecks } from '../../languages/python/checks.js'
@@ -133,36 +139,19 @@ async function checkReleaseToken(dir: string): Promise<CheckResult> {
 	}
 }
 
-// Flags a release workflow still authenticating npm publish with a long-lived
-// NPM_TOKEN secret instead of OIDC trusted publishing (#201). npm is deprecating
-// 2FA-bypass tokens; OIDC needs no secret and adds provenance for free. Only
-// relevant for public packages that actually publish to npm.
+// OIDC trusted publishing (#201, #687): the publishing job must not use an
+// NPM_TOKEN secret, must carry `id-token: write`, and must run npm ≥ 11.5.1.
+// Only relevant for public packages that actually publish to npm.
 async function checkNpmOidcPublish(dir: string, pkg: Pkg | null): Promise<CheckResult> {
-	const check = 'npm OIDC publish'
+	const check = NPM_OIDC_CHECK
 	if (!pkg || pkg.private === true) {
 		return { check, status: 'optional-missing', detail: 'private package — no npm publish' }
 	}
-	const workflowsDir = path.join(dir, '.github', 'workflows')
-	if (!(await fs.pathExists(workflowsDir))) {
-		return { check, status: 'optional-missing', detail: 'no .github/workflows/' }
-	}
 	try {
-		const files = await fs.readdir(workflowsDir)
-		for (const f of files) {
-			if (!(f.endsWith('.yml') || f.endsWith('.yaml'))) continue
-			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
-			if (!/semantic-release/.test(content)) continue
-			if (/secrets\.NPM_TOKEN/.test(content)) {
-				return {
-					check,
-					status: 'drift',
-					detail: `${f} authenticates npm publish with NPM_TOKEN`,
-					hint: 'Migrate to OIDC trusted publishing: add a Trusted Publisher for each published package on npmjs.com (Settings → Trusted Publisher), then run `fix github-actions` to drop NPM_TOKEN (the release job keeps `id-token: write`). npm is deprecating 2FA-bypass tokens.',
-				}
-			}
-			return { check, status: 'ok', detail: `${f} publishes via OIDC (no NPM_TOKEN)` }
-		}
-		return { check, status: 'optional-missing', detail: 'no semantic-release workflow found' }
+		const job = await findNpmPublishJob(dir)
+		if (!job)
+			return { check, status: 'optional-missing', detail: 'no semantic-release workflow found' }
+		return checkPublishJob(job)
 	} catch {
 		return { check, status: 'optional-missing', detail: 'unable to read .github/workflows/' }
 	}
@@ -462,6 +451,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	results.push(await checkSizeLimit(targetDir, pkg))
 	results.push(await checkReleaseToken(targetDir))
 	results.push(await checkNpmOidcPublish(targetDir, pkg))
+	results.push(await checkNpmTrustedPublisher(targetDir, pkg))
 	results.push(await checkTypedoc(targetDir, pkg))
 	results.push(await checkAreTheTypesWrong(targetDir, pkg))
 	results.push(await checkPublint(targetDir, pkg))
