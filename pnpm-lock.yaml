@@ -69,8 +69,8 @@ importers:
         specifier: ^12.3.0
         version: 12.3.0(rollup@4.63.0)(tslib@2.8.1)(typescript@7.0.2)
       '@rtorcato/repo-ai':
-        specifier: ^3.1.1
-        version: 3.1.1(@types/node@26.3.0)
+        specifier: ^3.1.2
+        version: 3.1.2(@types/node@26.3.0)
       '@semantic-release/commit-analyzer':
         specifier: ^13.0.1
         version: 13.0.1(semantic-release@25.0.9(typescript@7.0.2))
@@ -3163,8 +3163,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rtorcato/repo-ai@3.1.1':
-    resolution: {integrity: sha512-O5vtnsIC4tPfzj2bNdgOMBXa1Q3YmCuhkMz4TwImSotGdZJqQhcspOwY8Vge6YT7sd84m8WWgY2igm5tczuwOA==}
+  '@rtorcato/repo-ai@3.1.2':
+    resolution: {integrity: sha512-xrN2G0CUVvYRfUwIu2lfTX98MT4s+QLKgqAfnbud68i/lCM2H7NEED3lKTWj2+8u1TZ0Nzygfxo8Vy7khx2I6w==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -13577,7 +13577,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.63.1':
     optional: true
 
-  '@rtorcato/repo-ai@3.1.1(@types/node@26.3.0)':
+  '@rtorcato/repo-ai@3.1.2(@types/node@26.3.0)':
     dependencies:
       chalk: 6.0.0
       commander: 15.0.0
