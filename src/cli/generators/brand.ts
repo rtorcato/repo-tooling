@@ -12,6 +12,7 @@
  * and falls back to a neutral grey. Nothing about any particular org is baked
  * in; the templates are meant to be hand-edited afterwards.
  */
+import { execFileSync, spawnSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'fs-extra'
 
@@ -96,10 +97,12 @@ async function accentFromDocsTheme(targetDir: string): Promise<string | null> {
 	return css.match(/--ifm-color-primary:\s*(#[0-9a-fA-F]{6})/)?.[1] ?? null
 }
 
+/** Where a repo already keeps a favicon — the docs site's first. */
+const EXISTING_FAVICONS = [path.join('apps', 'docs', 'static', 'img', 'favicon.svg'), 'favicon.svg']
+
 /** Failing that, the favicon's own ink — the other place a repo commits its colour. */
 async function accentFromFavicon(targetDir: string): Promise<string | null> {
-	const candidates = [path.join('apps', 'docs', 'static', 'img', 'favicon.svg'), 'favicon.svg']
-	for (const rel of candidates) {
+	for (const rel of EXISTING_FAVICONS) {
 		const file = path.join(targetDir, rel)
 		if (!(await fs.pathExists(file))) continue
 		const svg = await fs.readFile(file, 'utf-8')
@@ -147,17 +150,24 @@ export async function resolveBrandMeta(
 }
 
 /**
- * The logo mark: a rounded square in the accent carrying the project's initial.
- * Authored on a 32 viewBox so it matches the favicon's geometry and can be
- * swapped for the real favicon glyph verbatim.
+ * The logo tile: a rounded square in the accent carrying the project's
+ * initial. It *is* `brand/favicon.svg`, and every canvas below draws that file
+ * rather than a copy of it, so swapping in a real glyph is a one-file edit (#678).
  */
-function mark(meta: BrandMeta, translate: string, scale: number): string {
+export function faviconSvg(meta: BrandMeta): string {
 	const initial = esc((meta.name[0] ?? '?').toUpperCase())
-	return `	<!-- Logo mark: a 32 viewBox, so the real favicon glyph can be pasted in over it. -->
-	<g transform="translate(${translate}) scale(${scale})">
-		<rect width="32" height="32" rx="8" fill="${meta.accent}"/>
-		<text x="16" y="23" text-anchor="middle" font-family="Avenir Next" font-weight="800" font-size="19" fill="${INK}">${initial}</text>
-	</g>`
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+	<title>${esc(meta.name)}</title>
+	<rect width="32" height="32" rx="8" fill="${meta.accent}"/>
+	<text x="16" y="23" text-anchor="middle" font-family="Avenir Next" font-weight="800" font-size="19" fill="${INK}">${initial}</text>
+</svg>
+`
+}
+
+/** The logo mark: `brand/favicon.svg`, drawn `size` px square. */
+function mark(x: number, y: number, size: number): string {
+	return `	<!-- Logo mark: brand/favicon.svg — edit that file to change it on every canvas. -->
+	<image href="favicon.svg" x="${x}" y="${y}" width="${size}" height="${size}"/>`
 }
 
 /** `repo-tooling` renders as a muted `repo-` and an accented `tooling`. */
@@ -221,7 +231,7 @@ function canvas(meta: BrandMeta, w: number, h: number, glow: { cx: number; cy: n
 /** 1280×320 README banner — left-aligned lockup, install pill on the right. */
 export function bannerSvg(meta: BrandMeta): string {
 	return `${canvas(meta, 1280, 320, { cx: 0.16, cy: 0 })}
-${mark(meta, '60 88', 2.25)}
+${mark(60, 88, 72)}
 
 	<text x="156" y="150" font-family="Avenir Next" font-weight="800" font-size="62" letter-spacing="-1.5">${wordmark(meta)}</text>
 
@@ -234,7 +244,7 @@ ${installPanel(meta, { x: 845, y: 118, w: 378, h: 84, size: 20 })}
 /** 1280×786 mobile banner — the same content stacked so it stays legible on a phone. */
 export function bannerMobileSvg(meta: BrandMeta): string {
 	return `${canvas(meta, 1280, 786, { cx: 0.12, cy: 0.05 })}
-${mark(meta, '565 104', 4.6875)}
+${mark(565, 104, 150)}
 
 	<text x="640" y="360" text-anchor="middle" font-family="Avenir Next" font-weight="800" font-size="76" letter-spacing="-1.8">${wordmark(meta)}</text>
 
@@ -247,7 +257,7 @@ ${installPanel(meta, { x: 427, y: 650, w: 426, h: 78, size: 24 })}
 /** 1280×640 Open Graph / GitHub social card. Keep content inside an ~8% safe inset. */
 export function socialCardSvg(meta: BrandMeta): string {
 	return `${canvas(meta, 1280, 640, { cx: 0.1, cy: 0.05 })}
-${mark(meta, '590 120', 3.125)}
+${mark(590, 120, 100)}
 
 	<text x="640" y="300" text-anchor="middle" font-family="Avenir Next" font-weight="800" font-size="76" letter-spacing="-1.8">${wordmark(meta)}</text>
 
@@ -265,7 +275,7 @@ ${installPanel(meta, { x: 427, y: 470, w: 426, h: 78, size: 24 })}
 export const RENDER_SH = `#!/usr/bin/env bash
 # Render the committed brand PNGs from their SVG sources.
 # Sizes come from the brand-asset spec: 1280x320 banner, 1280x786 mobile,
-# 1280x640 social card, 512x512 PWA icon.
+# 1280x640 social card, 512x512 PWA icon. (\`fix brand\` also packs favicon.ico.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -277,7 +287,9 @@ fi
 
 rsvg-convert -w 1280 -h 320 brand/banner.svg        -o brand/banner.png
 rsvg-convert -w 1280 -h 786 brand/banner-mobile.svg -o brand/banner-mobile.png
-echo "rendered: brand/banner.png brand/banner-mobile.png"
+rsvg-convert -w 1280 -h 640 brand/social-card.svg   -o brand/social-card.png
+rsvg-convert -w 512  -h 512 brand/favicon.svg       -o brand/favicon-512.png
+echo "rendered: brand/banner.png brand/banner-mobile.png brand/social-card.png brand/favicon-512.png"
 
 # The docs-site assets, rendered only when the site exists to hold them.
 img=apps/docs/static/img
@@ -320,10 +332,19 @@ export async function repointReadmeBanners(targetDir: string): Promise<string | 
 	return 'README.md'
 }
 
+/** A favicon the repo already commits beats the generated initial tile. */
+async function existingFavicon(targetDir: string): Promise<string | null> {
+	for (const rel of EXISTING_FAVICONS) {
+		const file = path.join(targetDir, rel)
+		if (await fs.pathExists(file)) return fs.readFile(file, 'utf-8')
+	}
+	return null
+}
+
 /**
- * Scaffold `brand/`: three SVG sources + the render script, then repoint a
- * README still on the old root-level paths. Every file is written only when
- * absent, so `fix brand` is idempotent.
+ * Scaffold `brand/`: the favicon tile, three SVG sources that draw it, and the
+ * render script, then repoint a README still on the old root-level paths.
+ * Every file is written only when absent, so `fix brand` is idempotent.
  */
 export async function generateBrand(
 	pkg: Pkg,
@@ -333,6 +354,7 @@ export async function generateBrand(
 	const meta = await resolveBrandMeta(pkg, targetDir, tagline)
 	const written: string[] = []
 	const files: Array<[string, string, number?]> = [
+		['brand/favicon.svg', (await existingFavicon(targetDir)) ?? faviconSvg(meta)],
 		['brand/banner.svg', bannerSvg(meta)],
 		['brand/banner-mobile.svg', bannerMobileSvg(meta)],
 		['brand/social-card.svg', socialCardSvg(meta)],
@@ -351,4 +373,129 @@ export async function generateBrand(
 	const readme = await repointReadmeBanners(targetDir)
 	if (readme) written.push(readme)
 	return written
+}
+
+/** Printed when `rsvg-convert` is not on PATH — the sources are still written. */
+export const RSVG_HINT =
+	'   next: install librsvg to render the brand PNGs (`brew install librsvg`, apt: `apt-get install librsvg2-bin`), then re-run `fix brand` or `brand/render.sh`'
+
+/** `[source, output, width, height]` under `brand/` — the same set render.sh draws. */
+const RENDERS: Array<[string, string, number, number]> = [
+	['banner.svg', 'banner.png', 1280, 320],
+	['banner-mobile.svg', 'banner-mobile.png', 1280, 786],
+	['social-card.svg', 'social-card.png', 1280, 640],
+	['favicon.svg', 'favicon-512.png', 512, 512],
+	['favicon.svg', 'favicon.ico', 32, 32],
+]
+
+/** Classic favicon sizes packed into favicon.ico. */
+const ICO_SIZES = [16, 32]
+
+/**
+ * An ICO container holding PNG frames — every browser since IE Vista reads
+ * PNG-in-ICO, so no bitmap conversion is needed.
+ */
+export function packIco(frames: Array<[size: number, png: Buffer]>): Buffer {
+	const header = Buffer.alloc(6 + 16 * frames.length)
+	header.writeUInt16LE(1, 2) // type: icon
+	header.writeUInt16LE(frames.length, 4)
+	let offset = header.length
+	frames.forEach(([size, png], i) => {
+		const e = 6 + 16 * i
+		header.writeUInt8(size % 256, e) // 0 means 256
+		header.writeUInt8(size % 256, e + 1)
+		header.writeUInt16LE(1, e + 4) // colour planes
+		header.writeUInt16LE(32, e + 6) // bits per pixel
+		header.writeUInt32LE(png.length, e + 8)
+		header.writeUInt32LE(offset, e + 12)
+		offset += png.length
+	})
+	return Buffer.concat([header, ...frames.map(([, png]) => png)])
+}
+
+async function mtime(file: string): Promise<number> {
+	return (await fs.stat(file)).mtimeMs
+}
+
+/**
+ * Render every `brand/` PNG (and favicon.ico) that is missing or older than its
+ * source — or than favicon.svg, which every canvas draws. Returns the files
+ * written, or null when `rsvg-convert` is not on PATH (after printing
+ * {@link RSVG_HINT}). Nothing stale means nothing to do and no PATH lookup.
+ */
+export async function renderBrand(targetDir: string): Promise<string[] | null> {
+	const brand = path.join(targetDir, 'brand')
+	const favicon = path.join(brand, 'favicon.svg')
+	const stale: typeof RENDERS = []
+	for (const job of RENDERS) {
+		const [src, out] = job
+		const srcFile = path.join(brand, src)
+		const outFile = path.join(brand, out)
+		if (!(await fs.pathExists(srcFile))) continue
+		const newest = Math.max(
+			await mtime(srcFile),
+			(await fs.pathExists(favicon)) ? await mtime(favicon) : 0
+		)
+		if (!(await fs.pathExists(outFile)) || (await mtime(outFile)) < newest) stale.push(job)
+	}
+	if (stale.length === 0) return []
+
+	if (spawnSync('rsvg-convert', ['--version']).error) {
+		// stderr, not stdout: `fix --json` owns stdout (#357).
+		console.error(RSVG_HINT)
+		return null
+	}
+	// cwd = brand/ so each canvas's `href="favicon.svg"` resolves beside it.
+	const rsvg = (src: string, w: number, h: number): Buffer =>
+		execFileSync('rsvg-convert', ['-w', String(w), '-h', String(h), src], { cwd: brand })
+
+	const written: string[] = []
+	for (const [src, out, w, h] of stale) {
+		const png = out.endsWith('.ico')
+			? packIco(ICO_SIZES.map((s) => [s, rsvg(src, s, s)]))
+			: rsvg(src, w, h)
+		await fs.writeFile(path.join(brand, out), png)
+		written.push(`brand/${out}`)
+	}
+	return written
+}
+
+export const BANNER_START = '<!-- js-tooling:banner:start -->'
+export const BANNER_END = '<!-- js-tooling:banner:end -->'
+
+/** The README `<picture>` banner, mobile variant under 640px, as a delimited block. */
+export function buildBannerBlock(name: string): string {
+	return `${BANNER_START}
+<picture>
+  <source media="(max-width: 640px)" srcset="./brand/banner-mobile.png">
+  <img src="./brand/banner.png" alt="${esc(name)} banner" width="1600">
+</picture>
+${BANNER_END}`
+}
+
+/**
+ * Put the banner block at the top of a README. Refreshes an existing block in
+ * place; leaves alone a README that already shows a banner outside one (a
+ * hand-written `<picture>`); otherwise prepends. Idempotent.
+ */
+export function upsertBanner(readme: string, block: string): string {
+	const start = readme.indexOf(BANNER_START)
+	const end = readme.indexOf(BANNER_END)
+	if (start !== -1 && end > start) {
+		return readme.slice(0, start) + block + readme.slice(end + BANNER_END.length)
+	}
+	if (/banner(?:-mobile)?\.png/.test(readme)) return readme
+	return `${block}\n\n${readme}`
+}
+
+/** Add the banner block to README.md once `brand/banner.png` exists to show. */
+export async function addReadmeBanner(targetDir: string, name: string): Promise<string | null> {
+	const file = path.join(targetDir, 'README.md')
+	if (!(await fs.pathExists(file))) return null
+	if (!(await fs.pathExists(path.join(targetDir, 'brand', 'banner.png')))) return null
+	const readme = await fs.readFile(file, 'utf-8')
+	const next = upsertBanner(readme, buildBannerBlock(name))
+	if (next === readme) return null
+	await fs.writeFile(file, next)
+	return 'README.md'
 }
