@@ -6,5 +6,10 @@
   "maxTasksPerTick": 8,
   "staleMinutes": 45,
   "busyMinutes": 10,
-  "idleMinutes": 30
+  "idleMinutes": 30,
+  "pollSeconds": 180,
+  "budgetTokens": 400000,
+  "quietStopMinutes": 120,
+  "autoMerge": false,
+  "ciWorkflow": "ci.yml"
 }
