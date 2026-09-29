@@ -204,12 +204,27 @@ function checkLockfile(lock: Lockfile | null): CheckResult {
 	}
 }
 
+// Checks whose absence `securityAutomation: true` turns from an optional gap
+// into drift (#692): the lock says the repo chose them, so silence is a lie.
+const REQUIRED_BY_SECURITY_AUTOMATION = new Set(['Dependabot', 'Security updates'])
+
 // Lockfile-driven demotion: if the lock records an intentional opt-out for a
 // check that's currently optional-missing, demote it to ok with a clear detail.
+// The converse holds for a recorded opt-in (#692): promote it to drift.
 function demoteDeclined(results: CheckResult[], lock: Lockfile | null): CheckResult[] {
 	if (!lock) return results
 	return results.map((r) => {
 		if (r.status !== 'optional-missing') return r
+		if (
+			lock.record.config.securityAutomation === true &&
+			REQUIRED_BY_SECURITY_AUTOMATION.has(r.check)
+		) {
+			return {
+				...r,
+				status: 'drift',
+				detail: `${r.detail}, but .repo-tooling.json records securityAutomation: true`,
+			}
+		}
 		if (!declinedInLock(lock, r.check)) return r
 		return {
 			check: r.check,

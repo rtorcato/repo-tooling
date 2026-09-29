@@ -110,6 +110,7 @@ describe('fix registry', () => {
 			'Merge settings',
 			'Workflow permissions',
 			'Code-scanning gate',
+			'Security updates',
 		])
 	})
 
