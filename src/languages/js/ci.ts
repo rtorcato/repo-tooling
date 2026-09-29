@@ -9,6 +9,17 @@
 import type { CiJob, GitLabSpec } from '../../base/ci.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
+/**
+ * Conventional-commit types that cut a release, mirroring the `releaseRules` in
+ * tooling/semantic-release (a test keeps the two in step). `feat!:` and `fix!:`
+ * start with these too, so breaking changes are covered.
+ */
+export const RELEASE_TYPES = ['feat', 'fix', 'perf', 'refactor', 'revert', 'update']
+
+// Match only the START of the squash subject: the message carries the whole PR
+// body, so searching it matched PRs that merely mentioned `BREAKING CHANGE`.
+const RELEASE_IF = `github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (${RELEASE_TYPES.map((t) => `startsWith(github.event.head_commit.message, '${t}')`).join(' || ')}))`
+
 /** Coverage is uploaded when Vitest is the test runner (it emits an lcov report). */
 export function usesCoverage(config: ProjectConfig): boolean {
 	return config.testing.framework === 'vitest'
@@ -232,7 +243,7 @@ ${attw}${publint}
 			id: 'release',
 			// Gate the publish on everything that ran before it.
 			needs: jobs.map((job) => job.id),
-			if: "github.ref == 'refs/heads/main'",
+			if: RELEASE_IF,
 			extra: `    permissions:
       contents: write
       issues: write
@@ -281,7 +292,13 @@ ${attw}${publint}
         # for the package on npmjs.com (Settings → Trusted Publisher).
         env:
           GITHUB_TOKEN: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-        run: npx semantic-release`,
+        run: |
+          npx semantic-release 2>&1 | tee release.log
+          # semantic-release exits 0 when main moved on since this run started,
+          # publishing nothing (#690). Say so instead of going quietly green.
+          if grep -q "is behind the remote one" release.log; then
+            echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
+          fi`,
 		})
 	}
 
