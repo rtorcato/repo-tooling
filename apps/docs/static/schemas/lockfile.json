@@ -327,6 +327,35 @@
 							"description": "Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer."
 						}
 					}
+				},
+				"docs": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "Inputs to `fix docs-site`.",
+					"properties": {
+						"siblings": {
+							"type": "array",
+							"description": "Sibling projects to link from the scaffolded docs site (navbar, footer, intro page). Opt-in: when absent the scaffold emits no such links.",
+							"items": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": [
+									"label",
+									"href"
+								],
+								"properties": {
+									"label": {
+										"type": "string",
+										"minLength": 1
+									},
+									"href": {
+										"type": "string",
+										"minLength": 1
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}

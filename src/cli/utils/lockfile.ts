@@ -112,6 +112,20 @@ export interface LockfileRules {
 		 */
 		tagline?: string
 	}
+	/** Inputs to `fix docs-site` (#676). */
+	docs?: {
+		/**
+		 * Sibling projects to link from the scaffolded site's navbar, footer and
+		 * intro page. Opt-in: absent means the scaffold emits no such links.
+		 */
+		siblings?: DocsSibling[]
+	}
+}
+
+/** One sibling-project link for the docs site (`rules.docs.siblings`). */
+export interface DocsSibling {
+	label: string
+	href: string
 }
 
 export interface Lockfile {
@@ -278,6 +292,27 @@ export function lockfileSchema() {
 									'Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer.',
 							},
 						} satisfies Record<keyof NonNullable<LockfileRules['brand']>, object>,
+					},
+					docs: {
+						type: 'object',
+						additionalProperties: false,
+						description: 'Inputs to `fix docs-site`.',
+						properties: {
+							siblings: {
+								type: 'array',
+								description:
+									'Sibling projects to link from the scaffolded docs site (navbar, footer, intro page). Opt-in: when absent the scaffold emits no such links.',
+								items: {
+									type: 'object',
+									additionalProperties: false,
+									required: ['label', 'href'],
+									properties: {
+										label: { type: 'string', minLength: 1 },
+										href: { type: 'string', minLength: 1 },
+									} satisfies Record<keyof DocsSibling, object>,
+								},
+							},
+						} satisfies Record<keyof NonNullable<LockfileRules['docs']>, object>,
 					},
 				} satisfies Record<keyof LockfileRules, object>,
 			},
