@@ -101,7 +101,9 @@ export function checkPublishJob(job: NpmPublishJob): CheckResult {
 			hint: 'Migrate to OIDC trusted publishing: add a Trusted Publisher for each published package on npmjs.com (Settings → Trusted Publisher), then run `fix github-actions` to drop NPM_TOKEN (the release job keeps `id-token: write`). npm is deprecating 2FA-bypass tokens.',
 		}
 	}
-	if (!/id-token:\s*write/.test(job.body)) {
+	// The grant may sit on the job or at workflow level (everything before `jobs:`).
+	const workflowLevel = uncommented(job.content.split(/^jobs:/m)[0] ?? '')
+	if (!/id-token:\s*write/.test(job.body) && !/id-token:\s*write/.test(workflowLevel)) {
 		return {
 			check,
 			status: 'drift',

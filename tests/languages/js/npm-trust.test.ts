@@ -76,6 +76,14 @@ describe('checkPublishJob', () => {
 		expect(r?.hint).toContain('npm install -g npm@^11.5.1')
 	})
 
+	it('accepts id-token: write granted at the workflow level', async () => {
+		const dir = await seed(
+			'permissions:\n  id-token: write\njobs:\n  release:\n    steps:\n      - run: npm install -g npm@^11.5.1\n      - run: npx semantic-release\n'
+		)
+		const job = await findNpmPublishJob(dir)
+		expect(job && checkPublishJob(job).status).toBe('ok')
+	})
+
 	it('is ok with both', async () => {
 		const job = await findNpmPublishJob(await seed(JOB()))
 		expect(job && checkPublishJob(job).status).toBe('ok')
