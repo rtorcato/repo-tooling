@@ -31,7 +31,10 @@ export interface CiJob {
 }
 
 /** Header through `jobs:` — triggers and concurrency are language-independent. */
-const WORKFLOW_HEADER = `name: 🚀 CI/CD Pipeline
+/** The generated CI workflow's `name:` — the docs workflow's `workflow_run` must match it. */
+export const CI_WORKFLOW_NAME = '🚀 CI/CD Pipeline'
+
+const WORKFLOW_HEADER = `name: ${CI_WORKFLOW_NAME}
 
 on:
   push:
@@ -42,7 +45,9 @@ on:
 
 concurrency:
   group: \${{ github.workflow }}-\${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: a newer push would kill a release that is waiting on
+  # approval or halfway through publishing.
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
 
 jobs:
 `

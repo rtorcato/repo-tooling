@@ -91,6 +91,9 @@ describe('generateDocsSite', () => {
 		// Workflow drives the shared reusable deploy with the docs package filter.
 		const wf = await fs.readFile(join(dir, '.github/workflows/docs.yml'), 'utf-8')
 		expect(wf).toContain('rtorcato/repo-tooling/.github/workflows/docs-deploy.yml@main')
+		expect(wf).toContain('workflow_run:')
+		expect(wf).toContain("workflows: ['🚀 CI/CD Pipeline']")
+		expect(wf).not.toContain('types: [published]')
 		expect(wf).toContain("build-filter: '@rtorcato/repo-tooling-docs'")
 
 		// #664: the site root redirects to the docs instead of 404ing.

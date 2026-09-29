@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import selfPackageJson from '../../../package.json' with { type: 'json' }
+import { CI_WORKFLOW_NAME } from '../../base/ci.js'
 import { coverageUploadWorkflow } from '../../base/checks.js'
 import { jsBadgeAudience } from '../../languages/js/checks.js'
 import { copyPreset, PRESETS } from '../utils/copy-preset.js'
@@ -387,15 +388,18 @@ on:
     paths:
       - 'apps/docs/**'
       - '.github/workflows/docs.yml'
-  # The changelog page is built from GitHub Releases, and no release commit
-  # lands on main any more (see #417) — so a push trigger alone would never
-  # rebuild the site after a release.
-  release:
-    types: [published]
+  # The changelog page is built from GitHub Releases. A release created with
+  # GITHUB_TOKEN never fires \`release: published\`, so rebuild once CI (which
+  # runs semantic-release) succeeds on main instead — no PAT needed (#691).
+  workflow_run:
+    workflows: ['${CI_WORKFLOW_NAME}']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   docs:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       pages: write
