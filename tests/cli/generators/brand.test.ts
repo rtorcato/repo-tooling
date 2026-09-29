@@ -326,6 +326,19 @@ describe('checkBrand', () => {
 	it('is optional-missing for a repo with no brand images at all', async () => {
 		const result = await checkBrand(newTmpDir())
 		expect(result.status).toBe('optional-missing')
+		expect(result.detail).toContain('favicon')
+		expect(result.detail).toContain('rendered PNGs')
+		expect(result.detail).toContain('README banner')
+	})
+
+	it('names the pieces a partial brand/ still lacks, without raising severity', async () => {
+		const dir = newTmpDir()
+		await generateBrand(PKG, dir)
+
+		const result = await checkBrand(dir)
+		expect(result.status).toBe('ok')
+		expect(result.detail).toContain('rendered PNGs')
+		expect(result.detail).toContain('README banner')
 	})
 
 	it('passes once the scaffolder has run and the README is repointed', async () => {
