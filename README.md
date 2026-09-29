@@ -137,6 +137,7 @@ full field reference. The keys `doctor` acts on:
 - `securityAutomation` — boolean (Dependabot + CodeQL)
 - `bundler` — `tsup` \| `esbuild` \| `vite` \| `none`
 - `aiSetup` — boolean (AGENTS.md, CLAUDE.md, Cursor/Copilot rules)
+- `brand` — boolean (`brand/` banner + social-card SVG sources and `render.sh`)
 
 **How opt-outs actually work.** When the lockfile records that you declined an
 *optional* tool (e.g. `securityAutomation: false`), `doctor` demotes that check

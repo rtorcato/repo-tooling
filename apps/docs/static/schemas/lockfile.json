@@ -219,6 +219,9 @@
 						"docsSite": {
 							"type": "boolean"
 						},
+						"brand": {
+							"type": "boolean"
+						},
 						"bun": {
 							"type": "boolean"
 						}

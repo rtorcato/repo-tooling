@@ -44,6 +44,19 @@ describe('generateConfigs size-limit budget', () => {
 	})
 })
 
+// #677: a config with brand on runs the same generator as `fix brand`.
+describe('generateConfigs brand', () => {
+	it('writes brand/ for a library preset', async () => {
+		const dir = newTmpDir()
+		await generateConfigs(
+			{ ...buildPresetConfig('library', 'demo'), aiSetup: false, securityAutomation: false },
+			dir
+		)
+		expect(await fs.pathExists(join(dir, 'brand', 'banner.svg'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'brand', 'render.sh'))).toBe(true)
+	})
+})
+
 // #573: under `--preset` the config's projectName is only the directory
 // basename, so a repo whose package.json is already scoped used to get no
 // minimumReleaseAgeExclude — leaving doctor at exit 1 on a tree setup just wrote.
@@ -263,6 +276,33 @@ describe('setup --dry-run', () => {
 		// Nothing should be written.
 		const entries = await fs.readdir(dir)
 		expect(entries).toEqual([])
+	})
+
+	// #677: brand/ is on by default for a library and off when the config says so.
+	it.each([
+		[true, undefined],
+		[false, false],
+	])('lists the brand files: %s', async (listed, brand) => {
+		const dir = newTmpDir()
+		const configPath = join(dir, 'project.json')
+		await fs.writeJson(configPath, {
+			...buildPresetConfig('library', 'demo'),
+			...(brand === false && { brand }),
+		})
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({
+				directory: dir,
+				...(listed ? { preset: 'library' } : { config: configPath }),
+				dryRun: true,
+			})
+			const { files } = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			for (const f of ['brand/banner.svg', 'brand/social-card.svg', 'brand/render.sh']) {
+				expect(files.includes(f), f).toBe(listed)
+			}
+		} finally {
+			logSpy.mockRestore()
+		}
 	})
 
 	it('with --config reads the file and prints it', async () => {
@@ -488,6 +528,7 @@ describe('setup --preset review prompt', () => {
 			'securityAutomation',
 			'badges',
 			'aiSetup',
+			'brand',
 		])
 		expect(choices.every((c) => c.checked)).toBe(true)
 	})
