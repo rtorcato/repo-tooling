@@ -35,6 +35,10 @@
 
 	/* Design tokens (surfaces/text/borders are shared; accent is per-project). */
 	--jt-accent: var(--ifm-color-primary);
+	/* Derived from --jt-accent, so overriding the accent recolours all three. */
+	--jt-accent-soft: color-mix(in srgb, var(--jt-accent) 12%, transparent);
+	--jt-accent-border: color-mix(in srgb, var(--jt-accent) 40%, transparent);
+	--jt-accent-fill: var(--jt-accent);
 	--jt-on-accent: #ffffff;
 	--jt-bg: #ffffff;
 	--jt-bg2: #f6f8fb;

@@ -1,3 +1,5 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: overriding Infima's own specificity */
+/* biome-ignore-all lint/style/noDescendingSpecificity: component overrides are grouped by component */
 /**
  * Shared @rtorcato Docusaurus component theme (shipped by @rtorcato/repo-tooling —
  * copy via `repo-tooling copy docusaurus-theme`).

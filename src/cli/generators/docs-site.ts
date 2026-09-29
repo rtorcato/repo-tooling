@@ -139,7 +139,7 @@ function jsString(value: string): string {
 	return `'${JSON.stringify(value).slice(1, -1).replaceAll('\\"', '"').replaceAll("'", "\\'")}'`
 }
 
-function docusaurusConfig(meta: SiteMeta, typedocModules: string[]): string {
+function docusaurusConfig(meta: SiteMeta, typedocModules: string[], hasLogo: boolean): string {
 	const owner = meta.owner ?? 'your-org'
 	const repo = meta.repo ?? meta.title
 	const ghUrl = `https://github.com/${owner}/${repo}`
@@ -219,6 +219,7 @@ ${typedocPlugins}\t\t[
 \t\t},
 \t\tnavbar: {
 \t\t\ttitle: '${meta.title}',
+${hasLogo ? `\t\t\tlogo: { alt: ${jsString(meta.title)}, src: 'img/favicon.svg' },\n` : ''}
 \t\t\titems: [
 \t\t\t\t{ to: '/docs', position: 'left', label: 'Docs' },
 \t\t\t\t{
@@ -275,28 +276,31 @@ export default sidebars
 const TSCONFIG = `// Improves IDE type-checking; not used by \`docusaurus start/build\`.
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
+    // TypeScript 7 removed \`baseUrl\` and \`moduleResolution: node\`.
+    "paths": { "@site/*": ["./*"] },
     "strict": true,
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowJs": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": [".docusaurus", "build"]
+  "include": ["src/", "docusaurus.config.ts", "sidebars.ts"],
+  "exclude": [".docusaurus", "build", "node_modules"]
 }
 `
 
 function customCss(accent: { light: string; dark: string }): string {
 	// Import the shared tokens, then override only the accent (per #54's model).
-	return `/* Site theme: the shared design tokens + this project's accent. */
+	return `/* biome-ignore-all lint/complexity/noImportantStyles: the mobile drawer must beat Infima's transform */
+/* Site theme: the shared design tokens + this project's accent. */
 @import "./_jt-tokens.css";
+@import "./theme.css";
 
 :root {
 \t--ifm-color-primary: ${accent.light};
@@ -307,7 +311,8 @@ function customCss(accent: { light: string; dark: string }): string {
 \t--ifm-color-primary: ${accent.dark};
 \t--jt-accent: ${accent.dark};
 }
-`
+
+${MOBILE_MENU_CSS}`
 }
 
 function docsPackageJson(meta: SiteMeta, typedoc: boolean): string {
@@ -410,14 +415,224 @@ jobs:
 `
 }
 
-// routeBasePath is '/docs', so the site root has no page of its own and the
-// navbar logo links to a 404 on every page (#664). Redirect it to the docs.
-// Tabs/no semicolons to match the Biome preset the consuming repo is linted with.
-const HOME_PAGE = `import { Redirect } from '@docusaurus/router'
-import useBaseUrl from '@docusaurus/useBaseUrl'
+// routeBasePath is '/docs', so without a page of its own the site root — and the
+// navbar logo — would 404 (#664). Tabs/no semicolons to match the Biome preset
+// the consuming repo is linted with.
+function homePage(meta: SiteMeta, install: string | null): string {
+	const installBlock = install
+		? `\t\t\t\t<pre className={styles.install}>
+\t\t\t\t\t<code>{${jsString(install)}}</code>
+\t\t\t\t</pre>
+`
+		: ''
+	return `import Link from '@docusaurus/Link'
+import Layout from '@theme/Layout'
+import styles from './index.module.css'
+
+// Placeholder pillars — replace with what the project is actually about.
+const PILLARS = [
+\t{ title: 'Pillar one', body: 'One sentence on the first thing that sets this project apart.' },
+\t{ title: 'Pillar two', body: 'One sentence on the second thing.' },
+\t{ title: 'Pillar three', body: 'One sentence on the third thing.' },
+]
 
 export default function Home() {
-\treturn <Redirect to={useBaseUrl('/docs')} />
+\treturn (
+\t\t<Layout title={${jsString(meta.title)}} description={${jsString(meta.tagline)}}>
+\t\t\t<header className={styles.hero}>
+\t\t\t\t<h1 className={styles.title}>{${jsString(meta.title)}}</h1>
+\t\t\t\t<p className={styles.tagline}>{${jsString(meta.tagline)}}</p>
+${installBlock}\t\t\t\t<Link className="button button--primary button--lg" to="/docs">
+\t\t\t\t\tGet started
+\t\t\t\t</Link>
+\t\t\t</header>
+\t\t\t<main className={styles.pillars}>
+\t\t\t\t{PILLARS.map((p) => (
+\t\t\t\t\t<section key={p.title} className={styles.pillar}>
+\t\t\t\t\t\t<h2>{p.title}</h2>
+\t\t\t\t\t\t<p>{p.body}</p>
+\t\t\t\t\t</section>
+\t\t\t\t))}
+\t\t\t</main>
+\t\t</Layout>
+\t)
+}
+`
+}
+
+const HOME_CSS = `.hero {
+\tpadding: 5rem 1rem 3rem;
+\ttext-align: center;
+}
+
+.title {
+\tfont-size: clamp(2.5rem, 6vw, 4rem);
+\tmargin-bottom: 0.5rem;
+}
+
+.tagline {
+\tfont-size: 1.25rem;
+\tcolor: var(--jt-muted);
+\tmax-width: 40rem;
+\tmargin: 0 auto 1.5rem;
+}
+
+.install {
+\tdisplay: inline-block;
+\tpadding: 0.75rem 1.25rem;
+\tmargin-bottom: 1.5rem;
+\tbackground: var(--jt-code-bg);
+\tborder: 1px solid var(--jt-border);
+\tborder-radius: 12px;
+}
+
+.pillars {
+\tdisplay: grid;
+\tgap: 1rem;
+\tgrid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+\tmax-width: 64rem;
+\tmargin: 0 auto;
+\tpadding: 1rem 1rem 4rem;
+}
+
+.pillar {
+\tpadding: 1.25rem;
+\tbackground: var(--jt-surface);
+\tborder: 1px solid var(--jt-border);
+\tborder-radius: 14px;
+}
+
+.pillar:hover {
+\tborder-color: var(--jt-accent-border);
+}
+`
+
+/** Mobile drawer swizzle: one flat menu mirroring the navbar (docs + GitHub). */
+function mobilePrimaryMenu(ghUrl: string): string {
+	return `import Link from '@docusaurus/Link'
+import { useLocation } from '@docusaurus/router'
+import useBaseUrl from '@docusaurus/useBaseUrl'
+import { type ReactElement, useEffect, useRef } from 'react'
+
+/**
+ * Swizzled (replace) theme/Navbar/MobileSidebar/PrimaryMenu: a single flat
+ * list instead of the primary→secondary drawer flow. Keep ITEMS in step with the
+ * navbar in docusaurus.config.ts by hand.
+ *
+ * On doc pages the doc plugin's mobile-sidebar filler makes Layout set \`inert\`
+ * on the primary panel, which leaves these links unclickable — a
+ * MutationObserver strips it. The drawer also stops auto-closing after the
+ * swizzle, so each link tap clicks \`.navbar-sidebar__close\` on the next tick.
+ */
+const ITEMS: Array<{ label: string; to?: string; href?: string }> = [
+\t{ label: 'Docs', to: '/docs' },
+\t{ label: 'GitHub', href: ${jsString(ghUrl)} },
+]
+
+function closeDrawer(): void {
+\tsetTimeout(() => document.querySelector<HTMLButtonElement>('.navbar-sidebar__close')?.click(), 0)
+}
+
+function MenuLink({ item }: { item: (typeof ITEMS)[number] }): ReactElement {
+\tconst { pathname } = useLocation()
+\tconst resolved = useBaseUrl(item.to ?? '/')
+\tconst isActive = item.to !== undefined && pathname === resolved
+\tconst className = [
+\t\t'jt-mobile-menu__link',
+\t\tisActive && 'jt-mobile-menu__link--active',
+\t\titem.href && 'jt-mobile-menu__external',
+\t]
+\t\t.filter(Boolean)
+\t\t.join(' ')
+\tconst linkProps = item.href ? { href: item.href } : { to: item.to ?? '/' }
+\treturn (
+\t\t<li>
+\t\t\t<Link
+\t\t\t\tclassName={className}
+\t\t\t\t{...linkProps}
+\t\t\t\tonClick={closeDrawer}
+\t\t\t\taria-current={isActive ? 'page' : undefined}
+\t\t\t>
+\t\t\t\t{item.label}
+\t\t\t</Link>
+\t\t</li>
+\t)
+}
+
+export default function NavbarMobilePrimaryMenu(): ReactElement {
+\tconst ref = useRef<HTMLUListElement>(null)
+
+\tuseEffect(() => {
+\t\tconst panel = ref.current?.closest<HTMLElement>('.navbar-sidebar__item')
+\t\tif (!panel) return
+\t\tconst strip = () => panel.removeAttribute('inert')
+\t\tstrip()
+\t\tconst observer = new MutationObserver(strip)
+\t\tobserver.observe(panel, { attributes: true, attributeFilter: ['inert'] })
+\t\treturn () => observer.disconnect()
+\t}, [])
+
+\treturn (
+\t\t<ul ref={ref} className="jt-mobile-menu">
+\t\t\t{ITEMS.map((item) => (
+\t\t\t\t<MenuLink key={item.label} item={item} />
+\t\t\t))}
+\t\t</ul>
+\t)
+}
+`
+}
+
+const MOBILE_SECONDARY_MENU = `/**
+ * Swizzled (replace) theme/Navbar/MobileSidebar/SecondaryMenu — disabled, so the
+ * drawer stays on the flat PrimaryMenu. The CSS in custom.css locks the items
+ * container so the primary panel never slides away.
+ */
+export default function NavbarMobileSidebarSecondaryMenu(): null {
+\treturn null
+}
+`
+
+const MOBILE_MENU_CSS = `/* Mobile drawer: one flat menu (see src/theme/Navbar/MobileSidebar). */
+.navbar-sidebar__items,
+.navbar-sidebar__items.navbar-sidebar__items--show-secondary {
+\ttransform: translate3d(0, 0, 0) !important;
+}
+.navbar-sidebar__items > .navbar-sidebar__item:nth-child(2),
+.navbar-sidebar__back {
+\tdisplay: none !important;
+}
+.jt-mobile-menu {
+\tdisplay: flex;
+\tflex-direction: column;
+\tgap: 4px;
+\tpadding: 4px 0;
+\tmargin: 0;
+\tlist-style: none;
+}
+.jt-mobile-menu__link {
+\tdisplay: block;
+\tpadding: 12px 14px;
+\tborder-radius: 8px;
+\tcolor: var(--jt-heading);
+\tfont-weight: 600;
+\tfont-size: 15px;
+\ttext-decoration: none;
+}
+.jt-mobile-menu__link:hover,
+.jt-mobile-menu__link:focus-visible {
+\tbackground: var(--jt-surface2);
+\tcolor: var(--jt-heading);
+\ttext-decoration: none;
+}
+.jt-mobile-menu__link--active {
+\tbackground: var(--jt-accent-soft);
+\tcolor: var(--jt-accent);
+}
+.jt-mobile-menu__external::after {
+\tcontent: " ↗";
+\tcolor: var(--jt-faint);
+\tfont-weight: 400;
 }
 `
 
@@ -438,6 +653,7 @@ export async function generateDocsSite(
 	// Shared assets (only-if-missing copies of the shipped presets).
 	written.push(...(await copyPresetIfMissing('docusaurus-sync-changelog', targetDir)))
 	written.push(...(await copyPresetIfMissing('docusaurus-theme-tokens', targetDir)))
+	written.push(...(await copyPresetIfMissing('docusaurus-theme', targetDir)))
 
 	// The docs homepage carries the same badge set as the README (#169), derived
 	// from package.json + repo; visibility-aware (private repos drop npm/coverage).
@@ -460,11 +676,29 @@ export async function generateDocsSite(
 	// Project-specific scaffold.
 	const files: Array<[string, string]> = [
 		[`${DOCS_APP}/package.json`, docsPackageJson(meta, typedocModules.length > 0)],
-		[`${DOCS_APP}/docusaurus.config.ts`, docusaurusConfig(meta, typedocModules)],
+		[
+			`${DOCS_APP}/docusaurus.config.ts`,
+			docusaurusConfig(
+				meta,
+				typedocModules,
+				await fs.pathExists(path.join(targetDir, 'brand', 'favicon.svg'))
+			),
+		],
 		[`${DOCS_APP}/sidebars.ts`, SIDEBARS],
 		[`${DOCS_APP}/tsconfig.json`, TSCONFIG],
 		[`${DOCS_APP}/src/css/custom.css`, customCss(accent)],
-		[`${DOCS_APP}/src/pages/index.tsx`, HOME_PAGE],
+		[
+			`${DOCS_APP}/src/pages/index.tsx`,
+			homePage(meta, pkg?.name && pkg.private !== true ? `npm i ${pkg.name}` : null),
+		],
+		[`${DOCS_APP}/src/pages/index.module.css`, HOME_CSS],
+		[
+			`${DOCS_APP}/src/theme/Navbar/MobileSidebar/PrimaryMenu/index.tsx`,
+			mobilePrimaryMenu(
+				`https://github.com/${meta.owner ?? 'your-org'}/${meta.repo ?? meta.title}`
+			),
+		],
+		[`${DOCS_APP}/src/theme/Navbar/MobileSidebar/SecondaryMenu/index.tsx`, MOBILE_SECONDARY_MENU],
 		[`${DOCS_APP}/docs/intro.md`, introDoc(meta, badges)],
 		['.github/workflows/docs.yml', docsWorkflow(meta)],
 	]
@@ -493,7 +727,7 @@ export async function generateDocsSite(
 
 /** Copy a shipped preset only when its target file is absent. */
 async function copyPresetIfMissing(
-	name: 'docusaurus-sync-changelog' | 'docusaurus-theme-tokens',
+	name: 'docusaurus-sync-changelog' | 'docusaurus-theme-tokens' | 'docusaurus-theme',
 	targetDir: string
 ): Promise<string[]> {
 	const rel = PRESETS[name].target

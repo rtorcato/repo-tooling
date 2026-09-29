@@ -111,6 +111,8 @@ export interface LockfileRules {
 		 * package.json description — which is often a sentence too long to fit.
 		 */
 		tagline?: string
+		/** Accent colour (`#rrggbb`) `fix docs-site` themes the site with. */
+		accent?: string
 	}
 }
 
@@ -276,6 +278,12 @@ export function lockfileSchema() {
 								type: 'string',
 								description:
 									'Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer.',
+							},
+							accent: {
+								type: 'string',
+								pattern: '^#[0-9a-fA-F]{6}$',
+								description:
+									'Accent colour as #rrggbb, used by `fix docs-site` for the site theme in both colour modes.',
 							},
 						} satisfies Record<keyof NonNullable<LockfileRules['brand']>, object>,
 					},

@@ -96,11 +96,25 @@ describe('generateDocsSite', () => {
 		expect(wf).not.toContain('types: [published]')
 		expect(wf).toContain("build-filter: '@rtorcato/repo-tooling-docs'")
 
-		// #664: the site root redirects to the docs instead of 404ing.
+		// #664/#684: the site root is a landing page, not a 404 — hero, install
+		// command, placeholder pillars — and the shared theme + mobile drawer ship.
 		const home = await fs.readFile(join(dir, 'apps/docs/src/pages/index.tsx'), 'utf-8')
-		expect(home).toBe(
-			"import { Redirect } from '@docusaurus/router'\nimport useBaseUrl from '@docusaurus/useBaseUrl'\n\nexport default function Home() {\n\treturn <Redirect to={useBaseUrl('/docs')} />\n}\n"
-		)
+		expect(home).toContain("npm i @rtorcato/repo-tooling'")
+		expect(home).toContain('PILLARS')
+		for (const rel of [
+			'apps/docs/src/pages/index.module.css',
+			'apps/docs/src/css/theme.css',
+			'apps/docs/src/theme/Navbar/MobileSidebar/PrimaryMenu/index.tsx',
+			'apps/docs/src/theme/Navbar/MobileSidebar/SecondaryMenu/index.tsx',
+		]) {
+			expect(await fs.pathExists(join(dir, rel))).toBe(true)
+		}
+		const tokens = await fs.readFile(join(dir, 'apps/docs/src/css/_jt-tokens.css'), 'utf-8')
+		for (const t of ['soft', 'border', 'fill']) expect(tokens).toContain(`--jt-accent-${t}:`)
+		const tsconfig = await fs.readFile(join(dir, 'apps/docs/tsconfig.json'), 'utf-8')
+		expect(tsconfig).not.toMatch(/"baseUrl"|"moduleResolution": "node"/)
+		expect(config).not.toContain('logo:') // no brand/ yet
+		expect(config).not.toContain('shared-docs')
 
 		// custom.css imports the shared tokens, then overrides the accent.
 		const css = await fs.readFile(join(dir, 'apps/docs/src/css/custom.css'), 'utf-8')

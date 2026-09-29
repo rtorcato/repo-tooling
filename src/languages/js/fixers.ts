@@ -834,7 +834,8 @@ export const FIXERS: Fixer[] = [
 			'.github/workflows/docs.yml',
 		],
 		riskLevel: 'safe-add',
-		async run({ targetDir, pkg }) {
+		async run({ targetDir, pkg, lock }) {
+			const accent = lock?.rules?.brand?.accent
 			// Wire the TypeDoc API section (#229) when the repo already uses TypeDoc —
 			// a typedoc config on disk or the dep installed. No new CLI flag needed.
 			const deps = {
@@ -856,7 +857,10 @@ export const FIXERS: Fixer[] = [
 				}
 			}
 			const typedoc = hasTypedocConfig || 'typedoc' in deps
-			const filesWritten = await generateDocsSite(pkg, targetDir, { typedoc })
+			const filesWritten = await generateDocsSite(pkg, targetDir, {
+				typedoc,
+				primaryColor: accent ? { light: accent, dark: accent } : undefined,
+			})
 			return { filesWritten }
 		},
 	},
