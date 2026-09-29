@@ -72,7 +72,6 @@ export function buildPresetConfig(name: PresetName, projectName: string): Projec
 				semanticRelease: true,
 				bundler: 'tsup',
 				publint: true,
-				brand: true,
 			}
 		case 'web-app':
 			return {
@@ -224,8 +223,9 @@ export const CONFIG_SCHEMA = {
 		turborepo: { type: 'boolean' },
 		nx: { type: 'boolean' },
 		tailwind: { type: 'boolean' },
-		docsSite: { type: 'boolean' },
-		brand: { type: 'boolean' },
+		// Deprecated (#718): both scaffolds moved to @rtorcato/shared-docs. Accepted, inert.
+		docsSite: { type: 'boolean', deprecated: true },
+		brand: { type: 'boolean', deprecated: true },
 		bun: { type: 'boolean' },
 	},
 } as const
@@ -349,13 +349,6 @@ export function computeFileList(config: ProjectConfig): string[] {
 	if (config.nx) files.push('nx.json')
 	if (config.tailwind) files.push('postcss.config.mjs', 'src/styles/globals.css')
 	if (config.bun) files.push('bunfig.toml')
-	if (config.brand)
-		files.push(
-			'brand/banner.svg',
-			'brand/banner-mobile.svg',
-			'brand/social-card.svg',
-			'brand/render.sh'
-		)
 	files.push('README.md')
 	return files
 }

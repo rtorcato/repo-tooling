@@ -85,12 +85,6 @@
 		"tooling/rollup/rollup.config.d.mts",
 		"tooling/rolldown/rolldown.config.mjs",
 		"tooling/rolldown/rolldown.config.d.mts",
-		"tooling/docusaurus/index.mjs",
-		"tooling/docusaurus/index.d.mts",
-		"tooling/docusaurus/sync-changelog.mjs",
-		"tooling/docusaurus/docs-helpers.mjs",
-		"tooling/docusaurus/theme-tokens.css",
-		"tooling/docusaurus/theme.css",
 		"tooling/biome/preset.json",
 		"tooling/bun/bunfig.toml",
 		"tooling/nx/nx.json",
@@ -198,10 +192,6 @@
 		"./rolldown": {
 			"types": "./tooling/rolldown/rolldown.config.d.mts",
 			"import": "./tooling/rolldown/rolldown.config.mjs"
-		},
-		"./docusaurus": {
-			"types": "./tooling/docusaurus/index.d.mts",
-			"import": "./tooling/docusaurus/index.mjs"
 		},
 		"./biome": "./tooling/biome/preset.json",
 		"./nx": "./tooling/nx/nx.json",

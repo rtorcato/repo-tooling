@@ -189,10 +189,12 @@
 			"type": "boolean"
 		},
 		"docsSite": {
-			"type": "boolean"
+			"type": "boolean",
+			"deprecated": true
 		},
 		"brand": {
-			"type": "boolean"
+			"type": "boolean",
+			"deprecated": true
 		},
 		"bun": {
 			"type": "boolean"

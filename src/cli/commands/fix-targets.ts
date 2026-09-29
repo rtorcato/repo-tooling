@@ -48,7 +48,6 @@ export const FIX_TARGETS: Record<string, string> = {
 	'are-the-types-wrong': 'attw',
 	publint: 'publint',
 	'README badges': 'badges',
-	'Brand assets': 'brand',
 	TypeDoc: 'typedoc',
 	'AI setup': 'ai',
 	'Claude worktree settings': 'ai',
@@ -187,8 +186,6 @@ export function declinedInLock(lock: Lockfile | null, checkName: string): boolea
 			return c.turborepo === false
 		case 'Tailwind':
 			return c.tailwind === false
-		case 'Brand assets':
-			return c.brand === false
 		default:
 			return false
 	}
@@ -258,12 +255,8 @@ export function lockfilePatchForTarget(
 			return c.nx ? null : { nx: true }
 		case 'tailwind':
 			return c.tailwind ? null : { tailwind: true }
-		case 'docs-site':
-			return c.docsSite ? null : { docsSite: true }
 		case 'bun':
 			return c.bun ? null : { bun: true }
-		case 'brand':
-			return c.brand ? null : { brand: true }
 		default:
 			return null
 	}

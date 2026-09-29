@@ -217,10 +217,12 @@
 							"type": "boolean"
 						},
 						"docsSite": {
-							"type": "boolean"
+							"type": "boolean",
+							"deprecated": true
 						},
 						"brand": {
-							"type": "boolean"
+							"type": "boolean",
+							"deprecated": true
 						},
 						"bun": {
 							"type": "boolean"
@@ -320,18 +322,20 @@
 				"brand": {
 					"type": "object",
 					"additionalProperties": false,
-					"description": "Inputs to `fix brand`, which scaffolds the banner and social-card SVGs.",
+					"deprecated": true,
+					"description": "Deprecated: the brand scaffold moved to @rtorcato/shared-docs. Still accepted so existing files validate; removed in the next major.",
 					"properties": {
 						"tagline": {
 							"type": "string",
-							"description": "Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters; `fix brand` warns when it is longer."
+							"description": "Short line for the banners and social card, used in place of the package.json description. Keep it to two lines of about 42 characters."
 						}
 					}
 				},
 				"docs": {
 					"type": "object",
 					"additionalProperties": false,
-					"description": "Inputs to `fix docs-site`.",
+					"deprecated": true,
+					"description": "Deprecated: the docs-site scaffold moved to @rtorcato/shared-docs, which has the sibling list natively. Still accepted so existing files validate; removed in the next major.",
 					"properties": {
 						"siblings": {
 							"type": "array",

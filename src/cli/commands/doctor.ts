@@ -29,7 +29,6 @@ import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import {
 	type BadgeAudience,
 	checkAiSetup,
-	checkBrand,
 	checkCodeowners,
 	checkCodeQL,
 	checkCommunityHealth,
@@ -54,7 +53,6 @@ import {
 	checkBiome,
 	checkClaudeWorktreeSettings,
 	checkConfigSchemaVersions,
-	checkDocsSite,
 	checkEnginesNode,
 	checkExportsBuildable,
 	checkGitDependencies,
@@ -78,7 +76,6 @@ import {
 	checkVscodeExtensions,
 	evaluateNodeVersion,
 	FILE_CHECKS,
-	findDocsAppDir,
 	jsBadgeAudience,
 	jsGitHooksProfile,
 	type Pkg,
@@ -313,7 +310,6 @@ async function runBaseChecks(
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
 	results.push(await checkCommunityHealth(dir))
-	results.push(await checkBrand(dir))
 	results.push(await checkAiSetup(dir))
 	// #534: advisory. Absent `mcp.recommended` means the repo has nothing to say
 	// about MCP, which is not a finding.
@@ -481,11 +477,6 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 	// Turborepo is monorepo-only — only surface the check when a workspace exists.
 	if (await fs.pathExists(path.join(targetDir, 'pnpm-workspace.yaml'))) {
 		results.push(await checkTurborepo(targetDir))
-	}
-	// Docs site is opt-in — only surface the check when a Docusaurus site exists.
-	const docsAppDir = await findDocsAppDir(targetDir)
-	if (docsAppDir) {
-		results.push(await checkDocsSite(targetDir, docsAppDir))
 	}
 	// Tailwind is opt-in — only surface the check when the repo actually depends on it.
 	if ('tailwindcss' in allDeps(pkg)) {

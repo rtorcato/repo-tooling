@@ -107,11 +107,10 @@ import { generateTailwind } from '../../cli/generators/tailwind.js'
 import { generateTurborepo } from '../../cli/generators/turborepo.js'
 import { generateNx } from '../../cli/generators/nx.js'
 import { generateBun } from '../../cli/generators/bun.js'
-import { generateDocsSite } from '../../cli/generators/docs-site.js'
 import { generateTypedocConfig, generateTypedocWorkflow } from '../../cli/generators/typedoc.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { identifiablePresetHashes } from '../../cli/utils/copied-assets.js'
-import { LOCKFILE_NAME, readLockfile, writeLockfile } from '../../cli/utils/lockfile.js'
+import { LOCKFILE_NAME, writeLockfile } from '../../cli/utils/lockfile.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 // The fixer contract moved to src/base/fixers.ts when Swift became the second
@@ -817,49 +816,6 @@ export const FIXERS: Fixer[] = [
 					filesWritten.push('package.json')
 				}
 			}
-			return { filesWritten }
-		},
-	},
-	{
-		target: 'docs-site',
-		description:
-			'Scaffold a Docusaurus docs site under apps/docs (config/sidebars/tokens + reusable Pages deploy), inferring name/org/repo from package.json',
-		// Manual/opt-in target — the "Docs site" doctor check is opt-in (only
-		// surfaces once a site exists), so this never nags a repo without one.
-		appliesTo: [],
-		outputs: [
-			'apps/docs/**',
-			'scripts/sync-changelog.mjs',
-			'pnpm-workspace.yaml',
-			'.github/workflows/docs.yml',
-		],
-		riskLevel: 'safe-add',
-		async run({ targetDir, pkg }) {
-			// Wire the TypeDoc API section (#229) when the repo already uses TypeDoc —
-			// a typedoc config on disk or the dep installed. No new CLI flag needed.
-			const deps = {
-				...((pkg?.dependencies as Record<string, string> | undefined) ?? {}),
-				...((pkg?.devDependencies as Record<string, string> | undefined) ?? {}),
-			}
-			const typedocConfigs = [
-				'typedoc.json',
-				'typedoc.config.js',
-				'typedoc.config.mjs',
-				'typedoc.config.cjs',
-				'typedoc.config.ts',
-			]
-			let hasTypedocConfig = false
-			for (const c of typedocConfigs) {
-				if (await fs.pathExists(path.join(targetDir, c))) {
-					hasTypedocConfig = true
-					break
-				}
-			}
-			const typedoc = hasTypedocConfig || 'typedoc' in deps
-			const filesWritten = await generateDocsSite(pkg, targetDir, {
-				typedoc,
-				siblings: (await readLockfile(targetDir))?.rules?.docs?.siblings,
-			})
 			return { filesWritten }
 		},
 	},

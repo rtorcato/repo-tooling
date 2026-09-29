@@ -25,7 +25,6 @@ import { generateTailwind } from './tailwind.js'
 import { generateTurborepo } from './turborepo.js'
 import { generateNx } from './nx.js'
 import { generateBun } from './bun.js'
-import { generateBrand } from './brand.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -151,12 +150,6 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 
 	// Generate README
 	await generateReadme(config, targetDir)
-
-	// brand/ (#677) — the same generator as `fix brand`. After the README so the
-	// banner-path repoint sees it; no tagline yet, as the lockfile isn't written.
-	if (config.brand) {
-		await generateBrand(await fs.readJson(path.join(targetDir, 'package.json')), targetDir)
-	}
 
 	// Copy ts-reset if TypeScript is enabled
 	if (config.typescript.enabled) {

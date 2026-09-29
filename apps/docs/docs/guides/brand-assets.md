@@ -50,7 +50,7 @@ brand/
   banner-mobile.png    rendered
   social-card.png      rendered
   favicon-512.png      rendered
-  favicon.ico          rendered  (16 + 32, by `fix brand`)
+  favicon.ico          rendered  (16 + 32)
 ```
 
 `favicon.svg` is copied from the repo's own favicon when it has one, and is
@@ -58,30 +58,11 @@ otherwise a tile carrying the project's initial. The banners and social card
 draw it with `<image href="favicon.svg">`, so swapping in a real glyph is a
 one-file edit.
 
-```bash
-brew install librsvg                   # rsvg-convert, what the render step drives
-npx @rtorcato/repo-tooling fix brand   # scaffold the SVGs, render the PNGs, add the README banner
-./brand/render.sh                      # or re-render every PNG from source by hand
-```
+The scaffold that generates these files (`fix brand`) moved to
+[`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs) (#718);
+`repo-tooling fix brand` now exits 1 with a pointer there. `rules.brand.tagline` is
+deprecated here and removed in the next major.
 
-`fix brand` renders only when `rsvg-convert` is on PATH, and only outputs that
-are missing or older than their source; without it, it prints the install hint
-and stops at the SVGs. Once `brand/banner.png` exists it adds the `<picture>`
-banner to the top of the README inside a
-`<!-- js-tooling:banner:start -->` / `end` block — unless the README already
-shows a banner.
-
-The scaffolded SVGs derive the project name from `package.json`, the tagline
-from [`rules.brand.tagline`](../reference/repo-tooling-json.mdx#rulesbrand--brand-asset-inputs)
-in `.repo-tooling.json` (falling back to the `package.json` description), and
-the accent from the repo's own docs theme or favicon, falling back to a neutral
-grey. They're a starting point — edit them, then re-render. `render.sh` never
-overwrites a source, and `fix brand` writes only files that are missing, so
-neither clobbers hand-drawn art.
-
-`doctor` flags the three ways this goes wrong: a rendered banner with no SVG
-source, a `brand/` folder with no `render.sh`, and a README still pointing at
-root-level `./banner.png`.
 
 ## Share images
 

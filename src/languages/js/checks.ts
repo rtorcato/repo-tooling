@@ -1547,69 +1547,6 @@ export async function checkBuildApprovals(dir: string, pkg: Pkg | null): Promise
 	}
 }
 
-/** The docs app dir (apps/docs or apps/doc) if a Docusaurus config lives there. */
-export async function findDocsAppDir(dir: string): Promise<string | null> {
-	for (const app of ['apps/docs', 'apps/doc']) {
-		if (await fs.pathExists(path.join(dir, app, 'docusaurus.config.ts'))) return app
-	}
-	return null
-}
-
-// Only surfaced when a Docusaurus site exists (see runDoctor). Verifies the
-// shared-asset wiring #54 standardizes: sync-changelog present + chained into
-// the docs app's build/start, and the deploy artifact path is `build` (not
-// `dist`). Opt-in, so a repo without a docs site never sees this.
-export async function checkDocsSite(dir: string, docsAppDir: string): Promise<CheckResult> {
-	const check = 'Docs site'
-	const deltas: string[] = []
-
-	// sync-changelog pumps a root CHANGELOG.md into the site — a semantic-release
-	// shape. Changesets writes per-package changelogs and leaves the (private)
-	// root package without one, so don't require the script there (#425). If a
-	// Changesets repo keeps the script anyway, it still has to be wired.
-	const syncPath = path.join(dir, 'scripts', 'sync-changelog.mjs')
-	if (!(await fs.pathExists(syncPath))) {
-		if (!(await usesChangesets(dir))) deltas.push('scripts/sync-changelog.mjs missing')
-	} else {
-		const pkgPath = path.join(dir, docsAppDir, 'package.json')
-		if (await fs.pathExists(pkgPath)) {
-			try {
-				const docsPkg = (await fs.readJson(pkgPath)) as { scripts?: Record<string, string> }
-				const scripts = docsPkg.scripts ?? {}
-				const chained = ['build', 'start'].some(
-					(s) => typeof scripts[s] === 'string' && /sync-changelog/.test(scripts[s])
-				)
-				// pnpm 8 doesn't run pre* hooks reliably, so build/start must chain it explicitly.
-				if (!chained) deltas.push(`${docsAppDir} build/start does not chain sync-changelog`)
-			} catch {
-				// Unparseable package.json — a separate check owns that; skip here.
-			}
-		}
-	}
-
-	// The GitHub Pages deploy must upload `apps/doc*/build` (Docusaurus emits
-	// `build/`, not `dist/`).
-	const workflowsDir = path.join(dir, '.github', 'workflows')
-	if (await fs.pathExists(workflowsDir)) {
-		for (const file of await fs.readdir(workflowsDir)) {
-			if (!/\.ya?ml$/.test(file)) continue
-			const body = await fs.readFile(path.join(workflowsDir, file), 'utf-8').catch(() => '')
-			if (new RegExp(`${docsAppDir}/dist`).test(body)) {
-				deltas.push(`${file} deploys ${docsAppDir}/dist (should be ${docsAppDir}/build)`)
-			}
-		}
-	}
-
-	if (deltas.length)
-		return {
-			check,
-			status: 'drift',
-			detail: deltas.join('; '),
-			hint: 'Align the docs site with the shared standard (sync-changelog wiring, build/ artifact path)',
-		}
-	return { check, status: 'ok', detail: `${docsAppDir} wired per standard` }
-}
-
 // Only called when `tailwindcss` is a dependency (see runDoctor) — Tailwind is
 // opt-in per project, so nudging repos that don't use it would be noise. v4 is
 // CSS-first: the wiring is a PostCSS plugin (or the Vite plugin), not a config

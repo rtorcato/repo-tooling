@@ -22,10 +22,6 @@ export type PresetName =
 	| 'claude-skill'
 	| 'claude-sync-agents'
 	| 'mcp-example'
-	| 'docusaurus-sync-changelog'
-	| 'docusaurus-docs-helpers'
-	| 'docusaurus-theme-tokens'
-	| 'docusaurus-theme'
 
 export interface PresetDefinition {
 	source: string
@@ -128,26 +124,6 @@ export const PRESETS: Record<PresetName, PresetDefinition> = {
 		source: 'tooling/mcp/mcp.json.example',
 		target: '.mcp.json.example',
 		desc: 'Commented MCP server template (copy to .mcp.json to activate)',
-	},
-	'docusaurus-sync-changelog': {
-		source: 'tooling/docusaurus/sync-changelog.mjs',
-		target: 'scripts/sync-changelog.mjs',
-		desc: 'Canonical CHANGELOG → docs sync script for Docusaurus sites',
-	},
-	'docusaurus-docs-helpers': {
-		source: 'tooling/docusaurus/docs-helpers.mjs',
-		target: 'scripts/docs-helpers.mjs',
-		desc: 'Docs-generator helpers (markdown-table escaping, export parser, generated-block splice)',
-	},
-	'docusaurus-theme-tokens': {
-		source: 'tooling/docusaurus/theme-tokens.css',
-		target: 'apps/docs/src/css/_jt-tokens.css',
-		desc: 'Shared Docusaurus design tokens (Geist + navy surfaces; accent per-project)',
-	},
-	'docusaurus-theme': {
-		source: 'tooling/docusaurus/theme.css',
-		target: 'apps/docs/src/css/theme.css',
-		desc: 'Shared Docusaurus component theme (navbar, cards, sidebar, footer, tables; accent-agnostic — @import after docusaurus-theme-tokens)',
 	},
 }
 
