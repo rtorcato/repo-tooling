@@ -60,7 +60,8 @@ one-file edit.
 
 The scaffold that generates these files (`fix brand`) moved to
 [`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs) (#718);
-`repo-tooling fix brand` now exits 1 with a pointer there. `rules.brand.tagline` is
+`repo-tooling fix brand` now exits 1 with a pointer there; run
+`npx @rtorcato/shared-docs brand` instead. `rules.brand.tagline` is
 deprecated here and removed in the next major.
 
 

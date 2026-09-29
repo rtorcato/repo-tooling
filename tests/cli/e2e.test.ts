@@ -169,6 +169,18 @@ describe.skipIf(!fs.existsSync(CLI))('CLI smoke tests (requires pnpm build)', ()
 		expect(Array.isArray(payload.available)).toBe(true)
 	})
 
+	// #718: the scaffolds moved; the pointer names the exact replacement command.
+	it.each([
+		['docs-site', 'init'],
+		['brand', 'brand'],
+	])('fix %s exits 1 pointing at `shared-docs %s`', (target, command) => {
+		const dir = newTmpDir()
+		seedPkg(dir)
+		const { status, stderr } = cli(['fix', target, '-d', dir, '--yes'])
+		expect(status).toBe(1)
+		expect(String(stderr)).toContain(`npx @rtorcato/shared-docs ${command}`)
+	})
+
 	it('fix --resync --json without a lockfile exits non-zero', () => {
 		const dir = newTmpDir()
 		seedPkg(dir)
