@@ -4,6 +4,7 @@ import selfPackageJson from '../../../package.json' with { type: 'json' }
 import { CI_WORKFLOW_NAME } from '../../base/ci.js'
 import { coverageUploadWorkflow } from '../../base/checks.js'
 import { jsBadgeAudience } from '../../languages/js/checks.js'
+import type { DocsSibling } from '../utils/lockfile.js'
 import { copyPreset, PRESETS } from '../utils/copy-preset.js'
 import { buildBadgeRow, parseRepository } from './badges.js'
 import { syncBrandToDocs } from './brand.js'
@@ -53,6 +54,8 @@ export interface DocsSiteOptions {
 	 * single-segment subpath exports. No-op when there are none to document.
 	 */
 	typedoc?: boolean
+	/** `rules.docs.siblings` (#676): links to sibling projects. Absent/empty emits nothing. */
+	siblings?: DocsSibling[]
 }
 
 /**
@@ -139,7 +142,11 @@ function jsString(value: string): string {
 	return `'${JSON.stringify(value).slice(1, -1).replaceAll('\\"', '"').replaceAll("'", "\\'")}'`
 }
 
-function docusaurusConfig(meta: SiteMeta, typedocModules: string[]): string {
+function docusaurusConfig(
+	meta: SiteMeta,
+	typedocModules: string[],
+	siblings: DocsSibling[] = []
+): string {
 	const owner = meta.owner ?? 'your-org'
 	const repo = meta.repo ?? meta.title
 	const ghUrl = `https://github.com/${owner}/${repo}`
@@ -150,6 +157,20 @@ function docusaurusConfig(meta: SiteMeta, typedocModules: string[]): string {
 		: ''
 	const typedocPlugins = typedocModules.length
 		? `\t\t...getTypedocPlugins([${typedocModules.map(jsString).join(', ')}]),\n`
+		: ''
+	const siblingNav = siblings
+		.map(
+			(s) =>
+				`\t\t\t\t{ href: ${jsString(s.href)}, label: ${jsString(s.label)}, position: 'left' },\n`
+		)
+		.join('')
+	const siblingFooter = siblings.length
+		? `\t\t\t\t{
+\t\t\t\t\ttitle: 'Projects',
+\t\t\t\t\titems: [
+${siblings.map((s) => `\t\t\t\t\t\t{ label: ${jsString(s.label)}, href: ${jsString(s.href)} },\n`).join('')}\t\t\t\t\t],
+\t\t\t\t},
+`
 		: ''
 	return `import type * as Preset from '@docusaurus/preset-classic'
 import type { Config } from '@docusaurus/types'
@@ -221,7 +242,7 @@ ${typedocPlugins}\t\t[
 \t\t\ttitle: '${meta.title}',
 \t\t\titems: [
 \t\t\t\t{ to: '/docs', position: 'left', label: 'Docs' },
-\t\t\t\t{
+${siblingNav}\t\t\t\t{
 \t\t\t\t\thref: '${ghUrl}',
 \t\t\t\t\tlabel: 'GitHub',
 \t\t\t\t\tposition: 'right',
@@ -242,7 +263,7 @@ ${typedocPlugins}\t\t[
 \t\t\t\t\t\t{ label: 'Issues', href: '${ghUrl}/issues' },
 \t\t\t\t\t],
 \t\t\t\t},
-\t\t\t],
+${siblingFooter}\t\t\t],
 \t\t\tcopyright: \`Copyright © \${new Date().getFullYear()} ${meta.title}. Built with Docusaurus.\`,
 \t\t},
 \t\t// \`theme\` is the LIGHT-mode Prism theme and \`darkTheme\` the dark one. Both
@@ -362,7 +383,10 @@ function docsPackageJson(meta: SiteMeta, typedoc: boolean): string {
 	return `${JSON.stringify(pkg, null, 2)}\n`
 }
 
-function introDoc(meta: SiteMeta, badges: string): string {
+function introDoc(meta: SiteMeta, badges: string, siblings: DocsSibling[] = []): string {
+	const related = siblings.length
+		? `\n## Related projects\n\n${siblings.map((s) => `- [${s.label}](${s.href})`).join('\n')}\n`
+		: ''
 	return `---
 title: ${meta.title}
 slug: /
@@ -376,7 +400,7 @@ ${meta.tagline}
 Welcome to the docs. Edit \`apps/docs/docs/intro.md\` to get started, and add
 more markdown files under \`apps/docs/docs/\` — they appear in the sidebar
 automatically.
-`
+${related}`
 }
 
 /** The per-repo workflow that drives the shared reusable deploy on push to main. */
@@ -433,6 +457,7 @@ export async function generateDocsSite(
 ): Promise<string[]> {
 	const meta = inferSiteMeta(pkg)
 	const accent = options.primaryColor ?? DEFAULT_ACCENT
+	const siblings = options.siblings ?? []
 	const written: string[] = []
 
 	// Shared assets (only-if-missing copies of the shipped presets).
@@ -460,12 +485,12 @@ export async function generateDocsSite(
 	// Project-specific scaffold.
 	const files: Array<[string, string]> = [
 		[`${DOCS_APP}/package.json`, docsPackageJson(meta, typedocModules.length > 0)],
-		[`${DOCS_APP}/docusaurus.config.ts`, docusaurusConfig(meta, typedocModules)],
+		[`${DOCS_APP}/docusaurus.config.ts`, docusaurusConfig(meta, typedocModules, siblings)],
 		[`${DOCS_APP}/sidebars.ts`, SIDEBARS],
 		[`${DOCS_APP}/tsconfig.json`, TSCONFIG],
 		[`${DOCS_APP}/src/css/custom.css`, customCss(accent)],
 		[`${DOCS_APP}/src/pages/index.tsx`, HOME_PAGE],
-		[`${DOCS_APP}/docs/intro.md`, introDoc(meta, badges)],
+		[`${DOCS_APP}/docs/intro.md`, introDoc(meta, badges, siblings)],
 		['.github/workflows/docs.yml', docsWorkflow(meta)],
 	]
 	// TypeDoc emits docs/api/<id> on build — keep the generated tree out of git.
