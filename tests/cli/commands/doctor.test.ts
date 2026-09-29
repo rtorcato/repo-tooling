@@ -1044,6 +1044,20 @@ describe('doctor security checks', () => {
 		expect(dep?.hint).toMatch(/fix dependabot/)
 	})
 
+	// #694: a declined PR must reach a human, not just the Actions log.
+	it('reports Dependabot drift when the auto-merge workflow has no hand-off step', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const workflow = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		const content = await fs.readFile(workflow, 'utf8')
+		await fs.writeFile(workflow, content.slice(0, content.indexOf('\n      # Everything the step')))
+		const results = await runDoctor(dir)
+		const dep = results.find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('drift')
+		expect(dep?.detail).toMatch(/no owner/)
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

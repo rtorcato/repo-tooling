@@ -319,6 +319,11 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				if (!automerge.includes("package-ecosystem == 'github-actions'")) {
 					deltas.push('auto-merge workflow leaves CI action bumps to a human (#452)')
 				}
+				// #694: a declined PR used to get only a log notice — no assignee, no
+				// comment — and could sit green and ownerless indefinitely.
+				if (!automerge.includes("steps.merge.outcome == 'skipped'")) {
+					deltas.push('auto-merge workflow leaves declined PRs with no owner (#694)')
+				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')
 			}
