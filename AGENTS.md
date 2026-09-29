@@ -92,7 +92,7 @@ npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test confi
 
 `fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
 
-Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `release-environment` (changes what a merge does).
+Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `release-environment` (changes what a merge does) and `npm-trusted-publisher` (registers an OIDC trusted publisher on npm via `npm trust github`; refuses when the package isn't on npm yet, local npm < 11.15.0, or not logged in).
 
 The same goes for every `optional-missing` finding: a bulk `fix` records it `skipped`, because optional tools are often mutually exclusive (Biome / ESLint / Prettier / Oxlint, semantic-release / Changesets / Release Please) and installing them all is never the intent (#630). Name the one you want — `fix editorconfig --yes`.
 

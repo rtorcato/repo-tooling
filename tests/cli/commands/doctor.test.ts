@@ -1522,7 +1522,7 @@ describe('nextStepSuggestions', () => {
 		await fs.ensureDir(join(dir, '.github', 'workflows'))
 		await fs.writeFile(
 			join(dir, '.github', 'workflows', 'ci.yml'),
-			'jobs:\n  release:\n    permissions:\n      id-token: write\n    steps:\n      - run: npx semantic-release\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n'
+			'jobs:\n  release:\n    permissions:\n      id-token: write\n    steps:\n      - run: npm install -g npm@^11.5.1\n      - run: npx semantic-release\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n'
 		)
 
 		const results = await runDoctor(dir)

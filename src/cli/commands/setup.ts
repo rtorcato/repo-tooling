@@ -2,6 +2,11 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
+import {
+	formatNpmPublishGuide,
+	type NpmPublishGuide,
+	npmPublishGuide,
+} from '../../languages/js/npm-trust.js'
 import { LANGUAGES, type LanguageModule } from '../../languages/registry.js'
 import { generateConfigs } from '../generators/index.js'
 import { detectLanguage } from '../utils/detect-language.js'
@@ -246,7 +251,14 @@ export async function setupProject(options: SetupOptions) {
 
 		if (dryRun) {
 			const files = computeFileList(config)
-			console.log(JSON.stringify({ directory: targetDir, config, files }, null, 2))
+			const npmPublish = npmPublishFor(config)
+			console.log(
+				JSON.stringify(
+					{ directory: targetDir, config, files, ...(npmPublish && { npmPublish }) },
+					null,
+					2
+				)
+			)
 			return
 		}
 
@@ -680,6 +692,24 @@ async function promptForConfig(
 	}
 }
 
+/**
+ * The npmjs.com trusted-publisher values for a scaffold whose release job
+ * publishes (#687). Owner/repo aren't known yet at setup time, so they stay
+ * placeholders; `fix npm-trusted-publisher` derives them once the repo exists.
+ * The generated job declares no environment until `fix release-environment`.
+ */
+export function npmPublishFor(config: ProjectConfig): NpmPublishGuide | null {
+	if (config.language === 'swift' || config.projectType !== 'library' || !config.semanticRelease)
+		return null
+	return npmPublishGuide({
+		name: config.projectName,
+		owner: '<owner>',
+		repo: '<repo>',
+		file: 'ci.yml',
+		environment: null,
+	})
+}
+
 function showNextSteps(config: ProjectConfig, _targetDir: string) {
 	console.log(chalk.bold('\n📋 Next Steps:\n'))
 
@@ -724,6 +754,13 @@ function showNextSteps(config: ProjectConfig, _targetDir: string) {
 	steps.forEach((step, index) => {
 		console.log(`  ${index + 1}. ${step}`)
 	})
+
+	// A brand-new package isn't on npm yet, so the bootstrap order always applies.
+	const npmPublish = npmPublishFor(config)
+	if (npmPublish) {
+		console.log(chalk.bold('\n📦 Publish to npm (OIDC trusted publishing — no NPM_TOKEN):\n'))
+		for (const line of formatNpmPublishGuide(npmPublish, true)) console.log(`  ${line}`)
+	}
 
 	const skipped = collectSkippedFixSuggestions(config)
 	if (skipped.length > 0) {

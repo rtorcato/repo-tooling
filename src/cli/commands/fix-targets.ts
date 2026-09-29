@@ -25,6 +25,8 @@ export const FIX_TARGETS: Record<string, string> = {
 	'Tree-shake check': 'treeshake-check',
 	'GitHub Actions': 'github-actions',
 	'Coverage upload': 'github-actions',
+	'npm OIDC publish': 'github-actions',
+	'npm trusted publisher': 'npm-trusted-publisher',
 	Dependabot: 'dependabot',
 	CodeQL: 'codeql',
 	'Branch protection': 'github-settings',
