@@ -31,6 +31,7 @@ export const FIX_TARGETS: Record<string, string> = {
 	'Merge settings': 'github-settings',
 	'Workflow permissions': 'github-settings',
 	'Code-scanning gate': 'github-settings',
+	'Security updates': 'github-settings',
 	Milestones: 'milestones',
 	CODEOWNERS: 'codeowners',
 	'GitLab CI': 'gitlab-ci',
@@ -169,6 +170,7 @@ export function declinedInLock(lock: Lockfile | null, checkName: string): boolea
 		case 'Merge settings':
 		case 'Workflow permissions':
 		case 'Code-scanning gate':
+		case 'Security updates':
 			return c.securityAutomation === false
 		case 'publint':
 			return c.publint === false

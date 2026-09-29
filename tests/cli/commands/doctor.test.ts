@@ -1288,6 +1288,22 @@ describe('doctor + lockfile', () => {
 		expect(results.find((r) => r.check === 'lockfile')?.status).toBe('drift')
 	})
 
+	it('promotes a missing Dependabot config to drift when the lock records securityAutomation (#692)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir, { securityAutomation: true })
+		const dep = (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('drift')
+		expect(dep?.detail).toMatch(/records securityAutomation: true/)
+	})
+
+	it('leaves a missing Dependabot config optional without a lockfile', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const dep = (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		expect(dep?.status).toBe('optional-missing')
+	})
+
 	it('demotes Claude worktree settings to ok when the lock records aiSetup: false', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
@@ -1346,7 +1362,7 @@ describe('doctor + lockfile', () => {
 		expect(results.find((r) => r.check === 'AI setup')?.status).toBe('ok')
 	})
 
-	it('only ever demotes optional-missing to ok, never makes anything worse', async () => {
+	it('only demotes optional-missing to ok, bar what securityAutomation requires (#692)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		const before = await runDoctor(dir)
@@ -1358,9 +1374,10 @@ describe('doctor + lockfile', () => {
 			if (r.check === 'lockfile') continue
 			const previous = beforeStatuses.get(r.check)
 			if (previous === r.status) continue
-			// The only allowed transition is optional-missing → ok (lockfile-driven demotion).
+			// Lockfile-driven demotion, or promotion of a check the recorded
+			// securityAutomation: true makes mandatory.
 			expect(previous).toBe('optional-missing')
-			expect(r.status).toBe('ok')
+			expect(r.status).toBe(r.check === 'Dependabot' ? 'drift' : 'ok')
 		}
 	})
 

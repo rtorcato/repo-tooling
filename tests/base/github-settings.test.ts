@@ -101,7 +101,11 @@ interface GhOverrides {
 	rulesets?: GhResult
 	rulesetDetail?: GhResult
 	environments?: GhResult
+	alerts?: GhResult
+	securityFixes?: GhResult
 }
+
+const FIXES_ON = JSON.stringify({ enabled: true, paused: false })
 
 /** No environments configured — the shape the REST endpoint returns. */
 const NO_ENVIRONMENTS = JSON.stringify({ total_count: 0, environments: [] })
@@ -118,6 +122,8 @@ function fakeGh(overrides: GhOverrides = {}): GhExec {
 		if (p?.includes('/rulesets/')) return overrides.rulesetDetail ?? ok('{}')
 		if (p?.endsWith('/rulesets')) return overrides.rulesets ?? ok('[]')
 		if (p?.endsWith('/environments')) return overrides.environments ?? ok(NO_ENVIRONMENTS)
+		if (p?.endsWith('/vulnerability-alerts')) return overrides.alerts ?? ok('')
+		if (p?.endsWith('/automated-security-fixes')) return overrides.securityFixes ?? ok(FIXES_ON)
 		return fail('unexpected call')
 	})
 }
@@ -129,7 +135,7 @@ describe('checkGitHubSettings — skip paths', () => {
 		const exec = fakeGh()
 		const results = await checkGitHubSettings(newTmpDir(), exec)
 		expect(exec).not.toHaveBeenCalled()
-		expect(results).toHaveLength(6)
+		expect(results).toHaveLength(7)
 		expect(results.every((r) => r.status === 'ok' && r.detail.includes('skipped'))).toBe(true)
 	})
 
@@ -150,7 +156,7 @@ describe('checkGitHubSettings — skip paths', () => {
 describe('checkGitHubSettings — compliant repo', () => {
 	it('reports all three ok when settings match the standard', async () => {
 		const results = await checkGitHubSettings(gitRepo(), fakeGh())
-		expect(results).toHaveLength(6)
+		expect(results).toHaveLength(7)
 		expect(results.every((r) => r.status === 'ok')).toBe(true)
 		expect(byName(results, 'Branch protection')?.detail).toContain('protected per standard')
 	})
@@ -587,6 +593,38 @@ describe('checkGitHubSettings — drift', () => {
 	})
 })
 
+describe('checkGitHubSettings — security updates (#692)', () => {
+	it('reports alerts and security fixes disabled as optional-missing', async () => {
+		const results = await checkGitHubSettings(
+			gitRepo(),
+			fakeGh({
+				alerts: fail('gh: Not Found (HTTP 404)'),
+				securityFixes: fail('gh: Not Found (HTTP 404)'),
+			})
+		)
+		const r = byName(results, 'Security updates')
+		expect(r?.status).toBe('optional-missing')
+		expect(r?.detail).toBe('vulnerability alerts disabled; automated security fixes disabled')
+	})
+
+	it('flags security fixes off while alerts are on', async () => {
+		const results = await checkGitHubSettings(
+			gitRepo(),
+			fakeGh({ securityFixes: ok(JSON.stringify({ enabled: false, paused: false })) })
+		)
+		expect(byName(results, 'Security updates')?.detail).toBe('automated security fixes disabled')
+	})
+
+	it('skips when the token lacks admin access', async () => {
+		const results = await checkGitHubSettings(
+			gitRepo(),
+			fakeGh({ alerts: fail('gh: Forbidden (HTTP 403)') })
+		)
+		expect(byName(results, 'Security updates')?.status).toBe('ok')
+		expect(byName(results, 'Security updates')?.detail).toContain('skipped')
+	})
+})
+
 describe('buildGhApplyCommands', () => {
 	const state = { nwo: 'owner/repo', branch: 'main' }
 
@@ -629,6 +667,21 @@ describe('buildGhApplyCommands', () => {
 		})
 		expect(body.enforce_admins).toBe(false)
 		expect(body.required_pull_request_reviews).toBeNull()
+	})
+
+	it('enables alerts before security fixes (#692)', () => {
+		const cmds = buildGhApplyCommands({
+			...state,
+			merge: false,
+			protection: false,
+			workflow: false,
+			alerts: true,
+			securityFixes: true,
+		})
+		expect(cmds.map((c) => c.args)).toEqual([
+			['api', '-X', 'PUT', 'repos/owner/repo/vulnerability-alerts'],
+			['api', '-X', 'PUT', 'repos/owner/repo/automated-security-fixes'],
+		])
 	})
 
 	it('returns [] when nothing deviates', () => {

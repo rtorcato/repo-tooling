@@ -84,10 +84,12 @@ export const GITHUB_STANDARD = {
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
 export const RELEASE_GATE_CHECK = 'Release gate'
 export const RELEASE_ENV_CHECK = 'Release environment'
+const SECURITY_UPDATES_CHECK = 'Security updates'
 const CHECK_NAMES = [
 	'Branch protection',
 	'Merge settings',
 	'Workflow permissions',
+	SECURITY_UPDATES_CHECK,
 	CODE_SCANNING_CHECK,
 	RELEASE_GATE_CHECK,
 	RELEASE_ENV_CHECK,
@@ -195,6 +197,7 @@ export async function checkGitHubSettings(dir: string, exec?: GhExec): Promise<C
 		await checkBranchProtection(gh, info.nwo, info.branch),
 		checkMergeSettings(info),
 		await checkWorkflowPermissions(gh, info.nwo),
+		await checkSecurityUpdates(gh, info.nwo),
 		await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir),
 		...(await checkReleaseGate(gh, info.nwo, dir)),
 	]
@@ -318,6 +321,56 @@ async function checkWorkflowPermissions(exec: GhExec, nwo: string): Promise<Chec
 			hint: 'Set default workflow permissions to read-only and disable workflow PR approvals',
 		}
 	return { check, status: 'ok', detail: 'read-only default, no workflow PR approvals' }
+}
+
+/**
+ * Dependabot vulnerability alerts and automated security fixes (#692). A
+ * `dependabot.yml` only schedules version bumps; these two repo toggles are what
+ * surface and patch advisories, and both default off on a new repo. Neither
+ * endpoint has a body worth reading for alerts: 204 is on, 404 is off.
+ */
+async function readSecurityUpdates(
+	exec: GhExec,
+	nwo: string
+): Promise<{ alerts: boolean; fixes: boolean } | { skip: string }> {
+	const enabled = async (endpoint: string): Promise<boolean | { skip: string }> => {
+		const r = await exec(['api', `repos/${nwo}/${endpoint}`])
+		if (!r.ok) {
+			if (/404|not found/i.test(r.stderr)) return false
+			if (/403|forbidden/i.test(r.stderr)) return { skip: 'token lacks admin access' }
+			return { skip: `could not read ${endpoint}` }
+		}
+		if (endpoint === 'vulnerability-alerts') return true
+		try {
+			return JSON.parse(r.stdout).enabled === true
+		} catch {
+			return { skip: `could not parse ${endpoint} response` }
+		}
+	}
+	const alerts = await enabled('vulnerability-alerts')
+	if (typeof alerts !== 'boolean') return alerts
+	const fixes = await enabled('automated-security-fixes')
+	if (typeof fixes !== 'boolean') return fixes
+	return { alerts, fixes }
+}
+
+async function checkSecurityUpdates(exec: GhExec, nwo: string): Promise<CheckResult> {
+	const check = SECURITY_UPDATES_CHECK
+	const s = await readSecurityUpdates(exec, nwo)
+	if ('skip' in s) return skip(check, s.skip)
+	const deltas: string[] = []
+	if (!s.alerts) deltas.push('vulnerability alerts disabled')
+	if (!s.fixes) deltas.push('automated security fixes disabled')
+	// optional-missing, not drift: doctor promotes it when the lock records
+	// securityAutomation: true, and demotes it when the lock records false.
+	if (deltas.length)
+		return {
+			check,
+			status: 'optional-missing',
+			detail: deltas.join('; '),
+			hint: 'Run `npx @rtorcato/repo-tooling fix github-settings` to enable Dependabot alerts and security updates',
+		}
+	return { check, status: 'ok', detail: 'vulnerability alerts and automated security fixes on' }
 }
 
 /**
@@ -778,6 +831,10 @@ export interface GhApplyState {
 	merge: boolean
 	protection: boolean
 	workflow: boolean
+	/** Dependabot vulnerability alerts off (#692). */
+	alerts?: boolean
+	/** Automated security fixes off (#692). */
+	securityFixes?: boolean
 }
 
 /** A single `gh api` mutation plus the human label reported once it succeeds. */
@@ -858,6 +915,17 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 				'can_approve_pull_request_reviews=false',
 			],
 		})
+	// Alerts first: GitHub refuses security fixes on a repo with alerts off.
+	if (state.alerts)
+		commands.push({
+			label: 'vulnerability alerts',
+			args: ['api', '-X', 'PUT', `repos/${state.nwo}/vulnerability-alerts`],
+		})
+	if (state.securityFixes)
+		commands.push({
+			label: 'automated security fixes',
+			args: ['api', '-X', 'PUT', `repos/${state.nwo}/automated-security-fixes`],
+		})
 	return commands
 }
 
@@ -891,12 +959,15 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 	// (no admin) reports `ok` → treated as "nothing to apply", never a failed PUT.
 	const bp = await checkBranchProtection(gh, info.nwo, info.branch)
 	const wp = await checkWorkflowPermissions(gh, info.nwo)
+	const sec = await readSecurityUpdates(gh, info.nwo)
 	const commands = buildGhApplyCommands({
 		nwo: info.nwo,
 		branch: info.branch,
 		merge: checkMergeSettings(info).status === 'drift',
 		protection: bp.status === 'optional-missing' || bp.status === 'drift',
 		workflow: wp.status === 'drift',
+		alerts: !('skip' in sec) && !sec.alerts,
+		securityFixes: !('skip' in sec) && !sec.fixes,
 	})
 
 	const applied: string[] = []
