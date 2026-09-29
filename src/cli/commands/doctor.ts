@@ -19,6 +19,7 @@ import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
 import { type DetectedLanguage, detectAuditLanguage } from '../utils/detect-language.js'
 import { checkGitHubSettings } from '../../base/github-settings.js'
+import { checkRepositorySecrets } from '../../base/secrets.js'
 import { checkMilestones } from '../../base/milestones.js'
 import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
@@ -306,6 +307,7 @@ async function runBaseChecks(
 	// GitHub repo-settings drift (branch protection, merge settings, workflow
 	// permissions). Read-only; self-skips as `ok` outside a live GitHub repo.
 	results.push(...(await checkGitHubSettings(dir)))
+	results.push(await checkRepositorySecrets(dir))
 	// Milestone hygiene (#397) — same seam, same self-skip.
 	results.push(await checkMilestones(dir))
 	results.push(await checkGitLabCI(dir))

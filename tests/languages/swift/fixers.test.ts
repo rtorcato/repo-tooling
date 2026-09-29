@@ -77,6 +77,7 @@ describe('swift fixers', () => {
 			'Monorepo',
 			'Git identity',
 			'Git author history',
+			'Repository secrets',
 			'README badges',
 			'Coverage upload',
 			'Package.swift',

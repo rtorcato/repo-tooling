@@ -2,6 +2,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
+import { collectSecretUses, requiredSecrets, secretHints } from '../../base/secrets.js'
 import {
 	formatNpmPublishGuide,
 	type NpmPublishGuide,
@@ -285,7 +286,7 @@ export async function setupProject(options: SetupOptions) {
 		}
 
 		console.log(chalk.green('\n✅ Setup completed successfully!\n'))
-		showNextSteps(config, targetDir)
+		await showNextSteps(config, targetDir)
 	} catch (error) {
 		console.error(chalk.red('\n❌ Setup failed:'), error)
 		process.exit(1)
@@ -710,7 +711,7 @@ export function npmPublishFor(config: ProjectConfig): NpmPublishGuide | null {
 	})
 }
 
-function showNextSteps(config: ProjectConfig, _targetDir: string) {
+async function showNextSteps(config: ProjectConfig, targetDir: string) {
 	console.log(chalk.bold('\n📋 Next Steps:\n'))
 
 	const steps = []
@@ -760,6 +761,15 @@ function showNextSteps(config: ProjectConfig, _targetDir: string) {
 	if (npmPublish) {
 		console.log(chalk.bold('\n📦 Publish to npm (OIDC trusted publishing — no NPM_TOKEN):\n'))
 		for (const line of formatNpmPublishGuide(npmPublish, true)) console.log(`  ${line}`)
+	}
+
+	const secrets = requiredSecrets(await collectSecretUses(targetDir))
+	if (secrets.length > 0) {
+		console.log(chalk.bold('\n🔐 GitHub setup (secrets the workflows need):\n'))
+		for (const line of secretHints(secrets)) console.log(`  ${line}`)
+		console.log(
+			'  Then: `fix github-settings` (branch protection), `fix release-environment` (release gate), and `doctor` to confirm'
+		)
 	}
 
 	const skipped = collectSkippedFixSuggestions(config)
