@@ -16,7 +16,7 @@
 		"type": "git",
 		"url": "https://github.com/rtorcato/repo-tooling.git"
 	},
-	"homepage": "https://github.com/rtorcato/repo-tooling#readme",
+	"homepage": "https://docs.torcato.dev/repo-tooling/",
 	"bugs": {
 		"url": "https://github.com/rtorcato/repo-tooling/issues"
 	},

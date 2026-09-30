@@ -54,9 +54,9 @@ npx @rtorcato/repo-ai setup         # skills, labels, agent identity, statusline
 `repo-ai setup` asks before each step, and `--yes` runs them all.
 
 After that, label an issue `ai-ready` and run `/ai-workflow` in Claude Code.
-repo-ai's [guide to the loop](https://rtorcato.github.io/repo-ai/docs/ai-issue-loop/)
+repo-ai's [guide to the loop](https://rtorcato.github.io/repo-ai/docs/ai-loop)
 covers the label state machine, the safety gates and the limits. Its
-[command reference](https://rtorcato.github.io/repo-ai/docs/commands/) covers
+[command reference](https://rtorcato.github.io/repo-ai/docs/commands) covers
 every `repo-ai` command.
 
 ## Moving over from repo-tooling 3.x
