@@ -84,7 +84,9 @@ printable with `setup --config-schema`):
 <Fields schema={lockfileSchema.properties.record.properties.config} />
 
 The `object`-typed fields above (`typescript`, `linting`, `formatting`, `testing`) are small
-enum-valued records — see the schema for their exact shapes.
+enum-valued records — see the schema for their exact shapes. `docs` (`url`, `deploy`) records
+where the docs site lives and how it deploys; see
+[Docs site](../guides/docs-site.md#where-the-site-lives-configdocs).
 
 ## `rules` — what the humans wrote
 
