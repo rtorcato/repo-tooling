@@ -103,9 +103,15 @@ jobs:
             mkdir -p "$RUNNER_TEMP/site"
             cp -R "$BUILD_OUTPUT"/. "$RUNNER_TEMP/site/"
           fi
+          # A `host/path/*` route does not match the bare `host/path`, which then falls
+          # through to the zone's origin (a 522 behind a placeholder DNS record). Also
+          # route the bare path; assets' auto-trailing-slash redirects it to `path/`.
           jq -n --arg name "$WORKER_NAME" --arg dir "$RUNNER_TEMP/site" --arg route "$ROUTE" \
             '{name: $name, compatibility_date: (now | strftime("%Y-%m-%d")), assets: {directory: $dir, not_found_handling: "404-page"}}
-             + (if $route == "" then {} else {routes: [$route]} end)' \
+             + (if $route == "" then {}
+                elif ($route | endswith("/*")) and ($route | rtrimstr("/*") | contains("/"))
+                  then {routes: [$route, ($route | rtrimstr("/*"))]}
+                else {routes: [$route]} end)' \
             > "$RUNNER_TEMP/wrangler.jsonc"
           cat "$RUNNER_TEMP/wrangler.jsonc"
 
