@@ -19,7 +19,7 @@ const serving = (body: unknown) =>
 	gh({ stdout: typeof body === 'string' ? body : JSON.stringify(body) })
 
 const REFERENCE_LOCKFILE = {
-	$schema: 'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json',
+	$schema: 'https://docs.torcato.dev/repo-tooling/schemas/lockfile.json',
 	version: 4,
 	record: {
 		config: buildPresetConfig('library', 'reference-repo'),

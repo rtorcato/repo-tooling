@@ -593,7 +593,7 @@ describe('setup --config', () => {
 		// A lockfile wraps the config alongside version/writtenBy/etc — those extra
 		// keys would fail validation if not unwrapped.
 		const lockfile = {
-			$schema: 'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json',
+			$schema: 'https://docs.torcato.dev/repo-tooling/schemas/lockfile.json',
 			version: 2,
 			config,
 			writtenBy: '@rtorcato/repo-tooling@0.0.0',

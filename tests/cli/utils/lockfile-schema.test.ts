@@ -30,15 +30,13 @@ describe('published JSON Schemas', () => {
 		).toEqual(CONFIG_SCHEMA)
 	})
 
-	// The $id is the published URL: docs deploy to rtorcato.github.io/repo-tooling
+	// The $id is the published URL: docs deploy to docs.torcato.dev/repo-tooling
 	// and static/schemas/lockfile.json lands at /schemas/lockfile.json. Every
 	// lockfile writeLockfile stamps carries this same constant as its $schema.
 	it('$ids match the deployed static paths', () => {
-		expect(lockfileSchema().$id).toBe(
-			'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json'
-		)
+		expect(lockfileSchema().$id).toBe('https://docs.torcato.dev/repo-tooling/schemas/lockfile.json')
 		expect(CONFIG_SCHEMA.$id).toBe(
-			'https://rtorcato.github.io/repo-tooling/schemas/project-config.json'
+			'https://docs.torcato.dev/repo-tooling/schemas/project-config.json'
 		)
 	})
 })

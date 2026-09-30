@@ -126,7 +126,7 @@ npx @rtorcato/repo-tooling setup --config .repo-tooling.json
 ```
 
 Each `config.*` key mirrors a setup answer — see the
-[schema](https://rtorcato.github.io/repo-tooling/schemas/lockfile.json) for the
+[schema](https://docs.torcato.dev/repo-tooling/schemas/lockfile.json) for the
 full field reference. The keys `doctor` acts on:
 
 - `typescript.enabled` / `typescript.config` — `base` \| `react` \| `next` \| `node` \| `express`

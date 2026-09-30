@@ -1,5 +1,5 @@
 {
-  "$schema": "https://rtorcato.github.io/repo-tooling/schemas/lockfile.json",
+  "$schema": "https://docs.torcato.dev/repo-tooling/schemas/lockfile.json",
   "version": 4,
   "record": {
     "config": {

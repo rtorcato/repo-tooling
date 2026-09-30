@@ -150,7 +150,7 @@ export function buildPresetConfig(name: PresetName, projectName: string): Projec
 
 export const CONFIG_SCHEMA = {
 	$schema: 'https://json-schema.org/draft/2020-12/schema',
-	$id: 'https://rtorcato.github.io/repo-tooling/schemas/project-config.json',
+	$id: 'https://docs.torcato.dev/repo-tooling/schemas/project-config.json',
 	title: 'ProjectConfig',
 	description: '@rtorcato/repo-tooling setup configuration',
 	type: 'object',
