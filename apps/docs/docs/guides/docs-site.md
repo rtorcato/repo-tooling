@@ -15,5 +15,5 @@ npx @rtorcato/shared-docs init     # scaffold apps/docs
 npx @rtorcato/shared-docs doctor   # report drift from the scaffold
 ```
 
-What stays here: the reusable `docs-deploy.yml` workflow and the `typedoc` fix target, which are
+What stays here: the reusable `docs-deploy.yml` (GitHub Pages) and `docs-deploy-cloudflare.yml` (Cloudflare Workers) workflows and the `typedoc` fix target, which are
 not tied to the scaffold.

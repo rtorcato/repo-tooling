@@ -1,0 +1,117 @@
+name: Reusable Deploy Docs (Cloudflare)
+
+# Reusable Docusaurus → Cloudflare Workers static assets deploy. Sibling of
+# docs-deploy.yml (GitHub Pages). Workers, not Pages: a Pages project attaches to a
+# whole hostname, so it cannot serve a path-mounted site. No wrangler.toml needed;
+# the config is generated from the inputs. Call it from any repo:
+#
+#   jobs:
+#     docs:
+#       uses: rtorcato/repo-tooling/.github/workflows/docs-deploy-cloudflare.yml@main
+#       with:
+#         build-filter: '@rtorcato/<pkg>-docs'
+#         worker-name: my-docs
+#         base-path: /my-pkg/            # optional, default /
+#         route: docs.example.com/my-pkg/*   # optional, else set a domain in the dashboard
+#       secrets:
+#         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}   # deploy-scoped only
+#         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+#
+# Caller decides WHEN to deploy; this owns HOW.
+on:
+  workflow_call:
+    inputs:
+      build-filter:
+        description: 'pnpm --filter target for the docs app, e.g. @rtorcato/cf-common-docs'
+        required: true
+        type: string
+      worker-name:
+        description: 'Cloudflare Worker name'
+        required: true
+        type: string
+      build-output:
+        description: 'Directory the docs build emits'
+        required: false
+        default: 'apps/docs/build'
+        type: string
+      base-path:
+        description: 'Path the site is mounted under, e.g. /js-common/. The build is moved into that subfolder before upload.'
+        required: false
+        default: '/'
+        type: string
+      route:
+        description: 'Optional route, e.g. docs.example.com/js-common/*. If omitted, configure a custom domain or route in the dashboard.'
+        required: false
+        default: ''
+        type: string
+      node-version:
+        description: 'Node version'
+        required: false
+        default: '22'
+        type: string
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-docs-${{ inputs.worker-name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build docs
+        run: pnpm --filter ${{ inputs.build-filter }} build
+
+      # Inputs go through env, never interpolated into the script.
+      - name: Stage assets and generate wrangler config
+        env:
+          BUILD_OUTPUT: ${{ inputs.build-output }}
+          BASE_PATH: ${{ inputs.base-path }}
+          WORKER_NAME: ${{ inputs.worker-name }}
+          ROUTE: ${{ inputs.route }}
+        run: |
+          set -euo pipefail
+          # Workers static assets serve files by exact URL path, and Docusaurus writes
+          # build/ flat even with a non-root baseUrl, so nest it under the base path.
+          sub="${BASE_PATH#/}"; sub="${sub%/}"
+          if [ -n "$sub" ]; then
+            case "$sub" in *..*) echo "base-path must not contain '..'" >&2; exit 1;; esac
+            mkdir -p "$RUNNER_TEMP/site/$sub"
+            cp -R "$BUILD_OUTPUT"/. "$RUNNER_TEMP/site/$sub/"
+          else
+            mkdir -p "$RUNNER_TEMP/site"
+            cp -R "$BUILD_OUTPUT"/. "$RUNNER_TEMP/site/"
+          fi
+          jq -n --arg name "$WORKER_NAME" --arg dir "$RUNNER_TEMP/site" --arg route "$ROUTE" \
+            '{name: $name, compatibility_date: (now | strftime("%Y-%m-%d")), assets: {directory: $dir}}
+             + (if $route == "" then {} else {routes: [$route]} end)' \
+            > "$RUNNER_TEMP/wrangler.jsonc"
+          cat "$RUNNER_TEMP/wrangler.jsonc"
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config ${{ runner.temp }}/wrangler.jsonc
