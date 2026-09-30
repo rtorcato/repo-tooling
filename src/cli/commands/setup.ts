@@ -70,8 +70,14 @@ export interface ProjectConfig {
 	/** Scaffold Tailwind CSS v4 (PostCSS plugin + CSS entry) for frontend projects. */
 	tailwind?: boolean
 	/**
+	 * Docs settings (#722). `url` defaults to `https://<owner>.github.io/<repo>/`,
+	 * `deploy` to `github`. Read by shared-docs and the reusable deploy workflows.
+	 */
+	docs?: { url?: string; deploy?: 'github' | 'cloudflare' | 'none' }
+	/**
 	 * @deprecated The docs-site scaffold moved to `@rtorcato/shared-docs` (#718).
-	 * Still accepted so existing lockfiles validate; it no longer does anything.
+	 * Still accepted so existing lockfiles validate; `docsSite: true` with no
+	 * `docs` reads as `docs: { deploy: 'github' }` (#722).
 	 */
 	docsSite?: boolean
 	/**

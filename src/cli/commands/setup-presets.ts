@@ -227,6 +227,14 @@ export const CONFIG_SCHEMA = {
 		docsSite: { type: 'boolean', deprecated: true },
 		brand: { type: 'boolean', deprecated: true },
 		bun: { type: 'boolean' },
+		docs: {
+			type: 'object',
+			additionalProperties: false,
+			properties: {
+				url: { type: 'string', format: 'uri', pattern: '^https?://' },
+				deploy: { type: 'string', enum: ['github', 'cloudflare', 'none'] },
+			},
+		},
 	},
 } as const
 
@@ -252,7 +260,25 @@ export function validateProjectConfig(input: unknown): ConfigValidationResult {
 	for (const required of CONFIG_SCHEMA.required) {
 		if (!(required in obj)) errors.push(`Missing required field: ${required}`)
 	}
+	if ('docs' in obj) errors.push(...validateDocs(obj.docs))
 	return { valid: errors.length === 0, errors }
+}
+
+function validateDocs(docs: unknown): string[] {
+	if (typeof docs !== 'object' || docs === null || Array.isArray(docs)) {
+		return ['docs must be an object']
+	}
+	const errors: string[] = []
+	const { url, deploy, ...rest } = docs as Record<string, unknown>
+	for (const key of Object.keys(rest)) errors.push(`Unknown field: docs.${key}`)
+	if (url !== undefined && (typeof url !== 'string' || !/^https?:\/\/\S+$/.test(url))) {
+		errors.push('docs.url must be an http(s) URL')
+	}
+	const deploys: readonly unknown[] = CONFIG_SCHEMA.properties.docs.properties.deploy.enum
+	if (deploy !== undefined && !deploys.includes(deploy)) {
+		errors.push(`docs.deploy must be one of: ${deploys.join(', ')}`)
+	}
+	return errors
 }
 
 export function computeFileList(config: ProjectConfig): string[] {

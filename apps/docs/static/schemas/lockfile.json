@@ -226,6 +226,25 @@
 						},
 						"bun": {
 							"type": "boolean"
+						},
+						"docs": {
+							"type": "object",
+							"additionalProperties": false,
+							"properties": {
+								"url": {
+									"type": "string",
+									"format": "uri",
+									"pattern": "^https?://"
+								},
+								"deploy": {
+									"type": "string",
+									"enum": [
+										"github",
+										"cloudflare",
+										"none"
+									]
+								}
+							}
 						}
 					}
 				},
