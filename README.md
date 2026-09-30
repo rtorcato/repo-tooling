@@ -101,7 +101,7 @@ Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
 
 See the [GitHub Actions reference](https://docs.torcato.dev/repo-tooling/docs/reference/github-actions/#run-doctor-as-a-github-action) for its inputs and outputs.
 
-Every command takes `-d, --directory <path>`; run any with `--help` for its full flags. Run `list` (or `list --json`) for the full set of `fix` targets — it's the source of truth. Notable ones include `fix docs-site` (scaffold a [Docusaurus docs site](https://docs.torcato.dev/repo-tooling/docs/guides/docs-site/)) and `fix bun` (Bun runtime config).
+Every command takes `-d, --directory <path>`; run any with `--help` for its full flags. Run `list` (or `list --json`) for the full set of `fix` targets — it's the source of truth. Notable ones include `fix bun` (Bun runtime config). Docs sites are scaffolded by [`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs); this package keeps the [reusable deploy workflows](https://docs.torcato.dev/repo-tooling/docs/guides/docs-site/).
 
 ## The `.repo-tooling.json` lockfile
 
