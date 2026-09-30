@@ -29,3 +29,14 @@ describe('lockfilePatchForTarget', () => {
 		expect(validateProjectConfig({ ...bare, ...patch }).errors).toEqual([])
 	})
 })
+
+describe('docs config (#722)', () => {
+	it('accepts a valid docs block and rejects bad ones', () => {
+		const ok = { ...bare, docs: { url: 'https://docs.example.com/x/', deploy: 'cloudflare' } }
+		expect(validateProjectConfig(ok).errors).toEqual([])
+		expect(validateProjectConfig({ ...bare, docs: { deploy: 'ftp' } }).valid).toBe(false)
+		expect(validateProjectConfig({ ...bare, docs: { url: 'nope' } }).valid).toBe(false)
+		expect(validateProjectConfig({ ...bare, docs: { x: 1 } }).valid).toBe(false)
+		expect(validateProjectConfig({ ...bare, docs: 'x' }).valid).toBe(false)
+	})
+})
