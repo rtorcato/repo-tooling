@@ -104,14 +104,15 @@ jobs:
             cp -R "$BUILD_OUTPUT"/. "$RUNNER_TEMP/site/"
           fi
           jq -n --arg name "$WORKER_NAME" --arg dir "$RUNNER_TEMP/site" --arg route "$ROUTE" \
-            '{name: $name, compatibility_date: (now | strftime("%Y-%m-%d")), assets: {directory: $dir}}
+            '{name: $name, compatibility_date: (now | strftime("%Y-%m-%d")), assets: {directory: $dir, not_found_handling: "404-page"}}
              + (if $route == "" then {} else {routes: [$route]} end)' \
             > "$RUNNER_TEMP/wrangler.jsonc"
           cat "$RUNNER_TEMP/wrangler.jsonc"
 
+      # npx, not cloudflare/wrangler-action: the action installs wrangler with a bare
+      # `pnpm add`, which pnpm refuses at a workspace root (ERR_PNPM_ADDING_TO_ROOT).
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config ${{ runner.temp }}/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --config "$RUNNER_TEMP/wrangler.jsonc"
