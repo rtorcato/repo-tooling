@@ -25,7 +25,11 @@
       "commitLint": true,
       "semanticRelease": true,
       "securityAutomation": true,
-      "bundler": "none"
+      "bundler": "none",
+      "docs": {
+        "url": "https://docs.torcato.dev/repo-tooling/",
+        "deploy": "cloudflare"
+      }
     },
     "assets": {
       "docusaurus-sync-changelog": "de05aecb200657c2023dc3540dbdd2f9f2f17f1027e67a06266119d12cc05fea",

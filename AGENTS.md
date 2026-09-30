@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Orientation for coding agents working with `@rtorcato/repo-tooling`. Human-readable docs live at https://rtorcato.github.io/repo-tooling/.
+Orientation for coding agents working with `@rtorcato/repo-tooling`. Human-readable docs live at https://docs.torcato.dev/repo-tooling/.
 
 ## What this is
 
@@ -116,7 +116,7 @@ A fixer may also **refuse** — the target file holds something the generator ca
 
 ## Pointers
 
-- Site index for LLMs: https://rtorcato.github.io/repo-tooling/llms.txt
-- Full CLI guide: https://rtorcato.github.io/repo-tooling/guides/cli/
-- For AI agents: https://rtorcato.github.io/repo-tooling/guides/for-ai-agents/
+- Site index for LLMs: https://docs.torcato.dev/repo-tooling/llms.txt
+- Full CLI guide: https://docs.torcato.dev/repo-tooling/guides/cli/
+- For AI agents: https://docs.torcato.dev/repo-tooling/guides/for-ai-agents/
 - Source: https://github.com/rtorcato/repo-tooling

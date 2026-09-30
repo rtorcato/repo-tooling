@@ -88,4 +88,4 @@ Land AI changes via PR, and never expose secrets to an issue-triggered run. Auto
 - **Issue PRs never merge unattended.** Merging `main` fires semantic-release and publishes, so they stop for a human even when every agent reviewer passes.
 - **Dependabot PRs do auto-merge**, gated by `dependabot-automerge.yml`'s own predicate and the repo's required status checks — not by agent review, which never ran on them in time to matter. The predicate allows only dev-only, non-shipping patch and minor bumps and fails closed; a `chore(deps)` squash subject cuts no release. The required status checks stay the real merge gate, so a repo without branch protection auto-merges nothing.
 
-Full docs: https://rtorcato.github.io/repo-tooling/guides/cli/
+Full docs: https://docs.torcato.dev/repo-tooling/guides/cli/
