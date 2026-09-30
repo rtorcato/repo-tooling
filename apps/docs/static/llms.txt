@@ -4,23 +4,23 @@
 
 ## CLI
 
-- [CLI commands](https://docs.torcato.dev/repo-tooling/guides/cli): Full reference for `setup`, `doctor`, `fix`, `copy`, and `list`, including every `--json` / `--yes` / `--dry-run` flag combination.
-- [Getting started](https://docs.torcato.dev/repo-tooling/guides/getting-started): Install, scaffold a new project, or audit an existing one.
-- [For AI agents](https://docs.torcato.dev/repo-tooling/guides/for-ai-agents): Non-interactive command catalog, sample JSON payloads, and recommended workflows for autonomous use.
+- [CLI commands](https://docs.torcato.dev/repo-tooling/docs/guides/cli): Full reference for `setup`, `doctor`, `fix`, `copy`, and `list`, including every `--json` / `--yes` / `--dry-run` flag combination.
+- [Getting started](https://docs.torcato.dev/repo-tooling/docs/guides/getting-started): Install, scaffold a new project, or audit an existing one.
+- [For AI agents](https://docs.torcato.dev/repo-tooling/docs/guides/for-ai-agents): Non-interactive command catalog, sample JSON payloads, and recommended workflows for autonomous use.
 
 ## Configuration reference
 
-- [TypeScript](https://docs.torcato.dev/repo-tooling/reference/typescript): `@rtorcato/repo-tooling/typescript/{base,react,next,node,express,test,reset}`.
-- [Biome](https://docs.torcato.dev/repo-tooling/reference/biome): `@rtorcato/repo-tooling/biome`.
-- [ESLint](https://docs.torcato.dev/repo-tooling/reference/eslint): `@rtorcato/repo-tooling/eslint/{base,nextjs}`.
-- [Prettier](https://docs.torcato.dev/repo-tooling/reference/prettier): `@rtorcato/repo-tooling/prettier`.
-- [Vitest](https://docs.torcato.dev/repo-tooling/reference/vitest): `@rtorcato/repo-tooling/vitest/{config,react,setup}`.
-- [Jest](https://docs.torcato.dev/repo-tooling/reference/jest): `@rtorcato/repo-tooling/jest-presets/{browser,node}/jest-preset`.
-- [Commitlint](https://docs.torcato.dev/repo-tooling/reference/commitlint): `@rtorcato/repo-tooling/commitlint/config`.
-- [Semantic Release](https://docs.torcato.dev/repo-tooling/reference/semantic-release): `@rtorcato/repo-tooling/semantic-release{,/github,/docker}`.
-- [tsup](https://docs.torcato.dev/repo-tooling/reference/tsup): `@rtorcato/repo-tooling/tsup`.
-- [esbuild](https://docs.torcato.dev/repo-tooling/reference/esbuild): `@rtorcato/repo-tooling/esbuild`.
-- [.repo-tooling.json](https://docs.torcato.dev/repo-tooling/reference/repo-tooling-json): The lockfile the CLI writes. JSON Schemas: [lockfile](https://docs.torcato.dev/repo-tooling/schemas/lockfile.json), [ProjectConfig](https://docs.torcato.dev/repo-tooling/schemas/project-config.json).
+- [TypeScript](https://docs.torcato.dev/repo-tooling/docs/reference/typescript): `@rtorcato/repo-tooling/typescript/{base,react,next,node,express,test,reset}`.
+- [Biome](https://docs.torcato.dev/repo-tooling/docs/reference/biome): `@rtorcato/repo-tooling/biome`.
+- [ESLint](https://docs.torcato.dev/repo-tooling/docs/reference/eslint): `@rtorcato/repo-tooling/eslint/{base,nextjs}`.
+- [Prettier](https://docs.torcato.dev/repo-tooling/docs/reference/prettier): `@rtorcato/repo-tooling/prettier`.
+- [Vitest](https://docs.torcato.dev/repo-tooling/docs/reference/vitest): `@rtorcato/repo-tooling/vitest/{config,react,setup}`.
+- [Jest](https://docs.torcato.dev/repo-tooling/docs/reference/jest): `@rtorcato/repo-tooling/jest-presets/{browser,node}/jest-preset`.
+- [Commitlint](https://docs.torcato.dev/repo-tooling/docs/reference/commitlint): `@rtorcato/repo-tooling/commitlint/config`.
+- [Semantic Release](https://docs.torcato.dev/repo-tooling/docs/reference/semantic-release): `@rtorcato/repo-tooling/semantic-release{,/github,/docker}`.
+- [tsup](https://docs.torcato.dev/repo-tooling/docs/reference/tsup): `@rtorcato/repo-tooling/tsup`.
+- [esbuild](https://docs.torcato.dev/repo-tooling/docs/reference/esbuild): `@rtorcato/repo-tooling/esbuild`.
+- [.repo-tooling.json](https://docs.torcato.dev/repo-tooling/docs/reference/repo-tooling-json): The lockfile the CLI writes. JSON Schemas: [lockfile](https://docs.torcato.dev/repo-tooling/schemas/lockfile.json), [ProjectConfig](https://docs.torcato.dev/repo-tooling/schemas/project-config.json).
 
 ## Source
 

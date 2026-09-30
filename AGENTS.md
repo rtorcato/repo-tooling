@@ -117,6 +117,6 @@ A fixer may also **refuse** — the target file holds something the generator ca
 ## Pointers
 
 - Site index for LLMs: https://docs.torcato.dev/repo-tooling/llms.txt
-- Full CLI guide: https://docs.torcato.dev/repo-tooling/guides/cli/
-- For AI agents: https://docs.torcato.dev/repo-tooling/guides/for-ai-agents/
+- Full CLI guide: https://docs.torcato.dev/repo-tooling/docs/guides/cli/
+- For AI agents: https://docs.torcato.dev/repo-tooling/docs/guides/for-ai-agents/
 - Source: https://github.com/rtorcato/repo-tooling
