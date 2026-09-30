@@ -6,7 +6,7 @@
     "name": "Richard Torcato",
     "url": "https://github.com/rtorcato"
   },
-  "homepage": "https://rtorcato.github.io/repo-tooling/",
+  "homepage": "https://docs.torcato.dev/repo-tooling/",
   "repository": "https://github.com/rtorcato/repo-tooling",
   "license": "MIT",
   "keywords": ["tooling", "typescript", "biome", "vitest", "semantic-release"]

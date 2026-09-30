@@ -15,7 +15,7 @@ const config: Config = {
 		"One CLI to scaffold, audit and fix your repo's whole toolchain — linting, tests, commits, releases & CI.",
 	favicon: 'img/favicon.ico',
 
-	url: 'https://rtorcato.github.io',
+	url: 'https://docs.torcato.dev',
 	baseUrl: '/repo-tooling/',
 
 	organizationName: 'rtorcato',
