@@ -21,7 +21,7 @@ export const LEGACY_LOCKFILE_NAME = `.${LEGACY_TOOL_NAME}.json`
 // `record` (tool-written, stamped) and `rules` (human-written, unstamped).
 // Nothing was renamed or dropped — the flat v3 fields just moved into them.
 export const LOCKFILE_VERSION = 4
-const LOCKFILE_SCHEMA_URL = 'https://rtorcato.github.io/repo-tooling/schemas/lockfile.json'
+const LOCKFILE_SCHEMA_URL = 'https://docs.torcato.dev/repo-tooling/schemas/lockfile.json'
 
 /**
  * How much of the repo's workflow assumes a recommended MCP server (#534).

@@ -1,6 +1,6 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "https://rtorcato.github.io/repo-tooling/schemas/lockfile.json",
+	"$id": "https://docs.torcato.dev/repo-tooling/schemas/lockfile.json",
 	"title": "Lockfile",
 	"description": ".repo-tooling.json — two documents sharing one file: `record` is written by @rtorcato/repo-tooling (`setup` and `fix`) and stamped with provenance; `rules` is written by humans, reviewed in PRs, and never stamped. Both are read by `doctor`.",
 	"type": "object",

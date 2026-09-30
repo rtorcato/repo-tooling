@@ -11,7 +11,6 @@ on:
       - 'package.json'
       - 'README.md'
       - '.github/workflows/docs.yml'
-      - '.github/workflows/docs-deploy.yml'
       - '.github/workflows/docs-deploy-cloudflare.yml'
   # semantic-release publishes a GitHub Release after the version commit lands;
   # rebuild then so the site always tracks the latest release.
@@ -21,8 +20,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   # Primary site: https://docs.torcato.dev/repo-tooling/ (config.docs in .repo-tooling.json).
@@ -38,10 +35,3 @@ jobs:
     secrets:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-  # ponytail: GitHub Pages stays up because consumers' .repo-tooling.json $schema
-  # and the schema $ids point at rtorcato.github.io. Retire it once those move.
-  docs:
-    uses: ./.github/workflows/docs-deploy.yml
-    with:
-      build-filter: '@rtorcato/docs'
