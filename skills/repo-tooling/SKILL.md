@@ -69,4 +69,4 @@ npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-instal
 - After a `fix`, re-run `doctor` to confirm the finding cleared.
 - Releasing? See the **npm-publish** skill — never hand-cut a version or tag.
 
-Full docs: https://docs.torcato.dev/repo-tooling/guides/cli/
+Full docs: https://docs.torcato.dev/repo-tooling/docs/guides/cli/

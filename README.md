@@ -47,7 +47,7 @@ Biome + Vitest and nothing else.
 
 `swift-library` scaffolds a SwiftPM package (manifest, sources, tests, SwiftLint,
 Periphery, macOS CI) instead of an npm one — see the
-[Swift guide](https://docs.torcato.dev/repo-tooling/guides/swift).
+[Swift guide](https://docs.torcato.dev/repo-tooling/docs/guides/swift).
 
 Just one config file? Use `copy`:
 
@@ -81,7 +81,7 @@ npx @rtorcato/repo-tooling doctor   # find what's missing or drifted
 npx @rtorcato/repo-tooling fix      # apply scaffolders, prompting per item
 ```
 
-See the [Getting Started guide](https://docs.torcato.dev/repo-tooling/guides/getting-started/) for the full walkthrough.
+See the [Getting Started guide](https://docs.torcato.dev/repo-tooling/docs/guides/getting-started/) for the full walkthrough.
 
 ## Commands
 
@@ -99,9 +99,9 @@ Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
 - uses: rtorcato/repo-tooling@v3.2.5
 ```
 
-See the [GitHub Actions reference](https://docs.torcato.dev/repo-tooling/reference/github-actions/#run-doctor-as-a-github-action) for its inputs and outputs.
+See the [GitHub Actions reference](https://docs.torcato.dev/repo-tooling/docs/reference/github-actions/#run-doctor-as-a-github-action) for its inputs and outputs.
 
-Every command takes `-d, --directory <path>`; run any with `--help` for its full flags. Run `list` (or `list --json`) for the full set of `fix` targets — it's the source of truth. Notable ones include `fix docs-site` (scaffold a [Docusaurus docs site](https://docs.torcato.dev/repo-tooling/guides/docs-site/)) and `fix bun` (Bun runtime config).
+Every command takes `-d, --directory <path>`; run any with `--help` for its full flags. Run `list` (or `list --json`) for the full set of `fix` targets — it's the source of truth. Notable ones include `fix bun` (Bun runtime config). Docs sites are scaffolded by [`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs); this package keeps the [reusable deploy workflows](https://docs.torcato.dev/repo-tooling/docs/guides/docs-site/).
 
 ## The `.repo-tooling.json` lockfile
 
@@ -205,7 +205,7 @@ the same `.repo-tooling.json`:
 npx @rtorcato/repo-ai setup
 ```
 
-See [Using with repo-ai](https://docs.torcato.dev/repo-tooling/guides/ai-issue-loop/)
+See [Using with repo-ai](https://docs.torcato.dev/repo-tooling/docs/guides/ai-issue-loop/)
 for how the two fit together. The loop shipped inside repo-tooling until 4.0.0.
 
 ### Use with other AI tools (Cursor / Copilot / Codex)
