@@ -101,6 +101,12 @@ verify — edited in place on later runs rather than repeated.
 > auto-merge and protection off, so `doctor` keeps reporting them as drift. Make
 > the repo public or upgrade the plan to converge fully.
 
+### Label instead of merge
+
+Set `rules.dependabot.onPr` to `"label"` in `.repo-tooling.json` (with an optional `label`)
+and the workflow adds that label to the PRs it would have merged, and never merges. Default is
+`"automerge"`. See the [`.repo-tooling.json` reference](../reference/repo-tooling-json.mdx).
+
 ## 3. Major bumps — batched, triaged, never auto-merged
 
 All majors arrive as a **single `major-updates` PR per ecosystem**, labeled

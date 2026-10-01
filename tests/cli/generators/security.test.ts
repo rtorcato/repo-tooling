@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
+	dependabotAutomergeWorkflowFor,
 	DEPENDABOT_CONFIG,
 	dependabotIgnoreRules,
 	findDependabotIgnoreRules,
@@ -373,5 +374,41 @@ describe('generateSecurityConfigs', () => {
 		await generateSecurityConfigs(dir)
 		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(true)
 		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'codeql.yml'))).toBe(true)
+	})
+})
+
+// #746: `rules.dependabot.onPr` swaps the merge for a label, nothing else.
+describe('dependabotAutomergeWorkflowFor', () => {
+	async function workflowFor(rules?: unknown): Promise<string> {
+		const dir = newTmpDir()
+		if (rules !== undefined) {
+			await fs.writeJson(join(dir, '.repo-tooling.json'), {
+				version: 4,
+				record: { config: {}, assets: {}, writtenBy: 'x', writtenAt: 'y' },
+				rules,
+			})
+		}
+		return dependabotAutomergeWorkflowFor(dir)
+	}
+
+	it('defaults to the auto-merge workflow', async () => {
+		expect(await workflowFor()).toBe(DEPENDABOT_AUTOMERGE_WORKFLOW)
+		expect(await workflowFor({ dependabot: { onPr: 'automerge' } })).toBe(
+			DEPENDABOT_AUTOMERGE_WORKFLOW
+		)
+	})
+
+	it('labels instead of merging when onPr is label', async () => {
+		const wf = await workflowFor({ dependabot: { onPr: 'label', label: 'ai-review' } })
+		expect(wf).not.toMatch(/gh pr merge/)
+		expect(wf).toMatch(/gh pr edit "\$PR_URL" --add-label "\$LABEL"/)
+		expect(wf).toMatch(/LABEL: "ai-review"/)
+		// The hand-to-a-human step and its gates are untouched.
+		expect(wf).toMatch(/if: steps\.merge\.outcome == 'skipped'/)
+		expect(wf).toMatch(/steps\.gate\.outputs\.safe == 'true'/)
+	})
+
+	it('falls back to a default label', async () => {
+		expect(await workflowFor({ dependabot: { onPr: 'label' } })).toMatch(/LABEL: "needs-review"/)
 	})
 })

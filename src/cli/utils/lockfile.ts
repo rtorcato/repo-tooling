@@ -70,7 +70,19 @@ export interface LockfileRecord {
  * reviewed in PRs. Deliberately unstamped — the tool carries this subtree
  * forward verbatim on every write and never claims authorship of it.
  */
+/** What the generated Dependabot workflow does with a PR it could auto-merge. */
+export type DependabotOnPr = 'automerge' | 'label'
+
 export interface LockfileRules {
+	/**
+	 * What `dependabot-automerge.yml` does with a safe-tier PR (#746).
+	 * `automerge` (the default) merges it on green; `label` adds `label` and
+	 * never merges, leaving the merge to whoever reviews labelled PRs.
+	 */
+	dependabot?: {
+		onPr?: DependabotOnPr
+		label?: string
+	}
 	/**
 	 * @deprecated Moved to `.repo-ai.json`, owned by `@rtorcato/repo-ai` (#689).
 	 * Still accepted so existing lockfiles validate; removed in the next major.
@@ -240,6 +252,27 @@ export function lockfileSchema() {
 									'Login that in-flight work is assigned to, so `assignee` says whose turn it is. Must be an assignable collaborator; the skills verify that at runtime.',
 							},
 						} satisfies Record<keyof NonNullable<LockfileRules['aiLoop']>, object>,
+					},
+					dependabot: {
+						type: 'object',
+						additionalProperties: false,
+						description:
+							'What the generated dependabot-automerge workflow does with a patch/minor PR it would otherwise auto-merge. `doctor` reports drift against it and `fix dependabot` regenerates from it.',
+						properties: {
+							onPr: {
+								type: 'string',
+								enum: ['automerge', 'label'],
+								default: 'automerge',
+								description:
+									'`automerge` (default) merges on green. `label` adds `label` instead and never merges. Majors and consumer-facing bumps always go to a human either way.',
+							},
+							label: {
+								type: 'string',
+								minLength: 1,
+								description:
+									'The label `onPr: "label"` adds. Defaults to `needs-review` when omitted.',
+							},
+						} satisfies Record<keyof NonNullable<LockfileRules['dependabot']>, object>,
 					},
 					requiredSkills: {
 						type: 'array',

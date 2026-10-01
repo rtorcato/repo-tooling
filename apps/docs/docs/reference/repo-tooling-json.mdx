@@ -42,7 +42,7 @@ The file is **two documents sharing one name**, split by who writes them:
 - **`record`** — the tool-written half. `setup` creates it, `fix` keeps it current, and its
   `writtenBy`/`writtenAt` stamps are provenance claims about exactly this subtree.
 - **`rules`** — the human-written half: the repo's stated intent (`mcp`,
-  `exceptions`), edited by hand and reviewed in PRs. The tool carries it forward
+  `exceptions`, `dependabot`), edited by hand and reviewed in PRs. The tool carries it forward
   verbatim on every write and never stamps it.
 
 `doctor` reads both. Commit the file — it is the repo's memory of its own tooling choices
@@ -131,6 +131,22 @@ or `env` here: MCP servers execute code, so the real config belongs in `.mcp.jso
 carries Claude Code's own first-use consent prompt. The lockfile says *what and why*,
 `.mcp.json` says *how*, and you say *whether*. User-scoped MCP config is machine-private and
 is not probed at all.
+
+### `rules.dependabot` — what the workflow does with a safe PR
+
+Sets what the generated `dependabot-automerge.yml` does with a patch or minor PR it would
+otherwise auto-merge. Absent means `automerge`, so a repo that never sets it sees no change.
+
+```json
+"rules": { "dependabot": { "onPr": "label", "label": "needs-review" } }
+```
+
+- `onPr: "automerge"` (default) merges on green.
+- `onPr: "label"` adds `label` (default `needs-review`) and never merges, so a reviewer or a
+  review bot can pick the PR up by label.
+
+Majors and consumer-facing bumps go to a human in both modes. `doctor` reports a workflow that
+does not match the configured mode and `fix dependabot` regenerates it from the config.
 
 ### `rules.exceptions` — declared deviations
 
