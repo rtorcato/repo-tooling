@@ -774,11 +774,20 @@ export async function checkSizeLimit(dir: string, pkg: Pkg | null): Promise<Chec
 			detail: inPkg ? '`size-limit` field in package.json' : `${inFile} found`,
 		}
 	}
+	// A published library ships its bytes to every consumer, so an unbudgeted one
+	// is a real finding (#739). Apps, private packages and bin-only CLIs stay
+	// optional.
+	// ponytail: root package only; per-workspace monorepo packages are a follow-up.
+	const published = !!pkg && pkg.private !== true && !!(pkg.exports || pkg.main)
 	return {
 		check: 'size-limit',
-		status: 'optional-missing',
-		detail: 'size-limit not configured',
-		hint: 'Add `size-limit` to enforce bundle-size budgets in CI for library projects',
+		status: published ? 'missing' : 'optional-missing',
+		detail: published
+			? 'size-limit not configured for a publishable library'
+			: 'size-limit not configured',
+		hint: published
+			? 'Run `npx @rtorcato/repo-tooling fix size-limit` to budget every exported subpath'
+			: 'Add `size-limit` to enforce bundle-size budgets in CI for library projects',
 	}
 }
 

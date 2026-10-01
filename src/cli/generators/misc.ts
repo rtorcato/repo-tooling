@@ -43,7 +43,13 @@ const SIZE_LIMIT_CONFIG = [
 // modules ship without a budget (#165). The root '.' barrel is skipped — it
 // re-exports everything and grows legitimately. Tighten individual modules via
 // OVERRIDES.
-const SIZE_LIMIT_CJS = `const pkg = require('./package.json')
+const SIZE_LIMIT_CJS = `const { builtinModules } = require('node:module')
+const pkg = require('./package.json')
+
+// Node built-ins never reach a consumer's bundle, and size-limit's bundler
+// fails on them ("Could not resolve node:fs"), so one Node-only subpath would
+// otherwise break the whole run.
+const NODE_BUILTINS = builtinModules.flatMap((m) => [m, \`node:\${m}\`])
 
 // Per-subpath budget overrides, e.g. { './clipboard': '500 B' }.
 const OVERRIDES = {}
@@ -68,6 +74,7 @@ module.exports = Object.entries(pkg.exports || {})
     name: \`\${pkg.name}\${sub.slice(1)}\`,
     path: file.replace(/^\\.\\//, ''),
     limit: OVERRIDES[sub] || DEFAULT_LIMIT,
+    ignore: NODE_BUILTINS,
   }))
 `
 

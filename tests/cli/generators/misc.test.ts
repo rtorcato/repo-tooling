@@ -77,18 +77,29 @@ describe('generateSizeLimitConfig', () => {
 			name: string
 			path: string
 			limit: string
+			ignore: string[]
 		}>
 		expect(config).toHaveLength(2)
-		expect(config).toContainEqual({
-			name: 'demo/hooks',
-			path: 'dist/hooks/index.js',
-			limit: '10 kB',
-		})
-		expect(config).toContainEqual({
-			name: 'demo/providers',
-			path: 'dist/providers/index.js',
-			limit: '10 kB',
-		})
+		expect(config).toContainEqual(
+			expect.objectContaining({
+				name: 'demo/hooks',
+				path: 'dist/hooks/index.js',
+				limit: '10 kB',
+			})
+		)
+		expect(config).toContainEqual(
+			expect.objectContaining({
+				name: 'demo/providers',
+				path: 'dist/providers/index.js',
+				limit: '10 kB',
+			})
+		)
+		// Node built-ins are ignored, bare and `node:`-prefixed, so a Node-only
+		// subpath doesn't fail the bundler with "Could not resolve node:fs" (#739).
+		for (const entry of config) {
+			expect(entry.ignore).toContain('fs')
+			expect(entry.ignore).toContain('node:fs')
+		}
 	})
 
 	it('falls back to a static .size-limit.json for a single-export package', async () => {
