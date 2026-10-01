@@ -250,7 +250,7 @@
 		"@typescript-eslint/eslint-plugin": "^8.68.0",
 		"@typescript-eslint/parser": "^8.68.0",
 		"@vitejs/plugin-react": "^6.1.0",
-		"@vitest/coverage-v8": "^4.1.11",
+		"@vitest/coverage-v8": "^5.0.1",
 		"commitizen": "^4.3.2",
 		"conventional-changelog-conventionalcommits": "^10.4.0",
 		"cz-conventional-changelog": "^3.3.0",
@@ -273,7 +273,7 @@
 		"tsup": "8.5.1",
 		"typescript": "^7.0.2",
 		"typescript-eslint": "^8.68.0",
-		"vitest": "^4.1.11"
+		"vitest": "^5.0.1"
 	},
 	"peerDependencies": {
 		"@biomejs/biome": "^2.5.0",
