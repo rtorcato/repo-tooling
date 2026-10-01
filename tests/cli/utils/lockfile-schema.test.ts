@@ -61,6 +61,13 @@ describe("this repo's own lockfile", () => {
 	const record = lockfile.record as Record<string, unknown>
 	const withRules = (rules: unknown) => ({ ...lockfile, rules })
 
+	it('accepts rules.dependabot and rejects a bad onPr', () => {
+		const dependabot = (d: unknown) => validate(withRules({ dependabot: d }), schema)
+		expect(dependabot({ onPr: 'label', label: 'ai-review' })).toEqual([])
+		expect(dependabot({ onPr: 'merge' })).not.toEqual([])
+		expect(dependabot({ lable: 'typo' })).not.toEqual([])
+	})
+
 	// #689: deprecated, not removed — existing files must keep validating.
 	it('still accepts the deprecated loop keys', () => {
 		const rules = { aiLoop: { agentUser: 'some-bot' }, requiredSkills: ['ai-loop'] }

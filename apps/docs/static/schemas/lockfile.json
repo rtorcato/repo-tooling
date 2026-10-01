@@ -283,6 +283,27 @@
 						}
 					}
 				},
+				"dependabot": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "What the generated dependabot-automerge workflow does with a patch/minor PR it would otherwise auto-merge. `doctor` reports drift against it and `fix dependabot` regenerates from it.",
+					"properties": {
+						"onPr": {
+							"type": "string",
+							"enum": [
+								"automerge",
+								"label"
+							],
+							"default": "automerge",
+							"description": "`automerge` (default) merges on green. `label` adds `label` instead and never merges. Majors and consumer-facing bumps always go to a human either way."
+						},
+						"label": {
+							"type": "string",
+							"minLength": 1,
+							"description": "The label `onPr: \"label\"` adds. Defaults to `needs-review` when omitted."
+						}
+					}
+				},
 				"requiredSkills": {
 					"type": "array",
 					"items": {

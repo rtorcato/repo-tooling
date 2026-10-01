@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
+	dependabotAutomergeWorkflowFor,
 	DEPENDABOT_CONFIG,
 	dependabotIgnoreRules,
 	findDependabotIgnoreRules,
@@ -74,7 +75,6 @@ describe('generateDependabotConfig', () => {
 		expect(expression).toBeDefined()
 		expect(expression?.replace(/^ {10}/gm, '')).toBe(
 			[
-				"steps.loop.outcome == 'skipped' &&",
 				"steps.gate.outputs.safe == 'true' &&",
 				"(steps.metadata.outputs.dependency-group == 'dev-minor' ||",
 				"steps.metadata.outputs.package-ecosystem == 'github-actions') &&",
@@ -305,7 +305,7 @@ describe('findDependabotIgnoreRules', () => {
 // Run the shell against a stub `gh` that logs its calls.
 describe('the auto-merge hand-off to a human', () => {
 	async function runHandOff(env: Record<string, string>, existing = ''): Promise<string> {
-		const step = DEPENDABOT_AUTOMERGE_WORKFLOW.split(/^ {6}- name: Hand the PR to a human/m)[1]
+		const step = DEPENDABOT_AUTOMERGE_WORKFLOW.split(/^ {6}- name: Hand the PR/m)[1]
 		const body = step?.match(/ {8}run: \|\n([\s\S]*)$/)?.[1]
 		if (!body) throw new Error('could not extract the hand-off script from the workflow')
 		const dir = newTmpDir()
@@ -355,17 +355,6 @@ describe('the auto-merge hand-off to a human', () => {
 	})
 })
 
-// #746: an ai-loop repo labels the PR for review and never auto-merges it.
-describe('the ai-loop hand-off', () => {
-	it('labels ai-review and skips the human hand-off', () => {
-		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(/if: hashFiles\('\.repo-ai\.json'\) != ''/)
-		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(/gh pr edit "\$PR_URL" --add-label ai-review/)
-		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(
-			/if: steps\.loop\.outcome == 'skipped' && steps\.merge\.outcome == 'skipped'/
-		)
-	})
-})
-
 describe('generateCodeQLWorkflow', () => {
 	it('writes .github/workflows/codeql.yml referencing codeql-action', async () => {
 		const dir = newTmpDir()
@@ -385,5 +374,41 @@ describe('generateSecurityConfigs', () => {
 		await generateSecurityConfigs(dir)
 		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(true)
 		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'codeql.yml'))).toBe(true)
+	})
+})
+
+// #746: `rules.dependabot.onPr` swaps the merge for a label, nothing else.
+describe('dependabotAutomergeWorkflowFor', () => {
+	async function workflowFor(rules?: unknown): Promise<string> {
+		const dir = newTmpDir()
+		if (rules !== undefined) {
+			await fs.writeJson(join(dir, '.repo-tooling.json'), {
+				version: 4,
+				record: { config: {}, assets: {}, writtenBy: 'x', writtenAt: 'y' },
+				rules,
+			})
+		}
+		return dependabotAutomergeWorkflowFor(dir)
+	}
+
+	it('defaults to the auto-merge workflow', async () => {
+		expect(await workflowFor()).toBe(DEPENDABOT_AUTOMERGE_WORKFLOW)
+		expect(await workflowFor({ dependabot: { onPr: 'automerge' } })).toBe(
+			DEPENDABOT_AUTOMERGE_WORKFLOW
+		)
+	})
+
+	it('labels instead of merging when onPr is label', async () => {
+		const wf = await workflowFor({ dependabot: { onPr: 'label', label: 'ai-review' } })
+		expect(wf).not.toMatch(/gh pr merge/)
+		expect(wf).toMatch(/gh pr edit "\$PR_URL" --add-label "\$LABEL"/)
+		expect(wf).toMatch(/LABEL: "ai-review"/)
+		// The hand-to-a-human step and its gates are untouched.
+		expect(wf).toMatch(/if: steps\.merge\.outcome == 'skipped'/)
+		expect(wf).toMatch(/steps\.gate\.outputs\.safe == 'true'/)
+	})
+
+	it('falls back to a default label', async () => {
+		expect(await workflowFor({ dependabot: { onPr: 'label' } })).toMatch(/LABEL: "needs-review"/)
 	})
 })

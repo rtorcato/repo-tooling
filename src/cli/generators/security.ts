@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import { renderCodeQLWorkflow } from '../../base/ci.js'
 import { LANGUAGES } from '../../languages/registry.js'
 import { detectLanguage } from '../utils/detect-language.js'
+import { type DependabotOnPr, readLockfile } from '../utils/lockfile.js'
 
 /**
  * The canonical dependency-update standard shared by every @rtorcato repo.
@@ -192,13 +193,17 @@ export function dependabotIgnoreRules(content: string): string[] {
  * package hands its consumers. This repo had 32 such packages, and 13 of them
  * rode a single "dev-only" group PR. So the workflow resolves every bumped name
  * against the tracked manifests and stands down if any of them ships.
- *
- * **A repo that runs the ai-loop never auto-merges** (#746). Its \`.repo-ai.json\`
- * is the signal: the workflow labels the PR \`ai-review\` (and assigns the
- * \`agentUser\` it names) so the loop's two agent reviews run and a human merges.
- * Repos without that file keep the auto-merge path above.
  */
-export const DEPENDABOT_AUTOMERGE_WORKFLOW = `name: Dependabot auto-merge
+function renderAutomergeWorkflow(onPr: DependabotOnPr, label: string): string {
+	const labelMode = onPr === 'label'
+	const MERGE_STEP_NAME = labelMode
+		? 'Label dev-dependency and CI action patch and minor updates for review'
+		: 'Auto-merge dev-dependency and CI action patch and minor updates'
+	const mergeRun = labelMode
+		? 'gh pr edit "$PR_URL" --add-label "$LABEL"'
+		: 'gh pr merge --auto --squash "$PR_URL"'
+	const labelEnv = labelMode ? `\n          LABEL: ${JSON.stringify(label)}` : ''
+	return `name: Dependabot auto-merge
 
 on: pull_request
 
@@ -218,24 +223,6 @@ jobs:
           github-token: \${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/checkout@v7
-
-      # A repo that runs the ai-loop (it has a .repo-ai.json) reviews every
-      # Dependabot PR with two agents and hands it to a human as merge-ready, so
-      # nothing here may merge it (#746). Label it for the loop, assign the
-      # loop's agent user when the file names one, and stand down.
-      - name: Hand the PR to the ai-loop
-        id: loop
-        if: hashFiles('.repo-ai.json') != ''
-        env:
-          PR_URL: \${{ github.event.pull_request.html_url }}
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh pr edit "$PR_URL" --add-label ai-review
-          agent=$(jq -r '.agentUser // empty' .repo-ai.json 2>/dev/null || true)
-          if [ -n "$agent" ]; then
-            gh pr edit "$PR_URL" --add-assignee "$agent" || echo "::warning::could not assign $agent"
-          fi
 
       # The group name is Dependabot's opinion, not a safety property: a package
       # in both devDependencies and peerDependencies is classified "development"
@@ -284,25 +271,24 @@ jobs:
       # no consumer of the published package, and their squash subject is
       # "ci(deps): …", which cuts no release. Majors still fall through to a
       # human — the update-type clause below applies to them too.
-      - name: Auto-merge dev-dependency and CI action patch and minor updates
+      - name: ${MERGE_STEP_NAME}
         id: merge
         if: |
-          steps.loop.outcome == 'skipped' &&
           steps.gate.outputs.safe == 'true' &&
           (steps.metadata.outputs.dependency-group == 'dev-minor' ||
           steps.metadata.outputs.package-ecosystem == 'github-actions') &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor')
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: ${mergeRun}
         env:
           PR_URL: \${{ github.event.pull_request.html_url }}
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}${labelEnv}
 
       # Everything the step above declines needs a human, and a notice in the
       # Actions log is not one (#694). Assign the repo owner and say why in a
       # single comment, edited in place on every later run rather than repeated.
       - name: Hand the PR to a human
-        if: steps.loop.outcome == 'skipped' && steps.merge.outcome == 'skipped'
+        if: steps.merge.outcome == 'skipped'
         env:
           PR_URL: \${{ github.event.pull_request.html_url }}
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
@@ -338,6 +324,22 @@ jobs:
           # An organisation login cannot be assigned; the comment still stands.
           gh pr edit "$PR_URL" --add-assignee "$OWNER" || echo "::warning::could not assign $OWNER"
 `
+}
+
+/** The default workflow: auto-merge (\`dependabot.onPr\` unset). */
+export const DEPENDABOT_AUTOMERGE_WORKFLOW = renderAutomergeWorkflow('automerge', '')
+
+export const DEFAULT_DEPENDABOT_LABEL = 'needs-review'
+
+/**
+ * The workflow for this repo's \`rules.dependabot\` setting (#746). Absent or
+ * unrecognised means \`automerge\`, so a repo that never set it sees no change.
+ */
+export async function dependabotAutomergeWorkflowFor(targetDir: string): Promise<string> {
+	const setting = (await readLockfile(targetDir))?.rules?.dependabot
+	if (setting?.onPr !== 'label') return DEPENDABOT_AUTOMERGE_WORKFLOW
+	return renderAutomergeWorkflow('label', setting.label?.trim() || DEFAULT_DEPENDABOT_LABEL)
+}
 
 /** Relative paths this generator owns, in a stable order for \`filesWritten\`. */
 export const DEPENDABOT_FILES = [
@@ -372,7 +374,7 @@ export async function generateDependabotConfig(
 	await fs.writeFile(path.join(targetDir, '.github', 'dependabot.yml'), dependabotConfig(ecosystem))
 	await fs.writeFile(
 		path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml'),
-		DEPENDABOT_AUTOMERGE_WORKFLOW
+		await dependabotAutomergeWorkflowFor(targetDir)
 	)
 	return [...DEPENDABOT_FILES]
 }
