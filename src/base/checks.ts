@@ -9,6 +9,7 @@ import {
 	dependabotIgnoreRules,
 } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
+import { dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
 import { pushReleaseJob } from './github-settings.js'
 import type { CheckResult } from './types.js'
@@ -235,6 +236,13 @@ export async function checkGitHubActions(
 	}
 }
 
+/** The text of the workflow's safe-tier step (id: merge), up to the next step. */
+function mergeStep(workflow: string): string {
+	const start = workflow.indexOf('        id: merge')
+	const end = workflow.indexOf('\n      # ', start)
+	return start < 0 ? '' : workflow.slice(start, end < 0 ? undefined : end)
+}
+
 export async function checkDependabot(dir: string): Promise<CheckResult> {
 	for (const candidate of DEPENDABOT_CONFIG_PATHS) {
 		const candidatePath = path.join(dir, candidate)
@@ -273,6 +281,13 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				// comment — and could sit green and ownerless indefinitely.
 				if (!automerge.includes("steps.merge.outcome == 'skipped'")) {
 					deltas.push('auto-merge workflow leaves declined PRs with no owner (#694)')
+				}
+				// #746: the configured mode (`rules.dependabot.onPr`) decides what the
+				// safe tier does. Compare that one step, not the whole file, so a
+				// repo's own edits elsewhere are not drift.
+				const expected = await dependabotAutomergeWorkflowFor(dir)
+				if (mergeStep(automerge) !== mergeStep(expected)) {
+					deltas.push('auto-merge workflow does not match rules.dependabot.onPr (#746)')
 				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')

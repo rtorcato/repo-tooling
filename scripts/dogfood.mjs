@@ -14,12 +14,10 @@ const ACCEPTED = new Set([
 	'Vitest', // vitest.config.mjs imports the local ./tooling source, not the export
 	'Commitlint', // commitlint.config.mjs re-exports the local ./tooling source
 	'semantic-release', // release.config.mjs extends the local ./tooling source
-	// NOT a self-repo divergence — a real finding this repo cannot close yet.
-	// The check landed (rtorcato/repo-tooling#429, checks half); creating the
-	// `release` environment is the scaffolding half, still open because it needs
-	// a `required_reviewers` list only a human can supply. Delete this line the
-	// moment that environment exists — that is the whole point of the check.
-	'Release gate',
+	// Live GitHub state, not code. Releases ship by closing a milestone (#740),
+	// so between "last issue closed" and "batch shipped" the check correctly
+	// warns — but failing CI on it turned every PR red in that window.
+	'Milestones',
 ])
 
 function runDoctor() {

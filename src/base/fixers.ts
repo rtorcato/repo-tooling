@@ -19,7 +19,7 @@ import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
 import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc.js'
 import {
-	DEPENDABOT_AUTOMERGE_WORKFLOW,
+	dependabotAutomergeWorkflowFor,
 	dependabotConfigDeltas,
 	dependabotEcosystemFor,
 	findDependabotIgnoreRules,
@@ -194,7 +194,7 @@ export const BASE_FIXERS: Fixer[] = [
 			if (existing && dependabotConfigDeltas(existing.content, ecosystem).length === 0) {
 				await fs.outputFile(
 					path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml'),
-					DEPENDABOT_AUTOMERGE_WORKFLOW
+					await dependabotAutomergeWorkflowFor(targetDir)
 				)
 				return { filesWritten: ['.github/workflows/dependabot-automerge.yml'] }
 			}

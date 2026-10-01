@@ -1058,6 +1058,23 @@ describe('doctor security checks', () => {
 		expect(dep?.detail).toMatch(/no owner/)
 	})
 
+	// #746: doctor compares the workflow to the configured mode.
+	it('reports Dependabot drift when the workflow does not match rules.dependabot.onPr', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const dep = async () => (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		expect((await dep())?.status).toBe('ok')
+		await fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 4,
+			record: { config: {}, assets: {}, writtenBy: 'x', writtenAt: 'y' },
+			rules: { dependabot: { onPr: 'label', label: 'ai-review' } },
+		})
+		expect((await dep())?.detail).toMatch(/rules\.dependabot\.onPr/)
+		await generateDependabotConfig(dir)
+		expect((await dep())?.status).toBe('ok')
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
