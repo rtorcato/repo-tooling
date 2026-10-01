@@ -65,30 +65,46 @@ describe('generateSizeLimitConfig', () => {
 				'./hooks': { import: './dist/hooks/index.js' },
 				'./providers': { import: { types: './x.d.ts', default: './dist/providers/index.js' } },
 				'./package.json': './package.json',
+				'./tsconfig': './tsconfig.base.json',
 			},
+			peerDependencies: { vite: '>=5.0.0' },
 		})
 
 		const written = await generateSizeLimitConfig(dir)
 		expect(written).toBe('.size-limit.cjs')
 
 		// The generated config computes one budget per subpath from package.json
-		// at run time — the root '.' barrel and ./package.json are skipped.
+		// at run time — the root '.' barrel, ./package.json and JSON config presets
+		// are skipped.
 		const config = require(join(dir, '.size-limit.cjs')) as Array<{
 			name: string
 			path: string
 			limit: string
+			ignore: string[]
 		}>
 		expect(config).toHaveLength(2)
-		expect(config).toContainEqual({
-			name: 'demo/hooks',
-			path: 'dist/hooks/index.js',
-			limit: '10 kB',
-		})
-		expect(config).toContainEqual({
-			name: 'demo/providers',
-			path: 'dist/providers/index.js',
-			limit: '10 kB',
-		})
+		expect(config).toContainEqual(
+			expect.objectContaining({
+				name: 'demo/hooks',
+				path: 'dist/hooks/index.js',
+				limit: '10 kB',
+			})
+		)
+		expect(config).toContainEqual(
+			expect.objectContaining({
+				name: 'demo/providers',
+				path: 'dist/providers/index.js',
+				limit: '10 kB',
+			})
+		)
+		// Node built-ins are ignored, bare and `node:`-prefixed, so a Node-only
+		// subpath doesn't fail the bundler with "Could not resolve node:fs" (#739).
+		for (const entry of config) {
+			expect(entry.ignore).toContain('fs')
+			expect(entry.ignore).toContain('node:fs')
+			// Peers are the consumer's install, not this package's weight.
+			expect(entry.ignore).toContain('vite')
+		}
 	})
 
 	it('falls back to a static .size-limit.json for a single-export package', async () => {

@@ -1545,6 +1545,32 @@ describe('nextStepSuggestions', () => {
 	})
 })
 
+describe('doctor size-limit check (#739)', () => {
+	const statusFor = async (pkg: Record<string, unknown>) => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', version: '0.0.0', ...pkg })
+		return (await runDoctor(dir)).find((r) => r.check === 'size-limit')?.status
+	}
+
+	it('requires a budget for a publishable library', async () => {
+		expect(await statusFor({ exports: { '.': './dist/index.js' } })).toBe('missing')
+		expect(await statusFor({ main: './dist/index.js' })).toBe('missing')
+	})
+
+	it('stays optional for private packages and bin-only CLIs', async () => {
+		expect(await statusFor({ private: true, exports: { '.': './dist/index.js' } })).toBe(
+			'optional-missing'
+		)
+		expect(await statusFor({ bin: { demo: './cli.js' }, files: ['cli.js'] })).toBe(
+			'optional-missing'
+		)
+	})
+
+	it('is ok once a budget exists', async () => {
+		expect(await statusFor({ main: './dist/index.js', 'size-limit': [] })).toBe('ok')
+	})
+})
+
 describe('doctor publint check', () => {
 	it('flags a publishable library with no publint as not configured', async () => {
 		const dir = newTmpDir()

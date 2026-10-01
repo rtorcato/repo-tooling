@@ -40,6 +40,7 @@
 		"coverage": "vitest run --coverage",
 		"verify": "pnpm run check && pnpm run typecheck && pnpm test --run && pnpm run build-cli",
 		"dogfood": "node scripts/dogfood.mjs",
+		"size": "size-limit",
 		"knip": "knip",
 		"commit": "cz",
 		"================================================": ""
@@ -244,6 +245,7 @@
 		"@semantic-release/github": "^12.0.9",
 		"@semantic-release/npm": "^13.1.5",
 		"@semantic-release/release-notes-generator": "^14.1.1",
+		"@size-limit/preset-small-lib": "^12.1.0",
 		"@total-typescript/ts-reset": "0.6.1",
 		"@types/fs-extra": "^11.0.4",
 		"@types/node": "^26.3.0",
@@ -268,6 +270,7 @@
 		"rimraf": "6.1.3",
 		"rollup": "^4.63.0",
 		"semantic-release": "^25.0.9",
+		"size-limit": "^12.1.0",
 		"ts-jest": "^29.4.12",
 		"tslib": "^2.8.1",
 		"tsup": "8.5.1",
