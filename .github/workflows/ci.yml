@@ -22,7 +22,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should-skip: ${{ steps.skip-check.outputs.should-skip }}
+      swift: ${{ steps.swift-paths.outputs.swift }}
     steps:
+      - name: 📦 Checkout repository
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The macOS Swift job is the slowest in the pipeline, so on a PR it runs
+      # only when the diff can reach the swift-library preset: the Swift module
+      # and everything it imports. Pushes, dispatches and milestone closes
+      # always run it, so a release is never cut on an unexercised preset.
+      - name: Check whether the Swift preset is affected
+        id: swift-paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(src/languages/swift/|src/languages/registry\.ts|src/base/|src/cli/commands/setup|src/cli/generators/(agent-rules|misc|security)\.ts|src/cli/utils/(copy-preset|lockfile)\.ts|scripts/integration/|tooling/swift|\.github/workflows/ci\.yml)'; then
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Swift-relevant changes — skipping integration-swift"
+            echo "swift=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check for skip CI
         id: skip-check
         env:
@@ -305,7 +333,7 @@ jobs:
   integration-swift:
     runs-on: macos-latest
     needs: [check-skip]
-    if: needs.check-skip.outputs.should-skip != 'true'
+    if: needs.check-skip.outputs.should-skip != 'true' && needs.check-skip.outputs.swift == 'true'
     steps:
       - name: 📦 Checkout repository
         uses: actions/checkout@v7
