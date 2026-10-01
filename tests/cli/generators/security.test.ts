@@ -74,6 +74,7 @@ describe('generateDependabotConfig', () => {
 		expect(expression).toBeDefined()
 		expect(expression?.replace(/^ {10}/gm, '')).toBe(
 			[
+				"steps.loop.outcome == 'skipped' &&",
 				"steps.gate.outputs.safe == 'true' &&",
 				"(steps.metadata.outputs.dependency-group == 'dev-minor' ||",
 				"steps.metadata.outputs.package-ecosystem == 'github-actions') &&",
@@ -304,7 +305,7 @@ describe('findDependabotIgnoreRules', () => {
 // Run the shell against a stub `gh` that logs its calls.
 describe('the auto-merge hand-off to a human', () => {
 	async function runHandOff(env: Record<string, string>, existing = ''): Promise<string> {
-		const step = DEPENDABOT_AUTOMERGE_WORKFLOW.split(/^ {6}- name: Hand the PR/m)[1]
+		const step = DEPENDABOT_AUTOMERGE_WORKFLOW.split(/^ {6}- name: Hand the PR to a human/m)[1]
 		const body = step?.match(/ {8}run: \|\n([\s\S]*)$/)?.[1]
 		if (!body) throw new Error('could not extract the hand-off script from the workflow')
 		const dir = newTmpDir()
@@ -351,6 +352,17 @@ describe('the auto-merge hand-off to a human', () => {
 		const log = await runHandOff({ UPDATE_TYPE: 'version-update:semver-major' }, '111\n222')
 		expect(log).toMatch(/gh api -X PATCH repos\/o\/r\/issues\/comments\/111 /)
 		expect(log).not.toMatch(/gh pr comment/)
+	})
+})
+
+// #746: an ai-loop repo labels the PR for review and never auto-merges it.
+describe('the ai-loop hand-off', () => {
+	it('labels ai-review and skips the human hand-off', () => {
+		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(/if: hashFiles\('\.repo-ai\.json'\) != ''/)
+		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(/gh pr edit "\$PR_URL" --add-label ai-review/)
+		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(
+			/if: steps\.loop\.outcome == 'skipped' && steps\.merge\.outcome == 'skipped'/
+		)
 	})
 })
 

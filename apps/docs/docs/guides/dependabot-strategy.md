@@ -101,6 +101,18 @@ verify — edited in place on later runs rather than repeated.
 > auto-merge and protection off, so `doctor` keeps reporting them as drift. Make
 > the repo public or upgrade the plan to converge fully.
 
+### In a repo that runs the ai-loop
+
+A repo with a `.repo-ai.json` (it runs
+[repo-ai](https://rtorcato.github.io/repo-ai/)'s ai-loop) never auto-merges a
+Dependabot PR. The workflow labels every one `ai-review`, assigns the
+`agentUser` that file names, and stops there. The loop runs its two agent
+reviews and hands the PR to a human as `merge-ready`. A repo without that
+file keeps the auto-merge path above.
+
+`doctor` flags an ai-loop repo whose workflow predates this, and
+`fix dependabot` rewrites it.
+
 ## 3. Major bumps — batched, triaged, never auto-merged
 
 All majors arrive as a **single `major-updates` PR per ecosystem**, labeled

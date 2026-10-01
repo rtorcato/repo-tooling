@@ -274,6 +274,15 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				if (!automerge.includes("steps.merge.outcome == 'skipped'")) {
 					deltas.push('auto-merge workflow leaves declined PRs with no owner (#694)')
 				}
+				// #746: in a repo that runs the ai-loop, every Dependabot PR gets the
+				// loop's two agent reviews. A workflow without the hand-off still merges
+				// on green with no review at all.
+				if (
+					(await fs.pathExists(path.join(dir, '.repo-ai.json'))) &&
+					!automerge.includes("steps.loop.outcome == 'skipped'")
+				) {
+					deltas.push('auto-merge workflow merges without the ai-loop reviews (#746)')
+				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')
 			}

@@ -1058,6 +1058,23 @@ describe('doctor security checks', () => {
 		expect(dep?.detail).toMatch(/no owner/)
 	})
 
+	// #746: an ai-loop repo must route Dependabot PRs through the loop's reviews.
+	it('reports Dependabot drift when an ai-loop repo still auto-merges unreviewed', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const workflow = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		const legacy = (await fs.readFile(workflow, 'utf8')).replaceAll('steps.loop.outcome', 'x')
+		await fs.writeFile(workflow, legacy)
+		const dep = async () => (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		// Not a loop repo: the legacy workflow is still fine.
+		expect((await dep())?.status).toBe('ok')
+		await fs.writeJson(join(dir, '.repo-ai.json'), { agentUser: 'bot' })
+		expect((await dep())?.detail).toMatch(/without the ai-loop reviews/)
+		await generateDependabotConfig(dir)
+		expect((await dep())?.status).toBe('ok')
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

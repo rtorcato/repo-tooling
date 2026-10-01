@@ -192,6 +192,11 @@ export function dependabotIgnoreRules(content: string): string[] {
  * package hands its consumers. This repo had 32 such packages, and 13 of them
  * rode a single "dev-only" group PR. So the workflow resolves every bumped name
  * against the tracked manifests and stands down if any of them ships.
+ *
+ * **A repo that runs the ai-loop never auto-merges** (#746). Its \`.repo-ai.json\`
+ * is the signal: the workflow labels the PR \`ai-review\` (and assigns the
+ * \`agentUser\` it names) so the loop's two agent reviews run and a human merges.
+ * Repos without that file keep the auto-merge path above.
  */
 export const DEPENDABOT_AUTOMERGE_WORKFLOW = `name: Dependabot auto-merge
 
@@ -213,6 +218,24 @@ jobs:
           github-token: \${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/checkout@v7
+
+      # A repo that runs the ai-loop (it has a .repo-ai.json) reviews every
+      # Dependabot PR with two agents and hands it to a human as merge-ready, so
+      # nothing here may merge it (#746). Label it for the loop, assign the
+      # loop's agent user when the file names one, and stand down.
+      - name: Hand the PR to the ai-loop
+        id: loop
+        if: hashFiles('.repo-ai.json') != ''
+        env:
+          PR_URL: \${{ github.event.pull_request.html_url }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr edit "$PR_URL" --add-label ai-review
+          agent=$(jq -r '.agentUser // empty' .repo-ai.json 2>/dev/null || true)
+          if [ -n "$agent" ]; then
+            gh pr edit "$PR_URL" --add-assignee "$agent" || echo "::warning::could not assign $agent"
+          fi
 
       # The group name is Dependabot's opinion, not a safety property: a package
       # in both devDependencies and peerDependencies is classified "development"
@@ -264,6 +287,7 @@ jobs:
       - name: Auto-merge dev-dependency and CI action patch and minor updates
         id: merge
         if: |
+          steps.loop.outcome == 'skipped' &&
           steps.gate.outputs.safe == 'true' &&
           (steps.metadata.outputs.dependency-group == 'dev-minor' ||
           steps.metadata.outputs.package-ecosystem == 'github-actions') &&
@@ -278,7 +302,7 @@ jobs:
       # Actions log is not one (#694). Assign the repo owner and say why in a
       # single comment, edited in place on every later run rather than repeated.
       - name: Hand the PR to a human
-        if: steps.merge.outcome == 'skipped'
+        if: steps.loop.outcome == 'skipped' && steps.merge.outcome == 'skipped'
         env:
           PR_URL: \${{ github.event.pull_request.html_url }}
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
