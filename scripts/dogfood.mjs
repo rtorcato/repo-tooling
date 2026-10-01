@@ -20,6 +20,10 @@ const ACCEPTED = new Set([
 	// a `required_reviewers` list only a human can supply. Delete this line the
 	// moment that environment exists — that is the whole point of the check.
 	'Release gate',
+	// Live GitHub state, not code. Releases ship by closing a milestone (#740),
+	// so between "last issue closed" and "batch shipped" the check correctly
+	// warns — but failing CI on it turned every PR red in that window.
+	'Milestones',
 ])
 
 function runDoctor() {
