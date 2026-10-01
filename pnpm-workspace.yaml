@@ -8,6 +8,9 @@ allowBuilds:
   # binary itself arrives as an optional dep — so there's no real build to run.
   # Same call as core-js; esbuild/sharp below genuinely compile.
   unrs-resolver: false
+  # jest-haste-map (jest 30.5) pulls this in. Its prebuilt platform binaries arrive
+  # as optional deps, so the node-gyp fallback in its install script never runs.
+  '@parcel/watcher': false
   esbuild: true
   sharp: true
 
