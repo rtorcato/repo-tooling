@@ -34,7 +34,15 @@ export interface CiJob {
 /** The generated CI workflow's `name:` — the docs workflow's `workflow_run` must match it. */
 export const CI_WORKFLOW_NAME = '🚀 CI/CD Pipeline'
 
-const WORKFLOW_HEADER = `name: ${CI_WORKFLOW_NAME}
+/**
+ * Closing a milestone means "ship this batch" (#740). Only a workflow with a
+ * `release` job listens for it; anywhere else it would just re-run CI.
+ */
+const MILESTONE_TRIGGER = `  milestone:
+    types: [closed]
+`
+
+const workflowHeader = (release: boolean) => `name: ${CI_WORKFLOW_NAME}
 
 on:
   push:
@@ -42,7 +50,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-
+${release ? MILESTONE_TRIGGER : ''}
 concurrency:
   group: \${{ github.workflow }}-\${{ github.ref }}
   # Never cancel on main: a newer push would kill a release that is waiting on
@@ -87,7 +95,8 @@ ${job.steps}`
 
 /** Wrap language-supplied jobs in the shared workflow shell. */
 export function renderGitHubWorkflow(jobs: readonly CiJob[]): string {
-	return `${WORKFLOW_HEADER}${[CHECK_SKIP_JOB, ...jobs.map(renderJob)].join('\n\n')}\n`
+	const release = jobs.some((job) => job.id === 'release')
+	return `${workflowHeader(release)}${[CHECK_SKIP_JOB, ...jobs.map(renderJob)].join('\n\n')}\n`
 }
 
 /**

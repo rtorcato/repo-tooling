@@ -1,10 +1,17 @@
 # Releasing
 
-This package publishes to npm via [semantic-release](https://semantic-release.gitbook.io/) on every push to `main` whose commits warrant a release. The CI workflow lives in `.github/workflows/ci.yml` (`release` job).
+This package publishes to npm via [semantic-release](https://semantic-release.gitbook.io/) **on demand, not on every merge** (#740). The CI workflow lives in `.github/workflows/ci.yml` (`release` job).
 
 ## Release trigger
 
-Releases are driven by **conventional commit** messages on `main`:
+The `release` job runs only when:
+
+- **a milestone is closed**: closing it means "ship this batch", or
+- **the workflow is dispatched**: `gh workflow run ci.yml --ref main`, or the "Run workflow" button, for hotfixes and ad hoc releases.
+
+Either one releases everything merged since the last tag, in one run. Pushes and PRs run the checks only. Merging a burst of PRs no longer queues a release run per merge, each one stale as soon as the next merge landed.
+
+What gets released is decided by the **conventional commit** messages on `main` since the last tag:
 
 | Commit prefix | Release type |
 | --- | --- |

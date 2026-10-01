@@ -5,13 +5,16 @@ on:
     branches: [main, release, ci-testing]
   pull_request:
     branches: [main]
+  # Releases run only on demand (#740): a dispatch, or closing a milestone.
   workflow_dispatch:
-    # Allow manual triggers
+  milestone:
+    types: [closed]
 
-    # Prevent concurrent runs on same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: a newer push would kill a release that is waiting on
+  # approval or halfway through publishing.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Skip CI if commit message contains [skip ci] or [ci skip]
@@ -412,6 +415,7 @@ jobs:
       always() &&
       needs.check-skip.outputs.should-skip != 'true' &&
       github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'milestone') &&
       needs.dependencies.result == 'success' &&
       needs.lint.result == 'success' &&
       needs.typecheck.result == 'success' &&

@@ -10,15 +10,12 @@ import type { CiJob, GitLabSpec } from '../../base/ci.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 /**
- * Conventional-commit types that cut a release, mirroring the `releaseRules` in
- * tooling/semantic-release (a test keeps the two in step). `feat!:` and `fix!:`
- * start with these too, so breaking changes are covered.
+ * Release on demand, never per merge (#740): a run queued on every push to
+ * `main` went stale as soon as the next merge landed. A dispatch (hotfix, ad
+ * hoc) or a closed milestone ("ship this batch") releases everything merged
+ * since the last tag, still behind the `release` environment's approval.
  */
-export const RELEASE_TYPES = ['feat', 'fix', 'perf', 'refactor', 'revert', 'update']
-
-// Match only the START of the squash subject: the message carries the whole PR
-// body, so searching it matched PRs that merely mentioned `BREAKING CHANGE`.
-const RELEASE_IF = `github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (${RELEASE_TYPES.map((t) => `startsWith(github.event.head_commit.message, '${t}')`).join(' || ')}))`
+const RELEASE_IF = `github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'milestone')`
 
 /** Coverage is uploaded when Vitest is the test runner (it emits an lcov report). */
 export function usesCoverage(config: ProjectConfig): boolean {
@@ -107,6 +104,12 @@ export interface JobOptions {
 	scripts?: Record<string, string>
 	/** The package declares a `bin`, so CI smoke-tests the packed tarball (#693). */
 	bin?: boolean
+	/**
+	 * The `environment:` the existing ci.yml's release job declares. Carried into
+	 * a regenerated workflow so `fix github-actions` never strips the publish gate
+	 * that `fix release-environment` added (#740).
+	 */
+	releaseEnvironment?: string | null
 }
 
 /** `JobOptions.bin` for a real repo. */
@@ -266,7 +269,7 @@ ${attw}${publint}${packSmoke}
 			// Gate the publish on everything that ran before it.
 			needs: jobs.map((job) => job.id),
 			if: RELEASE_IF,
-			extra: `    permissions:
+			extra: `${opts.releaseEnvironment ? `    environment: ${opts.releaseEnvironment}\n` : ''}    permissions:
       contents: write
       issues: write
       pull-requests: write
@@ -319,8 +322,13 @@ ${attw}${publint}${packSmoke}
           npx semantic-release 2>&1 | tee release.log
           # semantic-release exits 0 when main moved on since this run started,
           # publishing nothing (#690). Say so instead of going quietly green.
+          # "No relevant changes" is a clean no-op, not this case.
           if grep -q "is behind the remote one" release.log; then
-            echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
+            if [ "\${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::warning::main moved on during this run; nothing was published. Run the workflow again from main's tip."
+            else
+              echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
+            fi
           fi`,
 		})
 	}

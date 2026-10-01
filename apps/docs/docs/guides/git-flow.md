@@ -17,8 +17,11 @@ except a green, reviewed PR — and the release bot.
 2. Open a PR into `main`. CI runs lint, typecheck, build, and tests.
 3. Get it green, then **squash-merge**. One conventional commit per change keeps
    history linear and lets `semantic-release` compute the next version.
-4. The push to `main` triggers `semantic-release`: it bumps the version, updates
-   `CHANGELOG.md`, tags, publishes to npm, and creates the GitHub release.
+4. Merging does **not** release. When a batch is ready, close its milestone (or
+   run `gh workflow run ci.yml --ref main` for a hotfix). After the `release`
+   environment's approval, `semantic-release` bumps the version, updates
+   `CHANGELOG.md`, tags, publishes to npm, and creates the GitHub release for
+   everything merged since the last tag.
 
 That's the whole loop. `main` is the trunk and the release branch at once.
 

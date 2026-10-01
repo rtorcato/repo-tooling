@@ -639,6 +639,25 @@ function withoutComments(body: string): string {
 		.join('\n')
 }
 
+/**
+ * The id of a publishing job a push can fire, or null (#740). A workflow on
+ * `push` whose publishing job is not gated to `workflow_dispatch` / `milestone`
+ * queues a release per merge, each stale once the next merge lands.
+ *
+ * ponytail: text heuristic over the job body, not an expression evaluator. A
+ * gate spelled some other way reads as push-triggered; good enough for drift.
+ */
+export function pushReleaseJob(yaml: string): string | null {
+	if (!/^[ \t]*push:/m.test(yaml)) return null
+	for (const [job, raw] of workflowJobs(yaml)) {
+		const body = withoutComments(raw)
+		if (!PUBLISH_COMMAND.test(body)) continue
+		const onDemand = /event_name == '(?:workflow_dispatch|milestone)'/.test(body)
+		if (!onDemand || /event_name == 'push'/.test(body)) return job
+	}
+	return null
+}
+
 /** `private: true` — nothing reaches a registry, so no gate is owed. */
 async function isPrivatePackage(dir: string): Promise<boolean> {
 	try {
