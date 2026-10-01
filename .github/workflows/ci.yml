@@ -397,6 +397,8 @@ jobs:
 
   # Release and publish
   release:
+    # The merge-to-npm gate: the run waits here for the required reviewer (#429).
+    environment: release
     runs-on: ubuntu-latest
     needs:
       [
