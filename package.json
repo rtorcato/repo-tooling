@@ -40,6 +40,7 @@
 		"coverage": "vitest run --coverage",
 		"verify": "pnpm run check && pnpm run typecheck && pnpm test --run && pnpm run build-cli",
 		"dogfood": "node scripts/dogfood.mjs",
+		"size": "size-limit",
 		"knip": "knip",
 		"commit": "cz",
 		"================================================": ""
