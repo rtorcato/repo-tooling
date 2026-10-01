@@ -67,7 +67,11 @@ under you, and Dependabot's `github-actions` ecosystem bumps the tag for you.
 ## Scaffolded workflows
 
 Every scaffold gets a `ci.yml` (lint / typecheck / test / build, and release for
-libraries) out of the box. Beyond that, repo-tooling ships **optional deploy
+libraries) out of the box. The `release` job runs only on `workflow_dispatch` or
+when a milestone is closed, never on a plain push to `main`. One approval then
+ships a whole batch of merges (#740). `doctor` reports a `ci.yml` whose publishing
+job still fires on push, and `fix github-actions` regenerates it, keeping the
+job's `environment:`. Beyond that, repo-tooling ships **optional deploy
 workflows** you add on demand — they're too deploy-target-specific to scaffold
 by default, so the setup wizard never prompts for them.
 

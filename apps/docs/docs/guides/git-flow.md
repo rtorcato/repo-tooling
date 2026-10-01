@@ -17,8 +17,11 @@ except a green, reviewed PR — and the release bot.
 2. Open a PR into `main`. CI runs lint, typecheck, build, and tests.
 3. Get it green, then **squash-merge**. One conventional commit per change keeps
    history linear and lets `semantic-release` compute the next version.
-4. The push to `main` triggers `semantic-release`: it bumps the version, updates
-   `CHANGELOG.md`, tags, publishes to npm, and creates the GitHub release.
+4. Merging does **not** release. When a batch is ready, close its milestone (or
+   run `gh workflow run ci.yml --ref main` for a hotfix). After the `release`
+   environment's approval, `semantic-release` bumps the version, updates
+   `CHANGELOG.md`, tags, publishes to npm, and creates the GitHub release for
+   everything merged since the last tag.
 
 That's the whole loop. `main` is the trunk and the release branch at once.
 
@@ -98,27 +101,31 @@ always go through a PR.
 
 ## Milestones
 
-A milestone is a **release gate, not a chore bucket**. Milestone an issue only if
-leaving it undone would block declaring that stage complete; refactors, CI,
-dependency bumps and docs typos get no milestone. Otherwise the percentage
-inverts — a `v1.0` milestone reads 80% because it is full of chores while the
-three items that actually define v1.0 stay open.
-
-Corollary: `ai-ready` and milestone-worthy are near-mutually-exclusive.
-`ai-ready` means mechanical and bounded; milestone-worthy means it shapes the
-public API, which is precisely what should not run unattended.
+A milestone is the **release unit**: the one open milestone is what ships next.
+`feat` and `fix` issues belong in it; refactors, CI, dependency bumps and docs
+ship with whatever release comes next and need no milestone. Milestones stay
+optional — a repo with none is reported as `optional-missing`, never a failure.
 
 `doctor` audits this as the `Milestones` check:
 
-| Finding | Why it matters |
-| --- | --- |
-| 100% complete but still open | "Open" stops meaning "in flight", so the milestone list carries no signal |
-| No issues at all | GitHub renders the bar as `closed / total`, so an empty milestone is a permanent 0% |
-| Titled `backlog` / `post-N` / `someday` | No completion criterion means it can never close — that is a label |
+| Finding | Status | Why it matters |
+| --- | --- | --- |
+| 100% complete but still open | drift | "Open" stops meaning "in flight", so the milestone list carries no signal |
+| No issues at all (when more than one is open) | drift | GitHub renders the bar as `closed / total`, so an empty milestone is a permanent 0%. The sole open milestone is exempt: it is the rolling one, waiting for work |
+| No open milestone | optional-missing | Nothing marks what ships next |
+| Titled `backlog` / `post-N` / `someday` | note | No completion criterion means it can never close — that is a label |
+| Open `feat`/`fix` issues with no milestone | warning | They will ship without being planned into a release |
+| Open milestone past its due date | warning | The plan and the calendar disagree |
+| Closed milestone with open issues | warning | Work was left behind when the release was cut |
+| More than one open milestone without a due date | warning | Which one ships next is unclear |
 
-`fix milestones` closes only the first case. It never deletes a milestone and
-never creates one, because both destroy or invent planning intent. A repo with
-no milestones at all is skipped — that is a legitimate choice.
+Warnings ride in the check's detail and never fail the run.
+
+`fix milestones` closes 100%-complete milestones, then, if none is left open,
+opens a rolling `next` milestone — so closing a release rolls the window
+forward. It never deletes a milestone. If a closed milestone already holds the
+title `next`, rename it to the version it shipped as and re-run. A bulk `fix`
+skips the `optional-missing` case; name the target to opt in.
 
 ## Single source of truth
 

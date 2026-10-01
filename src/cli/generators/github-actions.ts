@@ -1,6 +1,7 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 import { renderGitHubWorkflow } from '../../base/ci.js'
+import { jobEnvironment, workflowJobs } from '../../base/github-settings.js'
 import { githubJobs, usesCoverage } from '../../languages/js/ci.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
@@ -53,9 +54,11 @@ export async function generateGitHubActions(
 	// shared entry point would mean inventing a fake config to pass in. Both
 	// paths meet at renderGitHubWorkflow() in src/base/ci.ts, which is the seam
 	// that actually matters.
-	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin }))
 	const ciPath = path.join(workflowsDir, 'ci.yml')
 	const existing = (await fs.pathExists(ciPath)) ? await fs.readFile(ciPath, 'utf-8') : null
+	const releaseJob = existing ? workflowJobs(existing).get('release') : undefined
+	const releaseEnvironment = releaseJob ? jobEnvironment(releaseJob) : null
+	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin, releaseEnvironment }))
 	const filesWritten: string[] = []
 	if (overwrite || existing === null || existing === workflow) {
 		await fs.writeFile(ciPath, workflow)

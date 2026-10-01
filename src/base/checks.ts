@@ -10,6 +10,7 @@ import {
 } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
+import { pushReleaseJob } from './github-settings.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -192,9 +193,17 @@ export async function checkGitHubActions(
 		// is exactly the drift that loops (a bump here, a sync there, forever).
 		const ciPath = path.join(workflowsDir, 'ci.yml')
 		if (preset && (await fs.pathExists(ciPath))) {
+			const ci = await fs.readFile(ciPath, 'utf-8')
 			const ours = actionPins(preset)
 			const deltas: string[] = []
-			for (const [action, major] of actionPins(await fs.readFile(ciPath, 'utf-8'))) {
+			// The preset releases on dispatch / milestone close only (#740).
+			const pushJob = preset.includes("event_name == 'milestone'") ? pushReleaseJob(ci) : null
+			if (pushJob) {
+				deltas.push(
+					`\`${pushJob}\` publishes on push to main (preset releases on workflow_dispatch or a closed milestone)`
+				)
+			}
+			for (const [action, major] of actionPins(ci)) {
 				const expected = ours.get(action)
 				// Only the intersection is comparable — an action the repo runs but the
 				// preset never emits is the consumer's own business.
@@ -206,7 +215,7 @@ export async function checkGitHubActions(
 				return {
 					check: 'GitHub Actions',
 					status: 'drift',
-					detail: `ci.yml action pins disagree with the preset: ${deltas.join('; ')}`,
+					detail: `ci.yml disagrees with the preset: ${deltas.join('; ')}`,
 					hint: 'Run `npx @rtorcato/repo-tooling fix github-actions --diff` to see the delta before overwriting — a pin *ahead* of the preset means regenerating would downgrade it',
 				}
 			}
