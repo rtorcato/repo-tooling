@@ -103,12 +103,45 @@ export interface JobOptions {
 	 * `fix release-environment` added (#740).
 	 */
 	releaseEnvironment?: string | null
+	/**
+	 * The repo has `@commitlint/cli` installed. Undefined means the setup shape,
+	 * which installs it whenever `commitLint` is on.
+	 */
+	commitlint?: boolean
 }
 
 /** `JobOptions.bin` for a real repo. */
 export function hasBin(pkg: Record<string, unknown> | null): boolean {
 	return Boolean(pkg?.bin)
 }
+
+/** `JobOptions.commitlint` for a real repo; undefined without a package.json. */
+export function hasCommitlint(pkg: Record<string, unknown> | null): boolean | undefined {
+	if (!pkg) return undefined
+	const deps = {
+		...(pkg.dependencies as Record<string, string> | undefined),
+		...(pkg.devDependencies as Record<string, string> | undefined),
+	}
+	return '@commitlint/cli' in deps
+}
+
+/**
+ * On a PR, lint the title plus ` (#N)` — exactly the header a squash merge
+ * commits — so an over-long title fails before merge, not on main (#777). The
+ * title arrives through `env:`, never `${{ }}` inside `run:`: anyone opening a
+ * PR controls it. On a push, lint the commit that landed.
+ */
+const COMMITLINT_STEP = `      - name: 🔍 Validate commit messages
+        env:
+          EVENT: \${{ github.event_name }}
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            printf '%s (#%s)\\n' "$PR_TITLE" "$PR_NUMBER" | npx commitlint
+          else
+            git log -1 --pretty=format:"%s" | npx commitlint
+          fi`
 
 /**
  * `JobOptions.scripts` for a real repo. A package.json with no `scripts` block
@@ -173,6 +206,14 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
 	])
 	if (lintSteps) {
 		jobs.push({ id: 'lint', needs: ['dependencies'], steps: lintSteps })
+	}
+
+	if (config.commitLint && opts.commitlint !== false) {
+		jobs.push({
+			id: 'commitlint',
+			needs: ['dependencies'],
+			steps: `${SETUP_STEPS}\n\n${COMMITLINT_STEP}`,
+		})
 	}
 
 	if (hasTypeScript) {

@@ -5,6 +5,8 @@ on:
     branches: [main, release, ci-testing]
   pull_request:
     branches: [main]
+    # `edited` re-lints a retitled PR (#777).
+    types: [opened, synchronize, reopened, edited]
   # Releases live in release.yml (#753).
 
 concurrency:
@@ -129,7 +131,7 @@ jobs:
   commitlint:
     runs-on: ubuntu-latest
     needs: [dependencies, check-skip]
-    if: needs.check-skip.outputs.should-skip != 'true' && github.event_name == 'push'
+    if: needs.check-skip.outputs.should-skip != 'true'
     steps:
       - name: 📦 Checkout repository
         uses: actions/checkout@v7
@@ -152,14 +154,20 @@ jobs:
             node_modules
           key: ${{ needs.dependencies.outputs.cache-key }}
 
+      # On a PR, lint the title plus " (#N)" — exactly the header a squash merge
+      # commits — so an over-long title fails here, not on main (#777). The
+      # title goes through env:, never ${{ }} in run:, since the PR author
+      # controls it. On a push, lint the commit that landed.
       - name: 🔍 Validate commit messages
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # For push events, validate the latest commit
-            echo "Validating latest commit message..."
-            git log -1 --pretty=format:"%s" | npx commitlint
+          if [ "$EVENT" = "pull_request" ]; then
+            printf '%s (#%s)\n' "$PR_TITLE" "$PR_NUMBER" | npx commitlint
           else
-            echo "Skipping commitlint for non-push events"
+            git log -1 --pretty=format:"%s" | npx commitlint
           fi
 
   # Type checking

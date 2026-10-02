@@ -78,6 +78,15 @@ skipped and never fail the step.
 
 Every scaffold gets a `ci.yml` (lint / typecheck / test / build) out of the box,
 and a library that publishes with semantic-release also gets a `release.yml`.
+
+With commitlint on, `ci.yml` also has a `commitlint` job. On a push it lints the
+commit that landed. On a pull request it lints the **PR title as the future
+squash commit**, `<title> (#<number>)`, so a title that would push the merged
+header past 100 characters fails before merge rather than on `main` (#777). The
+workflow adds `edited` to its `pull_request` types so a retitled PR is
+re-checked, and the title reaches the shell through `env:`, never `${{ }}`
+inside `run:`, because whoever opens the PR controls it.
+
 The release runs only on `workflow_dispatch` or when a milestone is closed, never
 on a plain push to `main`. One approval then ships a whole batch of merges
 (#740). Since #753 it is its own workflow:
