@@ -56,13 +56,18 @@ jobs:
 /** The generated CI workflow's `name:` — the docs workflow's `workflow_run` must match it. */
 export const CI_WORKFLOW_NAME = '🚀 CI/CD Pipeline'
 
-const WORKFLOW_HEADER = `name: ${CI_WORKFLOW_NAME}
+/**
+ * A `commitlint` job lints the PR title, so a title edit must re-run it (#777).
+ * Only then: `edited` also fires on body edits, and re-running a pipeline that
+ * never reads the title over a description typo buys nothing.
+ */
+const workflowHeader = (lintsTitle: boolean) => `name: ${CI_WORKFLOW_NAME}
 
 on:
   push:
     branches: [main, release, develop]
   pull_request:
-    branches: [main]
+    branches: [main]${lintsTitle ? '\n    types: [opened, synchronize, reopened, edited]' : ''}
   workflow_dispatch:
 
 concurrency:
@@ -109,7 +114,8 @@ ${job.steps}`
 
 /** Wrap language-supplied jobs in the shared workflow shell. */
 export function renderGitHubWorkflow(jobs: readonly CiJob[]): string {
-	return `${WORKFLOW_HEADER}${[CHECK_SKIP_JOB, ...jobs.map(renderJob)].join('\n\n')}\n`
+	const header = workflowHeader(jobs.some((job) => job.id === 'commitlint'))
+	return `${header}${[CHECK_SKIP_JOB, ...jobs.map(renderJob)].join('\n\n')}\n`
 }
 
 /**

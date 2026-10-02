@@ -2,7 +2,13 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { renderGitHubWorkflow } from '../../base/ci.js'
-import { githubJobs, hasBin, renderReleaseWorkflow, scriptsOf } from '../../languages/js/ci.js'
+import {
+	githubJobs,
+	hasBin,
+	hasCommitlint,
+	renderReleaseWorkflow,
+	scriptsOf,
+} from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
 import {
 	checkNpmTrustedPublisher,
@@ -552,7 +558,11 @@ export async function runDoctor(
 			// Same `scripts` gating the fixer applies, or the workflow doctor
 			// compares against would reference steps the fixer never writes (#364).
 			presetWorkflow: renderGitHubWorkflow(
-				githubJobs(inferProjectConfig(pkg), { scripts: scriptsOf(pkg), bin: hasBin(pkg) })
+				githubJobs(inferProjectConfig(pkg), {
+					scripts: scriptsOf(pkg),
+					bin: hasBin(pkg),
+					commitlint: hasCommitlint(pkg),
+				})
 			),
 			presetRelease: renderReleaseWorkflow(inferProjectConfig(pkg), { scripts: scriptsOf(pkg) }),
 			language,

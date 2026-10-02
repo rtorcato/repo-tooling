@@ -31,7 +31,7 @@ import {
 	generateSizeLimitConfig,
 	generateVscodeExtensions,
 } from '../../cli/generators/misc.js'
-import { hasBin, scriptsOf } from './ci.js'
+import { hasBin, hasCommitlint, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
 import { usesPnpm } from './checks.js'
 import {
@@ -517,6 +517,7 @@ export const FIXERS: Fixer[] = [
 				// Only reference scripts this repo actually has (#364).
 				scripts: scriptsOf(pkg),
 				bin: hasBin(pkg),
+				commitlint: hasCommitlint(pkg),
 			})
 			// `pnpm/action-setup` is emitted without a `version:` input, so without
 			// this every job dies at setup with "No pnpm version is specified".

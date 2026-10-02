@@ -17,7 +17,10 @@ The preset enforces [Conventional Commits](https://www.conventionalcommits.org/)
 
 - `header-max-length`: **100** — the conventional-commits/semantic-release
   default. Keep PR titles ≤ 93 chars so GitHub's ` (#N)` squash suffix still
-  fits on the merged commit.
+  fits on the merged commit. The scaffolded `ci.yml`'s `commitlint` job checks
+  this for you: on a pull request it lints the title plus ` (#N)`, the header
+  the squash merge will commit (see
+  [GitHub Actions](./github-actions.md#scaffolded-workflows)).
 - `body-max-line-length` / `footer-max-line-length`: **off**. Machine-written
   commits don't wrap, and a `BREAKING CHANGE:` footer is the input
   semantic-release reads to cut a major — a length cap there is friction on the

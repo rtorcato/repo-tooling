@@ -8,6 +8,7 @@ on:
     branches: [main, release, develop]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 concurrency:
@@ -95,6 +96,42 @@ jobs:
 
       - name: 🧹 Check for unused files, exports, and dependencies
         run: pnpm knip
+
+  commitlint:
+    runs-on: ubuntu-latest
+    needs: [dependencies, check-skip]
+    if: needs.check-skip.outputs.should-skip != 'true'
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: 📦 Restore dependencies cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+          key: \${{ needs.dependencies.outputs.cache-key }}
+
+      - name: 🔍 Validate commit messages
+        env:
+          EVENT: \${{ github.event_name }}
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            printf '%s (#%s)\\n' "$PR_TITLE" "$PR_NUMBER" | npx commitlint
+          else
+            git log -1 --pretty=format:"%s" | npx commitlint
+          fi
 
   typecheck:
     runs-on: ubuntu-latest
