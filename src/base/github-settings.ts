@@ -660,6 +660,14 @@ export function pushReleaseJob(yaml: string): string | null {
 	return null
 }
 
+/** The id of the first job in this workflow that publishes, or null. */
+export function publishingJob(yaml: string): string | null {
+	for (const [job, raw] of workflowJobs(yaml)) {
+		if (PUBLISH_COMMAND.test(withoutComments(raw))) return job
+	}
+	return null
+}
+
 /** `private: true` — nothing reaches a registry, so no gate is owed. */
 async function isPrivatePackage(dir: string): Promise<boolean> {
 	try {

@@ -207,7 +207,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 
 | Target | Scaffolds |
 |---|---|
-| `github-actions` | `.github/workflows/ci.yml` (+ `codecov.yml`; Vitest jobs upload coverage). A `ci.yml` that no longer matches the preset is left as-is unless the finding being fixed is the `GitHub Actions` drift itself — your edits are never silently reverted |
+| `github-actions` | `.github/workflows/ci.yml` (+ `release.yml` for a semantic-release library, migrating a release job out of `ci.yml`; + `codecov.yml`; Vitest jobs upload coverage). A `ci.yml` that no longer matches the preset is left as-is unless the finding being fixed is the `GitHub Actions` drift itself — your edits are never silently reverted |
 | `gitlab-ci` | `.gitlab-ci.yml` (lint/typecheck/test/build mirrored from GitHub Actions) |
 | `dependabot` | `.github/dependabot.yml` (monthly, grouped: production-minor/dev-minor/major-updates) + the `dependabot-automerge.yml` workflow — see [Dependabot strategy](./dependabot-strategy.md) |
 | `renovate` | `renovate.json` (alternative to Dependabot) |

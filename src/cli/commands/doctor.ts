@@ -2,7 +2,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { renderGitHubWorkflow } from '../../base/ci.js'
-import { githubJobs, hasBin, scriptsOf } from '../../languages/js/ci.js'
+import { githubJobs, hasBin, renderReleaseWorkflow, scriptsOf } from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
 import {
 	checkNpmTrustedPublisher,
@@ -108,7 +108,13 @@ async function checkReleaseToken(dir: string): Promise<CheckResult> {
 		for (const f of files) {
 			if (!(f.endsWith('.yml') || f.endsWith('.yaml'))) continue
 			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
-			if (!/semantic-release/.test(content)) continue
+			// A comment runs nothing: this repo's docs.yml only *mentions*
+			// semantic-release, and sorts ahead of release.yml (#753).
+			const live = content
+				.split('\n')
+				.filter((l) => !l.trimStart().startsWith('#'))
+				.join('\n')
+			if (!/semantic-release/.test(live)) continue
 			if (/RELEASE_TOKEN/.test(content)) {
 				return {
 					check: 'Release token',
@@ -268,6 +274,8 @@ interface BaseCheckOptions {
 	 * with no CI generator — nothing to compare against.
 	 */
 	presetWorkflow: string | null
+	/** The release.yml the generator would render (#753); absent when nothing is released. */
+	presetRelease?: string | null
 	/** The root's detected language, so the monorepo notice can name what it skips (#317). */
 	language: DetectedLanguage
 	/** The module's `codeqlLanguages`; empty means CodeQL can't analyse it (#289). */
@@ -298,7 +306,7 @@ async function runBaseChecks(
 		results.push(await checkGitHooks(dir, opts.hooks))
 		results.push(await checkPrePushHook(dir, opts.hooks))
 	}
-	results.push(await checkGitHubActions(dir, opts.presetWorkflow))
+	results.push(await checkGitHubActions(dir, opts.presetWorkflow, opts.presetRelease ?? null))
 	results.push(await checkDependabot(dir))
 	results.push(await checkCodeQL(dir, opts.codeqlLanguages))
 	// GitHub repo-settings drift (branch protection, merge settings, workflow
@@ -496,6 +504,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 			presetWorkflow: renderGitHubWorkflow(
 				githubJobs(inferProjectConfig(pkg), { scripts: scriptsOf(pkg), bin: hasBin(pkg) })
 			),
+			presetRelease: renderReleaseWorkflow(inferProjectConfig(pkg), { scripts: scriptsOf(pkg) }),
 			language,
 			codeqlLanguages: languageModule.codeqlLanguages,
 		}))

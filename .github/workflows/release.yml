@@ -1,0 +1,89 @@
+name: 🚀 Release
+
+# Releases run only on demand (#740): a dispatch, or closing a milestone.
+# Split out of ci.yml (#753) so a waiting release never holds up CI, and so a
+# newer request can supersede it.
+on:
+  workflow_dispatch:
+  milestone:
+    types: [closed]
+
+# A waiting run has published nothing, so a newer request cancelling it is safe.
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  release:
+    # The merge-to-npm gate: the run waits here for the required reviewer (#429).
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # main's tip, not the event's SHA: the job starts after approval, and
+          # semantic-release refuses a checkout that main has moved past.
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0 # Fetch full history for semantic-release
+          # RELEASE_TOKEN is an admin PAT so semantic-release can push the
+          # version commit + tag to a protected main (github-actions[bot]
+          # can't bypass branch protection). Falls back to GITHUB_TOKEN.
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      # main's tip already passed full CI on its way in; this is the smoke check
+      # that what we publish builds and tests, not a second CI run.
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🏗️ Build CLI
+        run: pnpm run build-cli
+
+      - name: 🧪 Run tests
+        run: pnpm test --run
+
+      - name: 🔧 Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # OIDC trusted publishing needs npm CLI >= 11.5.1; Node 22 ships 10.x, so
+      # semantic-release's own OIDC token exchange succeeds but the `npm publish`
+      # it shells out to fails with ENEEDAUTH. Pinned to npm 11, never `latest`:
+      # a release job must not pull an unpinned tool.
+      - name: 📦 Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      - name: 🚀 Run semantic-release
+        # Publishes to npm via OIDC trusted publishing — no NPM_TOKEN. Requires
+        # the `id-token: write` permission above + a trusted publisher configured
+        # for the package on npmjs.com (Settings → Trusted Publisher, workflow
+        # release.yml).
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          npx semantic-release 2>&1 | tee release.log
+          # semantic-release exits 0 when main moved on since this run started,
+          # publishing nothing (#690). Say so instead of going quietly green.
+          if grep -q "is behind the remote one" release.log; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::warning::main moved on during this run; nothing was published. Run the workflow again."
+            else
+              echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
+            fi
+          fi

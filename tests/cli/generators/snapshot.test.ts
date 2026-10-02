@@ -44,6 +44,13 @@ describe('generator output snapshots', () => {
 		expect(content).toMatchSnapshot()
 	})
 
+	it('.github/workflows/release.yml (library)', async () => {
+		const dir = newTmpDir()
+		await generateGitHubActions(libConfig(), dir)
+		const content = await fs.readFile(join(dir, '.github/workflows/release.yml'), 'utf-8')
+		expect(content).toMatchSnapshot()
+	})
+
 	it('vitest.config.ts (node library)', async () => {
 		const dir = newTmpDir()
 		await generateVitestConfig(libConfig(), dir)

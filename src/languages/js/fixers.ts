@@ -9,7 +9,11 @@ import {
 	generateSemanticReleaseConfig,
 } from '../../cli/generators/build.js'
 import { generateHuskyConfig, generatePrePushHook } from '../../cli/generators/git.js'
-import { CI_WORKFLOW, generateGitHubActions } from '../../cli/generators/github-actions.js'
+import {
+	CI_WORKFLOW,
+	generateGitHubActions,
+	RELEASE_WORKFLOW,
+} from '../../cli/generators/github-actions.js'
 import { generateGitLabCI } from '../../cli/generators/gitlab-ci.js'
 import { GH_WORKFLOWS, generateGhWorkflow } from '../../cli/generators/github-workflows.js'
 import {
@@ -498,9 +502,10 @@ export const FIXERS: Fixer[] = [
 	},
 	{
 		target: 'github-actions',
-		description: 'Scaffold .github/workflows/ci.yml (+ codecov.yml when tests run)',
+		description:
+			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library, + codecov.yml when tests run); migrates a release job out of ci.yml',
 		appliesTo: ['GitHub Actions', 'Coverage upload', NPM_OIDC_CHECK],
-		outputs: [CI_WORKFLOW, 'codecov.yml', 'package.json (packageManager field)'],
+		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'codecov.yml', 'package.json (packageManager field)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg, result }) {
 			// Only a `GitHub Actions` finding means the user was shown that the

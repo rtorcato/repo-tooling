@@ -11,7 +11,7 @@ import {
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import { dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
-import { pushReleaseJob } from './github-settings.js'
+import { publishingJob, pushReleaseJob } from './github-settings.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -162,7 +162,9 @@ function actionPins(yaml: string): Map<string, string> {
  */
 export async function checkGitHubActions(
 	dir: string,
-	preset: string | null = null
+	preset: string | null = null,
+	/** The release.yml the generator would render, or null when this repo releases nothing. */
+	presetRelease: string | null = null
 ): Promise<CheckResult> {
 	const workflowsDir = path.join(dir, '.github', 'workflows')
 	if (!(await fs.pathExists(workflowsDir))) {
@@ -192,33 +194,53 @@ export async function checkGitHubActions(
 		// consuming repo is *expected* to add jobs and steps, so a byte diff is noise
 		// on every customized repo, while a pin major that disagrees with the preset
 		// is exactly the drift that loops (a bump here, a sync there, forever).
-		const ciPath = path.join(workflowsDir, 'ci.yml')
-		if (preset && (await fs.pathExists(ciPath))) {
-			const ci = await fs.readFile(ciPath, 'utf-8')
-			const ours = actionPins(preset)
-			const deltas: string[] = []
-			// The preset releases on dispatch / milestone close only (#740).
-			const pushJob = preset.includes("event_name == 'milestone'") ? pushReleaseJob(ci) : null
-			if (pushJob) {
+		const read = async (f: string) => {
+			const p = path.join(workflowsDir, f)
+			return (await fs.pathExists(p)) ? await fs.readFile(p, 'utf-8') : null
+		}
+		const deltas: string[] = []
+		/** Only the intersection is comparable — an action the preset never emits is the consumer's own business. */
+		const pinDeltas = (file: string, actual: string, expected: string) => {
+			const ours = actionPins(expected)
+			for (const [action, major] of actionPins(actual)) {
+				const want = ours.get(action)
+				if (want && want !== major)
+					deltas.push(`${file}: ${action}@v${major} (preset emits @v${want})`)
+			}
+		}
+		const ci = preset ? await read('ci.yml') : null
+		if (preset && ci !== null) {
+			// The preset publishes from release.yml, never from CI (#753).
+			const ciRelease = presetRelease ? publishingJob(ci) : null
+			if (ciRelease) {
 				deltas.push(
-					`\`${pushJob}\` publishes on push to main (preset releases on workflow_dispatch or a closed milestone)`
+					`ci.yml: \`${ciRelease}\` publishes from CI (preset releases from release.yml, where a newer request supersedes a waiting one)`
 				)
 			}
-			for (const [action, major] of actionPins(ci)) {
-				const expected = ours.get(action)
-				// Only the intersection is comparable — an action the repo runs but the
-				// preset never emits is the consumer's own business.
-				if (expected && expected !== major) {
-					deltas.push(`${action}@v${major} (preset emits @v${expected})`)
-				}
+			pinDeltas('ci.yml', ci, preset)
+		}
+		const release = presetRelease ? await read('release.yml') : null
+		if (presetRelease && release !== null) {
+			// The preset releases on dispatch / milestone close only (#740).
+			const pushJob = pushReleaseJob(release)
+			if (pushJob) {
+				deltas.push(
+					`release.yml: \`${pushJob}\` publishes on push to main (preset releases on workflow_dispatch or a closed milestone)`
+				)
 			}
-			if (deltas.length > 0) {
-				return {
-					check: 'GitHub Actions',
-					status: 'drift',
-					detail: `ci.yml disagrees with the preset: ${deltas.join('; ')}`,
-					hint: 'Run `npx @rtorcato/repo-tooling fix github-actions --diff` to see the delta before overwriting — a pin *ahead* of the preset means regenerating would downgrade it',
-				}
+			if (!/^[ \t]*cancel-in-progress:[ \t]*true\b/m.test(release)) {
+				deltas.push(
+					'release.yml: a newer release request does not supersede a waiting one (preset sets `cancel-in-progress: true`)'
+				)
+			}
+			pinDeltas('release.yml', release, presetRelease)
+		}
+		if (deltas.length > 0) {
+			return {
+				check: 'GitHub Actions',
+				status: 'drift',
+				detail: `workflows disagree with the preset: ${deltas.join('; ')}`,
+				hint: 'Run `npx @rtorcato/repo-tooling fix github-actions --diff` to see the delta before overwriting — a pin *ahead* of the preset means regenerating would downgrade it',
 			}
 		}
 

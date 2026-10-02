@@ -5,16 +5,12 @@ on:
     branches: [main, release, ci-testing]
   pull_request:
     branches: [main]
-  # Releases run only on demand (#740): a dispatch, or closing a milestone.
-  workflow_dispatch:
-  milestone:
-    types: [closed]
+  # Releases live in release.yml (#753).
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Never cancel on main: a newer push would kill a release that is waiting on
-  # approval or halfway through publishing.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Nothing here publishes any more (#753), so a newer push supersedes CI freely.
+  cancel-in-progress: true
 
 jobs:
   # Skip CI if commit message contains [skip ci] or [ci skip]
@@ -32,8 +28,8 @@ jobs:
 
       # The macOS Swift job is the slowest in the pipeline, so on a PR it runs
       # only when the diff can reach the swift-library preset: the Swift module
-      # and everything it imports. Pushes, dispatches and milestone closes
-      # always run it, so a release is never cut on an unexercised preset.
+      # and everything it imports. Pushes always run it, so main's tip — what a
+      # release publishes — is never an unexercised preset.
       - name: Check whether the Swift preset is affected
         id: swift-paths
         env:
@@ -422,89 +418,3 @@ jobs:
             README.md
             pnpm-lock.yaml
           retention-days: 7
-
-  # Release and publish
-  release:
-    # The merge-to-npm gate: the run waits here for the required reviewer (#429).
-    environment: release
-    runs-on: ubuntu-latest
-    needs:
-      [
-        dependencies,
-        lint,
-        typecheck,
-        test,
-        integration,
-        integration-no-dotfiles,
-        integration-swift,
-        build,
-        varcheck,
-        check-skip,
-      ]
-    if: |
-      always() &&
-      needs.check-skip.outputs.should-skip != 'true' &&
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'milestone') &&
-      needs.dependencies.result == 'success' &&
-      needs.lint.result == 'success' &&
-      needs.typecheck.result == 'success' &&
-      needs.test.result == 'success' &&
-      needs.integration.result == 'success' &&
-      needs.integration-no-dotfiles.result == 'success' &&
-      needs.integration-swift.result == 'success' &&
-      needs.build.result == 'success' &&
-      needs.varcheck.result == 'success'
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
-    steps:
-      - name: 📦 Checkout repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # Fetch full history for semantic-release
-          # RELEASE_TOKEN is an admin PAT so semantic-release can push the
-          # version commit + tag to a protected main (github-actions[bot]
-          # can't bypass branch protection). Falls back to GITHUB_TOKEN.
-          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: 📦 Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: 📦 Restore dependencies cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.pnpm-store
-            node_modules
-          key: ${{ needs.dependencies.outputs.cache-key }}
-
-      - name: 🔧 Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: 🏗️ Build CLI
-        run: pnpm run build-cli
-
-      # OIDC trusted publishing needs npm CLI >= 11.5.1; Node 22 ships 10.x, so
-      # semantic-release's own OIDC token exchange succeeds but the `npm publish`
-      # it shells out to fails with ENEEDAUTH. Upgrade npm so it can use the token.
-      - name: 📦 Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
-
-      - name: 🚀 Run semantic-release
-        # Publishes to npm via OIDC trusted publishing — no NPM_TOKEN. Requires
-        # the `id-token: write` permission above + a trusted publisher configured
-        # for the package on npmjs.com (Settings → Trusted Publisher, workflow ci.yml).
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-        run: npx semantic-release

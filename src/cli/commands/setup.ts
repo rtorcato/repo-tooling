@@ -709,7 +709,7 @@ export function npmPublishFor(config: ProjectConfig): NpmPublishGuide | null {
 		name: config.projectName,
 		owner: '<owner>',
 		repo: '<repo>',
-		file: 'ci.yml',
+		file: 'release.yml',
 		environment: null,
 	})
 }

@@ -199,7 +199,7 @@ describe('yourFunction', () => {
 
 Releases are automated using semantic-release:
 
-1. **Close a milestone, or dispatch CI:** merging to main does not release. Closing a milestone, or running `gh workflow run ci.yml --ref main`, releases everything merged since the last tag
+1. **Close a milestone, or dispatch the release:** merging to main does not release. Closing a milestone, or running `gh workflow run release.yml`, releases everything merged to main since the last tag; a newer request supersedes one still waiting for approval
 2. **Version calculation:** Based on conventional commit messages
 3. **Changelog generation:** Automatic based on commits
 4. **npm publication:** Automated via GitHub Actions
