@@ -1,7 +1,9 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 import { renderGitHubWorkflow } from '../../base/ci.js'
+import { FixerAbort } from '../../base/fixers.js'
 import {
+	customJobSteps,
 	jobEnvironment,
 	publishingJob,
 	removeWorkflowJob,
@@ -93,6 +95,17 @@ export async function generateGitHubActions(
 	const releaseJob = existing === null ? null : publishingJob(existing)
 	let ci = existing
 	if (existing !== null && releaseJob !== null && release) {
+		// release.yml is rendered from the template, so a step only the old job had
+		// would vanish with it. Refuse before writing anything, like dependabot's
+		// `ignore:` rules (#422): an unattended `fix --yes` walks past a warning (#771).
+		const custom = customJobSteps(existing, releaseJob, [release, workflow])
+		if (custom.length > 0) {
+			throw new FixerAbort(
+				'release-job-custom-steps',
+				`refusing to move \`${releaseJob}\` out of ${CI_WORKFLOW} — it has ${custom.length} step(s) the generated ${RELEASE_WORKFLOW} does not reproduce: ${custom.join(', ')}`,
+				`move those steps into ${RELEASE_WORKFLOW} and delete the \`${releaseJob}\` job from ${CI_WORKFLOW} by hand`
+			)
+		}
 		// A ci.yml that publishes is the drift being fixed, so move just that job
 		// out — every other job, trigger and comment stays as the repo wrote it
 		// (#761). Regenerating it from the preset took the repo's own jobs (and any

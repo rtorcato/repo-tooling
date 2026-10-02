@@ -85,8 +85,11 @@ on a plain push to `main`. One approval then ships a whole batch of merges
 - **A newer request supersedes a waiting one** (`concurrency: release`,
   `cancel-in-progress: true`). A run still waiting for approval has published
   nothing, so cancelling it is safe — and CI on `main` can now cancel freely too.
-- **It releases `main`'s tip.** The job checks out the default branch when it
-  starts, i.e. after approval, not the commit that triggered it.
+- **It releases the branch's tip.** The job checks out the branch when it
+  starts, i.e. after approval, not the commit that triggered it. A dispatch
+  releases the branch it was dispatched from, so dispatch from the prerelease
+  branch (e.g. `gh workflow run release.yml --ref beta`) to cut a prerelease. A
+  closed milestone releases the default branch.
 - **It does not re-run CI.** install → build → test, then semantic-release.
 - **To stop a release, reject it** at the environment approval. Don't cancel
   it: a cancel after approval can land after `semantic-release` has published,
@@ -111,7 +114,10 @@ it over in this order:
    ([`fix github-actions`](../guides/cli.md#available-targets)). It moves only
    the release job out of `ci.yml` and keeps every other job, trigger and
    comment. It drops a `needs:` the move empties, and keeps the job's
-   `environment:`. Review the diff before you commit it.
+   `environment:`. Review the diff before you commit it. If the release job
+   has steps the generated `release.yml` doesn't (a docs redeploy, a failure
+   notification), it refuses with `release-job-custom-steps` and writes
+   nothing; move those steps into `release.yml` by hand.
 3. **Re-point the npm trusted publisher.** On npmjs.com → package → Settings →
    Trusted Publisher, set the workflow to `release.yml` and the environment to
    `release`. Do this in the same sitting as merging step 2. Releases only run

@@ -753,6 +753,82 @@ export function pushReleaseJob(yaml: string): string | null {
 	return null
 }
 
+interface WorkflowStep {
+	name?: string
+	uses?: string
+	run?: string
+}
+
+/**
+ * The `steps:` of one job body (or of every job, given a whole workflow): each
+ * step's `name:`, `uses:` (version dropped) and `run:` (block form joined).
+ *
+ * ponytail: line surgery like `workflowJobs`, no YAML parser — enough to tell
+ * one step from another, not to read anything else about it.
+ */
+function workflowSteps(text: string): WorkflowStep[] {
+	const lines = text.split('\n')
+	const steps: WorkflowStep[] = []
+	for (let i = 0; i < lines.length; i++) {
+		if (!/^\s*steps:\s*$/.test(lines[i] ?? '')) continue
+		const keyIndent = indentOf(lines[i] ?? '')
+		let step: WorkflowStep | null = null
+		let itemIndent = -1
+		for (i++; i < lines.length; i++) {
+			const line = lines[i] ?? ''
+			if (isBlankOrComment(line)) continue
+			const indent = indentOf(line)
+			if (indent <= keyIndent) {
+				i--
+				break
+			}
+			if (itemIndent === -1) itemIndent = indent
+			let body = line.trim()
+			if (indent === itemIndent && body.startsWith('-')) {
+				step = {}
+				steps.push(step)
+				body = body.slice(1).trim()
+			} else if (indent !== itemIndent + 2) continue
+			const kv = /^(name|uses|run):\s*(.*)$/.exec(body)
+			if (!step || !kv) continue
+			const key = kv[1] as keyof WorkflowStep
+			let value = unquote((kv[2] ?? '').trim())
+			if (key === 'run' && /^[|>][-+]?$/.test(value)) {
+				const block: string[] = []
+				while (
+					i + 1 < lines.length &&
+					((lines[i + 1] ?? '').trim() === '' || indentOf(lines[i + 1] ?? '') > itemIndent + 2)
+				)
+					block.push((lines[++i] ?? '').trim())
+				value = block.join('\n').trim()
+			}
+			if (key === 'uses') value = value.replace(/@.*$/, '')
+			step[key] = value
+		}
+	}
+	return steps
+}
+
+/**
+ * The steps of `job` in `yaml` that none of `templates` reproduces (#771): a
+ * step whose `name:`, `uses:` action and `run:` command the templates all
+ * lack, and that does not publish. Matching on any one of the three lets a
+ * renamed install / build / test step count as the template's own. Labelled by
+ * name, else `uses:`, else `run:`.
+ */
+export function customJobSteps(yaml: string, job: string, templates: string[]): string[] {
+	const body = workflowJobs(yaml).get(job)
+	if (!body) return []
+	const known = templates.flatMap(workflowSteps)
+	const has = (key: keyof WorkflowStep, v?: string) =>
+		v !== undefined && known.some((s) => s[key] === v)
+	// The publish itself, however it is spelled, is the template's own last step.
+	return workflowSteps(body)
+		.filter((s) => !has('name', s.name) && !has('uses', s.uses) && !has('run', s.run))
+		.filter((s) => !PUBLISH_COMMAND.test(s.run ?? ''))
+		.map((s) => s.name ?? s.uses ?? s.run?.split('\n')[0] ?? '(empty step)')
+}
+
 /** The id of the first job in this workflow that publishes, or null. */
 export function publishingJob(yaml: string): string | null {
 	for (const [job, raw] of workflowJobs(yaml)) {
