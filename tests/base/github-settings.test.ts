@@ -103,6 +103,8 @@ interface GhOverrides {
 	environments?: GhResult
 	alerts?: GhResult
 	securityFixes?: GhResult
+	repoSecrets?: GhResult
+	releaseSecrets?: GhResult
 }
 
 const FIXES_ON = JSON.stringify({ enabled: true, paused: false })
@@ -122,6 +124,10 @@ function fakeGh(overrides: GhOverrides = {}): GhExec {
 		if (p?.includes('/rulesets/')) return overrides.rulesetDetail ?? ok('{}')
 		if (p?.endsWith('/rulesets')) return overrides.rulesets ?? ok('[]')
 		if (p?.endsWith('/environments')) return overrides.environments ?? ok(NO_ENVIRONMENTS)
+		if (p?.startsWith('repos/owner/repo/actions/secrets'))
+			return overrides.repoSecrets ?? fail('gh: (HTTP 403)')
+		if (p?.startsWith('repos/owner/repo/environments/release/secrets'))
+			return overrides.releaseSecrets ?? fail('gh: Not Found (HTTP 404)')
 		if (p?.endsWith('/vulnerability-alerts')) return overrides.alerts ?? ok('')
 		if (p?.endsWith('/automated-security-fixes')) return overrides.securityFixes ?? ok(FIXES_ON)
 		return fail('unexpected call')
@@ -135,7 +141,7 @@ describe('checkGitHubSettings — skip paths', () => {
 		const exec = fakeGh()
 		const results = await checkGitHubSettings(newTmpDir(), exec)
 		expect(exec).not.toHaveBeenCalled()
-		expect(results).toHaveLength(7)
+		expect(results).toHaveLength(8)
 		expect(results.every((r) => r.status === 'ok' && r.detail.includes('skipped'))).toBe(true)
 	})
 
@@ -156,7 +162,7 @@ describe('checkGitHubSettings — skip paths', () => {
 describe('checkGitHubSettings — compliant repo', () => {
 	it('reports all three ok when settings match the standard', async () => {
 		const results = await checkGitHubSettings(gitRepo(), fakeGh())
-		expect(results).toHaveLength(7)
+		expect(results).toHaveLength(8)
 		expect(results.every((r) => r.status === 'ok')).toBe(true)
 		expect(byName(results, 'Branch protection')?.detail).toContain('protected per standard')
 	})
@@ -398,6 +404,63 @@ jobs:
 			expect(r?.detail).toContain('could not read .github/workflows')
 			expect(r?.detail).not.toContain('not applicable')
 		}
+	})
+})
+
+describe('checkGitHubSettings — release secrets (#754)', () => {
+	function repoWithReleaseJob(): string {
+		const dir = gitRepo()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/ci.yml'),
+			`name: CI
+
+on: workflow_dispatch
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - run: npx semantic-release
+        env:
+          GITHUB_TOKEN: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+`
+		)
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		return dir
+	}
+	const secrets = (...names: string[]) =>
+		ok(JSON.stringify({ total_count: names.length, secrets: names.map((name) => ({ name })) }))
+	const check = (r: { check: string; status: string; hint?: string }[]) =>
+		r.find((x) => x.check === 'Release secrets')
+
+	it('drifts when the release job reads a repo-level secret', async () => {
+		const exec = fakeGh({ repoSecrets: secrets('RELEASE_TOKEN', 'CODECOV_TOKEN') })
+		const c = check(await checkGitHubSettings(repoWithReleaseJob(), exec))
+		expect(c?.status).toBe('drift')
+		expect(c?.hint).toContain('RELEASE_TOKEN')
+		expect(c?.hint).toContain('Settings → Environments → release')
+		expect(c?.hint).not.toContain('CODECOV_TOKEN')
+	})
+
+	it('is ok when the secret lives on the release environment', async () => {
+		const exec = fakeGh({
+			repoSecrets: secrets('CODECOV_TOKEN'),
+			releaseSecrets: secrets('RELEASE_TOKEN'),
+		})
+		expect(check(await checkGitHubSettings(repoWithReleaseJob(), exec))?.status).toBe('ok')
+	})
+
+	it('is optional-missing without admin access to list secrets', async () => {
+		const c = check(await checkGitHubSettings(repoWithReleaseJob(), fakeGh()))
+		expect(c?.status).toBe('optional-missing')
+		expect(c?.detail).toContain('needs admin')
+	})
+
+	it('does not read a 404 on repo secrets as "none set"', async () => {
+		const exec = fakeGh({ repoSecrets: fail('gh: Not Found (HTTP 404)') })
+		const c = check(await checkGitHubSettings(repoWithReleaseJob(), exec))
+		expect(c?.status).toBe('optional-missing')
 	})
 })
 
