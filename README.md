@@ -96,7 +96,7 @@ See the [Getting Started guide](https://docs.torcato.dev/repo-tooling/docs/guide
 Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
 
 ```yaml
-- uses: rtorcato/repo-tooling@v3.2.5
+- uses: rtorcato/repo-tooling@v5.4.1
 ```
 
 See the [GitHub Actions reference](https://docs.torcato.dev/repo-tooling/docs/reference/github-actions/#run-doctor-as-a-github-action) for its inputs and outputs.

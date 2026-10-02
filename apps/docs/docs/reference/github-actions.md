@@ -10,7 +10,7 @@ audit without hand-writing the step:
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: rtorcato/repo-tooling@v3.2.5
+- uses: rtorcato/repo-tooling@v5.4.1
 ```
 
 That fails the job when `doctor` finds drift or missing config — the same exit
@@ -27,7 +27,7 @@ Every finding becomes a job annotation regardless of `fail-on`, so `none` is the
 report-only mode for a repo adopting the audit before it's clean:
 
 ```yaml
-- uses: rtorcato/repo-tooling@v3.2.5
+- uses: rtorcato/repo-tooling@v5.4.1
   with:
     directory: packages/app
     fail-on: none
@@ -40,7 +40,7 @@ report-only mode for a repo adopting the audit before it's clean:
 | `json` | The full `doctor --json` payload — feed it to a PR comment or a report. |
 
 ```yaml
-- uses: rtorcato/repo-tooling@v3.2.5
+- uses: rtorcato/repo-tooling@v5.4.1
   id: doctor
   with:
     fail-on: none
@@ -49,10 +49,20 @@ report-only mode for a repo adopting the audit before it's clean:
 
 ### Versioning
 
-Pin an **exact release tag** (`@v3.2.5`), not a floating major. The action runs
-the npm package at the version recorded in the tag it was checked out from, so
-the git ref is the only pin — there's no second channel that can drift out from
-under you, and Dependabot's `github-actions` ecosystem bumps the tag for you.
+Pin an **exact release tag** (`@v5.4.1`), not a floating major. The action
+picks the CLI version from the ref you pinned (`GITHUB_ACTION_REF`, #759):
+
+- **A `v<semver>` tag runs that CLI version** — `@v5.4.1` runs CLI 5.4.1. The
+  git ref is the only pin, and Dependabot's `github-actions` ecosystem bumps
+  the tag for you.
+- **A branch or SHA pin runs `latest`.** A SHA pins the action's code, not the
+  CLI it runs.
+- **Tags before v5.4.1 ran CLI 3.11.0 whatever the tag said.** They read the
+  version from `package.json`, which is never bumped in git. Upgrade the pin to
+  v5.4.1 or later.
+
+The action runs `doctor --offline`, so checks that read live GitHub state are
+skipped and never fail the step.
 
 ### Notes
 
@@ -78,6 +88,9 @@ on a plain push to `main`. One approval then ships a whole batch of merges
 - **It releases `main`'s tip.** The job checks out the default branch when it
   starts, i.e. after approval, not the commit that triggered it.
 - **It does not re-run CI.** install → build → test, then semantic-release.
+- **To stop a release, reject it** at the environment approval. Don't cancel
+  it: a cancel after approval can land after `semantic-release` has published,
+  and then the release has happened anyway.
 
 `doctor` reports a release job still inside `ci.yml`, a `release.yml` without
 superseding concurrency, or one that fires on push. `fix github-actions` migrates
@@ -86,6 +99,32 @@ Re-point the npm trusted publisher's workflow filename to `release.yml` when you
 migrate, or OIDC publishing fails. Beyond that, repo-tooling ships **optional deploy
 workflows** you add on demand — they're too deploy-target-specific to scaffold
 by default, so the setup wizard never prompts for them.
+
+### Moving an existing repo to `release.yml`
+
+A repo scaffolded before #753 still releases from a job inside `ci.yml`. Move
+it over in this order:
+
+1. **Bump `@rtorcato/repo-tooling`** to a release that contains #763 (v5.4.2 or
+   later).
+2. **Run `npx @rtorcato/repo-tooling fix github-actions --yes`**
+   ([`fix github-actions`](../guides/cli.md#available-targets)). It moves only
+   the release job out of `ci.yml` and keeps every other job, trigger and
+   comment. It drops a `needs:` the move empties, and keeps the job's
+   `environment:`. Review the diff before you commit it.
+3. **Re-point the npm trusted publisher.** On npmjs.com → package → Settings →
+   Trusted Publisher, set the workflow to `release.yml` and the environment to
+   `release`. Do this in the same sitting as merging step 2. Releases only run
+   when dispatched, so there's no window as long as you don't release in
+   between.
+4. **Move release secrets to the environment.** Secrets such as
+   `RELEASE_TOKEN` go from repo secrets to `release` environment secrets.
+   `doctor`'s `Release secrets` check
+   ([#754](https://github.com/rtorcato/repo-tooling/issues/754)) flags any left
+   at repo level.
+5. **Dispatch the first release** with `gh workflow run release.yml --ref main`
+   and approve it. After one successful OIDC publish, you can optionally set
+   npm's Publishing access to "disallow bypass 2fa tokens".
 
 ### Why `ci.yml` is generated, not a reusable workflow
 
