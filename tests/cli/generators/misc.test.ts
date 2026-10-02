@@ -11,6 +11,7 @@ import {
 	generateNvmrc,
 	generateSizeLimitConfig,
 	generateVscodeExtensions,
+	pnpmSetupNeedsVersion,
 	recommendedExtensions,
 } from '../../../src/cli/generators/misc.js'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
@@ -326,5 +327,46 @@ describe('ensurePackageManager', () => {
 
 	it('reports no-package-json rather than creating one', async () => {
 		expect(await ensurePackageManager(newTmpDir(), '11.20.0')).toBe('no-package-json')
+	})
+})
+
+// #779: packageManager is only needed when pnpm/action-setup has no `version:`.
+describe('pnpmSetupNeedsVersion', () => {
+	const withWorkflow = async (steps: string) => {
+		const dir = newTmpDir()
+		await fs.outputFile(
+			join(dir, '.github/workflows/ci.yml'),
+			`name: CI\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n${steps}`
+		)
+		return dir
+	}
+
+	it('is false with no workflows', async () => {
+		expect(await pnpmSetupNeedsVersion(newTmpDir())).toBe(false)
+	})
+
+	it('is true when pnpm/action-setup has no version input', async () => {
+		const dir = await withWorkflow(
+			'      - name: Setup pnpm\n        uses: pnpm/action-setup@v6\n      - run: pnpm test\n'
+		)
+		expect(await pnpmSetupNeedsVersion(dir)).toBe(true)
+	})
+
+	it('is false when pnpm/action-setup has a version input', async () => {
+		const dir = await withWorkflow(
+			'      - uses: pnpm/action-setup@v6\n        with:\n          version: 11\n      - run: pnpm test\n'
+		)
+		expect(await pnpmSetupNeedsVersion(dir)).toBe(false)
+	})
+
+	it('ignores a version input on a later step', async () => {
+		const dir = await withWorkflow(
+			'      - uses: pnpm/action-setup@v6\n      - uses: actions/setup-node@v7\n        with:\n          version: 22\n'
+		)
+		expect(await pnpmSetupNeedsVersion(dir)).toBe(true)
+	})
+
+	it('is false when no workflow uses pnpm/action-setup', async () => {
+		expect(await pnpmSetupNeedsVersion(await withWorkflow('      - run: npm test\n'))).toBe(false)
 	})
 })

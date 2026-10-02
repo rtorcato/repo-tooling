@@ -248,6 +248,35 @@ export function detectPnpmVersion(): string | null {
 }
 
 /**
+ * True when some workflow runs `pnpm/action-setup` with no `version:` input —
+ * the only case where the action needs `packageManager` to resolve pnpm (#779).
+ * A step runs from its `- ` line to the next line indented no deeper.
+ */
+export async function pnpmSetupNeedsVersion(targetDir: string): Promise<boolean> {
+	const dir = path.join(targetDir, '.github', 'workflows')
+	if (!(await fs.pathExists(dir))) return false
+	for (const f of await fs.readdir(dir)) {
+		if (!/\.ya?ml$/.test(f)) continue
+		const lines = (await fs.readFile(path.join(dir, f), 'utf-8')).split('\n')
+		const at = (i: number) => lines[i] ?? ''
+		for (let i = 0; i < lines.length; i++) {
+			if (!/^\s*(-\s+)?uses:\s*['"]?pnpm\/action-setup@/.test(at(i))) continue
+			let start = i
+			while (start > 0 && !/^\s*-\s/.test(at(start))) start--
+			const indent = at(start).search(/\S/)
+			let hasVersion = false
+			for (let j = start + 1; j < lines.length; j++) {
+				if (at(j).trim() === '') continue
+				if (at(j).search(/\S/) <= indent) break
+				if (/^\s*version:/.test(at(j))) hasVersion = true
+			}
+			if (!hasVersion) return true
+		}
+	}
+	return false
+}
+
+/**
  * Pin `packageManager` so `pnpm/action-setup` has a version to resolve (#364).
  *
  * The generated workflow uses `pnpm/action-setup` with no `version:` input,
