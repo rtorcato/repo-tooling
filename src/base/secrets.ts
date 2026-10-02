@@ -106,7 +106,8 @@ async function listNames(gh: GhExec, endpoint: string): Promise<Set<string> | nu
 	}
 }
 
-const CHECK = 'Repository secrets'
+export const SECRETS_CHECK = 'Repository secrets'
+const CHECK = SECRETS_CHECK
 const skip = (why: string): CheckResult => ({
 	check: CHECK,
 	status: 'ok',

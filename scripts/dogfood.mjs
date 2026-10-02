@@ -14,15 +14,13 @@ const ACCEPTED = new Set([
 	'Vitest', // vitest.config.mjs imports the local ./tooling source, not the export
 	'Commitlint', // commitlint.config.mjs re-exports the local ./tooling source
 	'semantic-release', // release.config.mjs extends the local ./tooling source
-	// Live GitHub state, not code. Releases ship by closing a milestone (#740),
-	// so between "last issue closed" and "batch shipped" the check correctly
-	// warns — but failing CI on it turned every PR red in that window.
-	'Milestones',
 ])
 
+// --offline (#755): checks that read live GitHub state (milestones, settings,
+// secrets) depend on timing and on which account runs them, so they never gate CI.
 function runDoctor() {
 	try {
-		return execFileSync('node', ['./dist/cli/index.js', 'doctor', '--json'], {
+		return execFileSync('node', ['./dist/cli/index.js', 'doctor', '--json', '--offline'], {
 			env: { ...process.env, REPO_TOOLING_ALLOW_SELF: '1' },
 			encoding: 'utf8',
 		})

@@ -67,6 +67,7 @@ Audits an existing project against the presets and reports drift.
 npx @rtorcato/repo-tooling doctor              # current dir
 npx @rtorcato/repo-tooling doctor -d ./app     # specific dir
 npx @rtorcato/repo-tooling doctor --json       # machine-readable output
+npx @rtorcato/repo-tooling doctor --offline    # skip checks that read live GitHub state
 ```
 
 Each row reports one of:
@@ -77,6 +78,11 @@ Each row reports one of:
 | `drift` | Config exists but has diverged from the preset |
 | `missing` | Config required but not found |
 | `not configured` | Optional tool not present in the project |
+| `skipped` | Not run — `--offline` skips checks that read live GitHub state |
+
+### `--offline` for CI gates
+
+Some checks read live GitHub state over `gh`: branch protection, merge and security settings, the release environment, repository secrets, and milestones. Their result depends on timing (a milestone at 100% before it is closed) and on who runs them (a token without admin access can't read security settings). Pass `--offline` whenever `doctor` gates CI. Those checks then report `skipped` and never fail the run. Plain `doctor` still runs them.
 
 ### What gets checked
 

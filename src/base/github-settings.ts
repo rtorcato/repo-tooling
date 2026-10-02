@@ -86,7 +86,7 @@ export const RELEASE_GATE_CHECK = 'Release gate'
 export const RELEASE_ENV_CHECK = 'Release environment'
 export const RELEASE_SECRETS_CHECK = 'Release secrets'
 const SECURITY_UPDATES_CHECK = 'Security updates'
-const CHECK_NAMES = [
+export const GITHUB_SETTINGS_CHECKS = [
 	'Branch protection',
 	'Merge settings',
 	'Workflow permissions',
@@ -126,7 +126,11 @@ const CODE_SCANNING_RULESET_BODY = JSON.stringify({
 
 /** All three checks as an `ok` skip — keeps them out of next-steps and exit code. */
 function skipAll(reason: string): CheckResult[] {
-	return CHECK_NAMES.map((check) => ({ check, status: 'ok', detail: `skipped — ${reason}` }))
+	return GITHUB_SETTINGS_CHECKS.map((check) => ({
+		check,
+		status: 'ok',
+		detail: `skipped — ${reason}`,
+	}))
 }
 
 function skip(check: string, reason: string): CheckResult {

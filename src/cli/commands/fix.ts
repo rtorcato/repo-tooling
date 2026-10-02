@@ -629,7 +629,9 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 	// `declared` is a deviation the lockfile records on purpose (#558) — a bulk
 	// fix must not "repair" it. A targeted `fix <target>` still can: naming the
 	// fixer is the same explicit override the declined-in-lock path gets.
-	const fixable = results.filter((r) => r.status !== 'ok' && r.status !== 'declared')
+	const fixable = results.filter(
+		(r) => r.status !== 'ok' && r.status !== 'declared' && r.status !== 'skipped'
+	)
 	if (fixable.length === 0) {
 		if (json) return emitJson(null)
 		console.log(chalk.green('\n✅ All checks pass — nothing to fix\n'))
