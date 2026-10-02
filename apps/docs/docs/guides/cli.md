@@ -82,7 +82,7 @@ Each row reports one of:
 
 ### `--offline` for CI gates
 
-Some checks read live GitHub state over `gh`: branch protection, merge and security settings, the release environment, repository secrets, and milestones. Their result depends on timing (a milestone at 100% before it is closed) and on who runs them (a token without admin access can't read security settings). Pass `--offline` whenever `doctor` gates CI. Those checks then report `skipped` and never fail the run. Plain `doctor` still runs them.
+Some checks read live GitHub state over `gh`: branch protection, merge and security settings, the release environment, repository secrets, and milestones. Their result depends on timing (a milestone at 100% before it is closed) and on who runs them (a token without admin access can't read security settings). Pass `--offline` whenever `doctor` gates CI. Those checks then report `skipped` and never fail the run. Plain `doctor` still runs them. The composite action (`uses: rtorcato/repo-tooling@vX.Y.Z`) passes `--offline` for you.
 
 ### What gets checked
 

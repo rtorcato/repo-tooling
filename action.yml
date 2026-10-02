@@ -5,9 +5,11 @@
 # for something `npx` does in seconds. It also keeps the action running on the
 # host filesystem, so no volume-mount dance to reach the checkout.
 #
-# The npm version is derived from this action's own checkout rather than
-# floating on `@latest`, so `uses: rtorcato/repo-tooling@v3.2.5` runs CLI 3.2.5.
-# The git ref is the pin; there is nothing else to keep in sync.
+# The npm version comes from the git ref the caller pinned (GITHUB_ACTION_REF):
+# `uses: rtorcato/repo-tooling@v5.4.0` runs CLI 5.4.0. Any other ref — a branch,
+# a SHA, or `uses: ./` (empty ref) — runs `latest`. Known limit: a SHA pin does
+# not pin the CLI. package.json is not a source: its `version` is never bumped
+# in git (semantic-release runs without @semantic-release/git).
 name: repo-tooling doctor
 description: Audit a repo against @rtorcato/repo-tooling presets and fail on drift.
 author: Richard Torcato
@@ -53,7 +55,16 @@ runs:
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
       run: |
         set -euo pipefail
-        version="$(node -p "require('$GITHUB_ACTION_PATH/package.json').version")"
+        ref="${GITHUB_ACTION_REF:-}"
+        if [[ "$ref" =~ ^v([0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$ ]]; then
+          version="${BASH_REMATCH[1]}"
+        else
+          version=latest
+        fi
+        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$|^latest$ ]]; then
+          echo "::error::refusing CLI version '$version'"
+          exit 1
+        fi
         report="$RUNNER_TEMP/repo-tooling-doctor.json"
 
         # Resolve the target to an absolute path, then run npx from outside the
@@ -71,7 +82,7 @@ runs:
         # so decide from the report rather than letting `set -e` end the step.
         status=0
         npx --yes "@rtorcato/repo-tooling@$version" doctor \
-          --directory "$target" --json >"$report" || status=$?
+          --directory "$target" --json --offline >"$report" || status=$?
         if [ ! -s "$report" ]; then
           echo "::error::repo-tooling doctor produced no JSON (exit $status)"
           exit 1
