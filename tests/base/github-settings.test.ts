@@ -11,6 +11,7 @@ import {
 	type GhResult,
 	jobEnvironment,
 	releaseUsesGitPlugin,
+	removeWorkflowJob,
 	workflowJobs,
 } from '../../src/base/github-settings.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
@@ -1030,5 +1031,45 @@ ${env ? `    environment: ${env}\n` : ''}    steps:
 		const { exec, puts } = applyGh()
 		expect(await applyReleaseEnvironment(gitRepo(), exec)).toEqual([])
 		expect(puts).toHaveLength(0)
+	})
+})
+
+describe('removeWorkflowJob (#761)', () => {
+	it('prunes needs: lists but not a same-named branch or a trigger another job uses', () => {
+		const yaml = `on:
+  push:
+    branches:
+      - release
+  milestone:
+    types: [closed]
+jobs:
+  a:
+    needs:
+      - b
+      - release
+    if: github.event_name == 'milestone'
+  b:
+    runs-on: x
+  release:
+    if: github.event_name == 'milestone'
+`
+		expect(removeWorkflowJob(yaml, 'release')).toBe(`on:
+  push:
+    branches:
+      - release
+  milestone:
+    types: [closed]
+jobs:
+  a:
+    needs:
+      - b
+    if: github.event_name == 'milestone'
+  b:
+    runs-on: x
+`)
+	})
+
+	it('returns the input untouched when the job is absent', () => {
+		expect(removeWorkflowJob('jobs:\n  a:\n    x: 1\n', 'release')).toBe('jobs:\n  a:\n    x: 1\n')
 	})
 })

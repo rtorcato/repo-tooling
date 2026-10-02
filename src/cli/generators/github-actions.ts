@@ -1,7 +1,12 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 import { renderGitHubWorkflow } from '../../base/ci.js'
-import { jobEnvironment, publishingJob, workflowJobs } from '../../base/github-settings.js'
+import {
+	jobEnvironment,
+	publishingJob,
+	removeWorkflowJob,
+	workflowJobs,
+} from '../../base/github-settings.js'
 import {
 	githubJobs,
 	RELEASE_WORKFLOW,
@@ -77,20 +82,30 @@ export async function generateGitHubActions(
 	const existingRelease = await readIfExists(releasePath)
 	const filesWritten: string[] = []
 
-	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin }))
-	let ci = existing
-	if (overwrite || existing === null || existing === workflow) {
-		await fs.writeFile(ciPath, workflow)
-		filesWritten.push(CI_WORKFLOW)
-		ci = workflow
-	}
-
 	// The release lives in its own workflow (#753). Migrating a pre-#753 ci.yml
 	// carries its release job's `environment:` over, so the publish gate that
 	// `fix release-environment` added survives. Never written while ci.yml still
 	// publishes — two release paths would race each other to npm.
 	const releaseEnvironment = releaseEnvironmentOf(existingRelease) ?? releaseEnvironmentOf(existing)
 	const release = renderReleaseWorkflow(config, { scripts, releaseEnvironment })
+
+	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin }))
+	const releaseJob = existing === null ? null : publishingJob(existing)
+	let ci = existing
+	if (existing !== null && releaseJob !== null && release) {
+		// A ci.yml that publishes is the drift being fixed, so move just that job
+		// out — every other job, trigger and comment stays as the repo wrote it
+		// (#761). Regenerating it from the preset took the repo's own jobs (and any
+		// required check named after one) down with the release job.
+		ci = removeWorkflowJob(existing, releaseJob)
+		await fs.writeFile(ciPath, ci)
+		filesWritten.push(CI_WORKFLOW)
+	} else if (overwrite || existing === null || existing === workflow) {
+		await fs.writeFile(ciPath, workflow)
+		filesWritten.push(CI_WORKFLOW)
+		ci = workflow
+	}
+
 	const ciPublishes = ci !== null && publishingJob(ci) !== null
 	if (
 		release &&
@@ -102,9 +117,11 @@ export async function generateGitHubActions(
 	}
 
 	// codecov.yml is the CI's coverage-upload companion — emit it alongside ci.yml
-	// whenever the workflow uploads coverage, so the codecov badge isn't red.
-	if (usesCoverage(config)) {
-		await fs.writeFile(path.join(targetDir, 'codecov.yml'), CODECOV_YML)
+	// whenever the workflow uploads coverage, so the codecov badge isn't red. An
+	// existing one is the repo's own coverage policy — never overwritten (#761).
+	const codecovPath = path.join(targetDir, 'codecov.yml')
+	if (usesCoverage(config) && !(await fs.pathExists(codecovPath))) {
+		await fs.writeFile(codecovPath, CODECOV_YML)
 		filesWritten.push('codecov.yml')
 	}
 	return filesWritten
