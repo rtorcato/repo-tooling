@@ -34,7 +34,10 @@ standard repo-tooling sets up, and each piece of that has its own `fix` target:
   reviews** (`fix github-settings`). The loop's reviewers approve with labels,
   so a required human approval would deadlock every PR it opens.
 - **A `release` environment with required reviewers** (`fix release-environment`),
-  so a merge never reaches npm without a person approving it.
+  so a merge never reaches npm without a person approving it. Keep the secrets
+  the publishing job reads, such as `RELEASE_TOKEN`, as environment secrets on
+  `release`. A repository secret can be read by any job, so it isn't protected
+  by that approval. `doctor` reports this as **Release secrets**.
 - **Worktree dependency links** in `.claude/settings.json` (`fix ai`), so each
   agent's worktree builds without a fresh install.
 - **Nothing in `.repo-tooling.json`**: repo-ai keeps its own settings in

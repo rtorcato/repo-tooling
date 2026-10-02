@@ -84,6 +84,7 @@ export const GITHUB_STANDARD = {
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
 export const RELEASE_GATE_CHECK = 'Release gate'
 export const RELEASE_ENV_CHECK = 'Release environment'
+export const RELEASE_SECRETS_CHECK = 'Release secrets'
 const SECURITY_UPDATES_CHECK = 'Security updates'
 const CHECK_NAMES = [
 	'Branch protection',
@@ -93,6 +94,7 @@ const CHECK_NAMES = [
 	CODE_SCANNING_CHECK,
 	RELEASE_GATE_CHECK,
 	RELEASE_ENV_CHECK,
+	RELEASE_SECRETS_CHECK,
 ] as const
 
 // Recommended CodeQL alert thresholds — GitHub's UI defaults. This is the
@@ -673,6 +675,8 @@ interface PublishJob {
 	job: string
 	/** The `environment:` the job declares, or null. */
 	environment: string | null
+	/** `secrets.NAME` the job references, GITHUB_TOKEN excluded. */
+	secrets: string[]
 }
 
 /**
@@ -694,7 +698,11 @@ async function findPublishJob(dir: string): Promise<PublishJob | null | 'skip'> 
 			for (const [job, raw] of workflowJobs(content)) {
 				const body = withoutComments(raw)
 				if (PUBLISH_COMMAND.test(body)) {
-					return { file: f, job, environment: jobEnvironment(body) }
+					const secrets = new Set(
+						[...body.matchAll(/secrets\.([A-Za-z_]\w*)/g)].map((m) => m[1] as string)
+					)
+					secrets.delete('GITHUB_TOKEN')
+					return { file: f, job, environment: jobEnvironment(body), secrets: [...secrets] }
 				}
 			}
 		}
@@ -754,24 +762,30 @@ async function checkReleaseGate(
 	gh: GhExec,
 	nwo: string,
 	dir: string
-): Promise<[CheckResult, CheckResult]> {
+): Promise<[CheckResult, CheckResult, CheckResult]> {
 	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
 	if (publish === 'skip') {
 		const reason = 'could not read .github/workflows'
-		return [skip(RELEASE_GATE_CHECK, reason), skip(RELEASE_ENV_CHECK, reason)]
+		return [
+			skip(RELEASE_GATE_CHECK, reason),
+			skip(RELEASE_ENV_CHECK, reason),
+			skip(RELEASE_SECRETS_CHECK, reason),
+		]
 	}
 	if (!publish) {
 		const detail = 'not applicable — no workflow job publishes to a registry'
 		return [
 			{ check: RELEASE_GATE_CHECK, status: 'ok', detail },
 			{ check: RELEASE_ENV_CHECK, status: 'ok', detail },
+			{ check: RELEASE_SECRETS_CHECK, status: 'ok', detail },
 		]
 	}
 
+	const secrets = await checkReleaseSecrets(gh, nwo, publish)
 	const envs = await readEnvironments(gh, nwo)
 	if (envs === 'skip') {
 		const reason = 'could not read environments'
-		return [skip(RELEASE_GATE_CHECK, reason), skip(RELEASE_ENV_CHECK, reason)]
+		return [skip(RELEASE_GATE_CHECK, reason), skip(RELEASE_ENV_CHECK, reason), secrets]
 	}
 
 	const named = publish.environment
@@ -838,7 +852,81 @@ async function checkReleaseGate(
 		}
 	}
 
-	return [gate, environment]
+	return [gate, environment, secrets]
+}
+
+/**
+ * Secret names at one scope. Null when unreadable; `'not-found'` on a 404,
+ * which only means "absent" once another call has proved admin access.
+ */
+async function readSecretNames(
+	gh: GhExec,
+	endpoint: string
+): Promise<Set<string> | 'not-found' | null> {
+	const r = await gh(['api', `${endpoint}?per_page=100`])
+	if (!r.ok) return /404|not found/i.test(r.stderr) ? 'not-found' : null
+	try {
+		const d = JSON.parse(r.stdout) as { secrets?: Array<{ name?: string }> }
+		return new Set((d.secrets ?? []).flatMap((s) => (s.name ? [s.name] : [])))
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Secrets the publishing job reads belong on the `release` environment, not at
+ * repo level (#754). A repo secret is readable by every job in every workflow,
+ * so an admin PAT stored there walks around the required reviewer — the one
+ * human-only step in a release.
+ *
+ * Listing secrets needs admin; without it the result is `optional-missing`,
+ * which never moves the exit code, so CI's GITHUB_TOKEN can't fail on it. No
+ * fixer: secret values can't be read back, so moving one is manual.
+ */
+async function checkReleaseSecrets(
+	gh: GhExec,
+	nwo: string,
+	publish: PublishJob
+): Promise<CheckResult> {
+	const check = RELEASE_SECRETS_CHECK
+	const where = `${publish.file} \`${publish.job}\``
+	if (publish.secrets.length === 0) {
+		return { check, status: 'ok', detail: `${where} references no secrets` }
+	}
+	const unverified: CheckResult = {
+		check,
+		status: 'optional-missing',
+		detail: 'could not verify — listing secrets needs admin access',
+	}
+	// A non-admin can get a 404 here, so only a real listing proves access.
+	const repo = await readSecretNames(gh, `repos/${nwo}/actions/secrets`)
+	if (!(repo instanceof Set)) return unverified
+	const listed = await readSecretNames(
+		gh,
+		`repos/${nwo}/environments/${RELEASE_ENVIRONMENT}/secrets`
+	)
+	if (listed === null) return unverified
+	// Access is proved above, so a 404 means no `release` environment: holds nothing.
+	const env = listed === 'not-found' ? new Set<string>() : listed
+
+	const exposed = publish.secrets.filter((n) => repo.has(n) && !env.has(n))
+	if (exposed.length === 0) {
+		return {
+			check,
+			status: 'ok',
+			detail: `no secret ${where} reads is a repo secret outside \`${RELEASE_ENVIRONMENT}\``,
+		}
+	}
+	const names = exposed.join(', ')
+	const commands = exposed
+		.map((n) => `gh secret set ${n} --env ${RELEASE_ENVIRONMENT} && gh secret delete ${n}`)
+		.join('; ')
+	return {
+		check,
+		status: 'drift',
+		detail: `${names} (read by ${where}) is a repo secret — every job in every workflow can read it, so the \`${RELEASE_ENVIRONMENT}\` environment's required reviewer does not guard it`,
+		hint: `Move ${names} to the \`${RELEASE_ENVIRONMENT}\` environment by hand (secret values can't be read back): Settings → Environments → ${RELEASE_ENVIRONMENT} → Environment secrets → Add secret with the value, then delete it under Settings → Secrets and variables → Actions → Repository secrets. Or: ${commands}`,
+	}
 }
 
 // --- Fixer side (#138): apply the standard via gh api ---------------------

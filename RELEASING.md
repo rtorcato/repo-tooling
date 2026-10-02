@@ -61,6 +61,21 @@ Configured at **Settings → Secrets and variables → Actions**.
 | `NPM_TOKEN` | npm authentication for `npm publish` | See "Rotating NPM_TOKEN" below |
 | `GITHUB_TOKEN` | Tagging, GitHub Releases, PR comments | Auto-provided by Actions; no action needed |
 
+### Release secrets belong on the `release` environment
+
+Store any secret the publishing job reads (an admin PAT such as
+`RELEASE_TOKEN`, an `NPM_TOKEN`) as an **environment secret** on `release`
+(Settings → Environments → release → Environment secrets), not as a repository
+secret. Every job in every workflow can read a repository secret, which gets
+around the `release` environment's required reviewer, the only step in a release
+that needs a person. `doctor`'s **Release secrets** check reports a publishing-job
+secret that is set at repo level and not on `release` as `drift`. Listing
+secrets needs admin, so without admin the check reports `optional-missing` and
+leaves the exit code alone. It has no fixer because secret values can't be read
+back. Re-enter the value on the environment
+(`gh secret set NAME --env release`), then delete the repo secret
+(`gh secret delete NAME`).
+
 The `release` job also requests `id-token: write` so OIDC can be used if the package is configured as a Trusted Publisher (see below) — otherwise it falls back to `NPM_TOKEN`.
 
 ## Rotating NPM_TOKEN

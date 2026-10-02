@@ -74,6 +74,8 @@ describe('perl fixers', () => {
 			'Monorepo',
 			'Git identity',
 			'Git author history',
+			// #754: secret values can't be read back, so moving one is manual.
+			'Release secrets',
 			'Repository secrets',
 			'README badges',
 			'Coverage upload',
