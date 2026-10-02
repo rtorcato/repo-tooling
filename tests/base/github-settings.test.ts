@@ -1069,6 +1069,35 @@ jobs:
 `)
 	})
 
+	it('drops a needs: the removal empties, in every form (#763)', () => {
+		const job = (needs: string) => `jobs:
+  a:
+${needs}
+    runs-on: x
+  release:
+    runs-on: x
+`
+		const bare = 'jobs:\n  a:\n    runs-on: x\n'
+		expect(removeWorkflowJob(job('    needs:\n      - release'), 'release')).toBe(bare)
+		expect(removeWorkflowJob(job('    needs: [release]'), 'release')).toBe(bare)
+		expect(removeWorkflowJob(job('    needs: release'), 'release')).toBe(bare)
+		expect(removeWorkflowJob(job("    needs: ['release']"), 'release')).toBe(bare)
+		expect(removeWorkflowJob(job('    needs: [build, release]'), 'release')).toBe(
+			'jobs:\n  a:\n    needs: [build]\n    runs-on: x\n'
+		)
+		// Block form as the job's last key, emptied at end of file.
+		expect(
+			removeWorkflowJob(
+				'jobs:\n  release:\n    x: 1\n  a:\n    needs:\n      - release\n',
+				'release'
+			)
+		).toBe('jobs:\n  a:\n')
+		// A bare needs: the removal didn't empty is not ours to touch.
+		expect(removeWorkflowJob('jobs:\n  a:\n    needs:\n  release:\n    x: 1\n', 'release')).toBe(
+			'jobs:\n  a:\n    needs:\n'
+		)
+	})
+
 	it('returns the input untouched when the job is absent', () => {
 		expect(removeWorkflowJob('jobs:\n  a:\n    x: 1\n', 'release')).toBe('jobs:\n  a:\n    x: 1\n')
 	})

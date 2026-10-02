@@ -642,24 +642,38 @@ export function removeWorkflowJob(yaml: string, id: string): string {
 	}
 
 	const named = (s: string) => unquote(s.trim()) === id
-	// Indent of the `needs:` key whose block list we are inside, if any.
-	let needsBlock: number | null = null
-	lines = lines.flatMap((line) => {
-		if (needsBlock !== null && line.trim() !== '' && indentOf(line) <= needsBlock) {
-			needsBlock = null
+	// The block-form `needs:` we are inside, if any: its key's indent, its index
+	// in `out`, and whether an item was dropped / kept — a key whose every item
+	// named the job goes too, or Actions sees a bare `needs:` (#763).
+	let block: { indent: number; at: number; dropped: boolean; kept: boolean } | null = null
+	const out: string[] = []
+	const closeBlock = () => {
+		if (block?.dropped && !block.kept) out.splice(block.at, 1)
+		block = null
+	}
+	for (const line of lines) {
+		if (block && line.trim() !== '' && indentOf(line) <= block.indent) closeBlock()
+		if (/^\s*needs:\s*$/.test(line)) {
+			block = { indent: indentOf(line), at: out.length, dropped: false, kept: false }
 		}
-		if (/^\s*needs:\s*$/.test(line)) needsBlock = indentOf(line)
-		const item = needsBlock !== null ? /^\s*-\s*(\S+)\s*$/.exec(line) : null
-		if (item && named(item[1] ?? '')) return []
+		const item = block ? /^\s*-\s*(\S+)\s*$/.exec(line) : null
+		if (block && item) {
+			if (named(item[1] ?? '')) {
+				block.dropped = true
+				continue
+			}
+			block.kept = true
+		}
 		const scalar = /^\s*needs:\s*([^\s[]\S*)\s*$/.exec(line)
-		if (scalar && named(scalar[1] ?? '')) return []
+		if (scalar && named(scalar[1] ?? '')) continue
 		const flow = /^(\s*needs:\s*)\[(.*)\]\s*$/.exec(line)
-		if (!flow) return [line]
-		const all = (flow[2] ?? '').split(',').map((s) => s.trim())
+		const all = flow ? (flow[2] ?? '').split(',').map((s) => s.trim()) : []
 		const keep = all.filter((s) => !named(s))
-		if (keep.length === all.length) return [line]
-		return keep.length ? [`${flow[1]}[${keep.join(', ')}]`] : []
-	})
+		if (!flow || keep.length === all.length) out.push(line)
+		else if (keep.length) out.push(`${flow[1]}[${keep.join(', ')}]`)
+	}
+	closeBlock()
+	lines = out
 
 	for (const event of ['workflow_dispatch', 'milestone']) {
 		if (!removed.includes(event)) continue
