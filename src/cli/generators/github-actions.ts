@@ -3,10 +3,11 @@ import path from 'node:path'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { FixerAbort } from '../../base/fixers.js'
 import {
-	customJobSteps,
 	jobEnvironment,
+	migrateReleaseJob,
 	publishingJob,
 	removeWorkflowJob,
+	semanticReleaseJob,
 	workflowJobs,
 } from '../../base/github-settings.js'
 import {
@@ -92,27 +93,35 @@ export async function generateGitHubActions(
 	const release = renderReleaseWorkflow(config, { scripts, releaseEnvironment })
 
 	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin }))
-	const releaseJob = existing === null ? null : publishingJob(existing)
+	const releaseJob = existing === null ? null : semanticReleaseJob(existing)
 	let ci = existing
+	let releaseYml = release
 	if (existing !== null && releaseJob !== null && release) {
-		// release.yml is rendered from the template, so a step only the old job had
-		// would vanish with it. Refuse before writing anything, like dependabot's
-		// `ignore:` rules (#422): an unattended `fix --yes` walks past a warning (#771).
-		const custom = customJobSteps(existing, releaseJob, [release, workflow])
-		if (custom.length > 0) {
+		// The job moves as is, so every repo's own steps survive (#775) — rendering
+		// release.yml from the template dropped them (#771). Only a `needs.` the
+		// rewrite can't resolve refuses, before anything is written (#422).
+		const moved = migrateReleaseJob(existing, releaseJob)
+		if (moved && moved.needs.length > 0) {
 			throw new FixerAbort(
-				'release-job-custom-steps',
-				`refusing to move \`${releaseJob}\` out of ${CI_WORKFLOW} — it has ${custom.length} step(s) the generated ${RELEASE_WORKFLOW} does not reproduce: ${custom.join(', ')}`,
-				`move those steps into ${RELEASE_WORKFLOW} and delete the \`${releaseJob}\` job from ${CI_WORKFLOW} by hand`
+				'release-job-needs',
+				`refusing to move \`${releaseJob}\` out of ${CI_WORKFLOW} — ${RELEASE_WORKFLOW} has no other job to read \`needs.\` from: ${moved.needs.join(', ')}`,
+				`remove those \`needs.\` references from \`${releaseJob}\`, then re-run`
 			)
 		}
-		// A ci.yml that publishes is the drift being fixed, so move just that job
-		// out — every other job, trigger and comment stays as the repo wrote it
-		// (#761). Regenerating it from the preset took the repo's own jobs (and any
-		// required check named after one) down with the release job.
-		ci = removeWorkflowJob(existing, releaseJob)
-		await fs.writeFile(ciPath, ci)
-		filesWritten.push(CI_WORKFLOW)
+		// A release.yml already there is the repo's own; moving onto it would
+		// clobber it, so both stay put unless the caller opted to overwrite.
+		if (moved && (overwrite || existingRelease === null)) {
+			releaseYml = moved.release
+			// Move just that job out — every other job, trigger and comment stays as
+			// the repo wrote it (#761). Regenerating ci.yml from the preset took the
+			// repo's own jobs (and any required check named after one) down with it.
+			ci = removeWorkflowJob(existing, releaseJob)
+			await fs.writeFile(ciPath, ci)
+			filesWritten.push(CI_WORKFLOW)
+		}
+	} else if (existing !== null && publishingJob(existing) !== null) {
+		// Changesets or Release Please publishing from ci.yml is the repo's own
+		// release flow, not drift: regenerating ci.yml would delete it (#775).
 	} else if (overwrite || existing === null || existing === workflow) {
 		await fs.writeFile(ciPath, workflow)
 		filesWritten.push(CI_WORKFLOW)
@@ -121,11 +130,11 @@ export async function generateGitHubActions(
 
 	const ciPublishes = ci !== null && publishingJob(ci) !== null
 	if (
-		release &&
+		releaseYml &&
 		!ciPublishes &&
 		(overwrite || existingRelease === null || existingRelease === release)
 	) {
-		await fs.writeFile(releasePath, release)
+		await fs.writeFile(releasePath, releaseYml)
 		filesWritten.push(RELEASE_WORKFLOW)
 	}
 

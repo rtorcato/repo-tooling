@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      x: ${{ steps.out.outputs.x }}
+    steps:
+      - id: out
+        run: echo "x=1" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 📝 Stamp the build
+        run: echo "${{ needs.build.outputs.x }}"
+      - run: npx semantic-release

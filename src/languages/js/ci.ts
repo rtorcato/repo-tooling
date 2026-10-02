@@ -6,7 +6,7 @@
  * pnpm-store cache, the `pnpm <script>` commands. The shell around it lives in
  * `src/base/ci.ts` and is shared with Swift/Perl/Python (#287/#289/#290).
  */
-import type { CiJob, GitLabSpec } from '../../base/ci.js'
+import { type CiJob, type GitLabSpec, RELEASE_WORKFLOW_HEADER } from '../../base/ci.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 /** Coverage is uploaded when Vitest is the test runner (it emits an lcov report). */
@@ -290,22 +290,7 @@ export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = 
         run: pnpm test
 `
 			: ''
-	return `name: 🚀 Release
-
-# On demand only, never per merge (#740): a dispatch (hotfix, ad hoc) or a
-# closed milestone ("ship this batch").
-on:
-  workflow_dispatch:
-  milestone:
-    types: [closed]
-
-# A newer request supersedes an older one still waiting for approval (#753).
-concurrency:
-  group: release
-  cancel-in-progress: true
-
-jobs:
-  release:
+	return `${RELEASE_WORKFLOW_HEADER}  release:
 ${opts.releaseEnvironment ? `    environment: ${opts.releaseEnvironment}\n` : ''}    runs-on: ubuntu-latest
     permissions:
       contents: write

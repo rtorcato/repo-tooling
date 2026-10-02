@@ -78,12 +78,12 @@ describe('doctor on the release layout (#753)', () => {
 		expect(r.hint).toContain('fix github-actions --diff')
 	})
 
-	it('names the release job steps to move by hand (#771)', async () => {
-		const ci = `${preset}\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx semantic-release\n      - name: 📘 Redeploy docs\n        run: gh workflow run docs.yml\n`
+	it('names the steps whose `needs.` blocks the move (#775)', async () => {
+		const ci = `${preset}\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx semantic-release\n      - name: 📘 Redeploy docs\n        run: echo \${{ needs.build.outputs.x }}\n`
 		const r = await setup({ 'ci.yml': ci })
 		expect(r.status).toBe('drift')
 		expect(r.hint).toContain('📘 Redeploy docs')
-		expect(r.hint).toContain('into release.yml by hand')
+		expect(r.hint).toContain('needs.')
 	})
 
 	it('flags a release.yml that does not supersede a waiting run', async () => {
