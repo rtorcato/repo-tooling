@@ -112,7 +112,7 @@ A fixer may also **refuse** — the target file holds something the generator ca
 - Conventional commits enforced via commitlint; header max 100 chars, body/footer line length unenforced
 - Biome for lint + format (run via `pnpm run check`, i.e. `biome check .` over the whole repo — the same script this package emits to consumers)
 - Tests live alongside source in `tests/`; vitest with no separate config
-- semantic-release runs on `workflow_dispatch` or a closed milestone, never on a plain push to `main` (#740); `fix:` → patch, `feat:` → minor, `chore:` / `docs:` → no release
+- semantic-release runs from `release.yml` on `workflow_dispatch` or a closed milestone, never on a plain push to `main` (#740, #753); `fix:` → patch, `feat:` → minor, `chore:` / `docs:` → no release
 
 ## Pointers
 

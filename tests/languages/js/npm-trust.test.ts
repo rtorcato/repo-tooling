@@ -230,8 +230,8 @@ describe('setup npm publish guidance', () => {
 			projectType: 'library',
 			semanticRelease: true,
 		} as ProjectConfig)
-		expect(g?.workflowFilename).toBe('ci.yml')
-		expect(g?.command).toContain('npm trust github my-lib --file ci.yml')
+		expect(g?.workflowFilename).toBe('release.yml')
+		expect(g?.command).toContain('npm trust github my-lib --file release.yml')
 		expect(JSON.stringify(g)).not.toMatch(/NPM_TOKEN/)
 		expect(
 			npmPublishFor({ projectType: 'web-app', semanticRelease: true } as ProjectConfig)

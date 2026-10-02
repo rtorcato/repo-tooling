@@ -1518,6 +1518,21 @@ describe('nextStepSuggestions', () => {
 		expect(rt?.status).toBe('ok')
 	})
 
+	it('ignores a workflow that only mentions semantic-release in a comment', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const wf = join(dir, '.github', 'workflows')
+		// docs.yml sorts ahead of release.yml, so a comment there used to win.
+		await fs.outputFile(join(wf, 'docs.yml'), '# rebuild after semantic-release\njobs: {}\n')
+		await fs.outputFile(
+			join(wf, 'release.yml'),
+			'jobs:\n  release:\n    steps:\n      - run: npx semantic-release\n        env:\n          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}\n'
+		)
+
+		const rt = (await runDoctor(dir)).find((r) => r.check === 'Release token')
+		expect(rt?.status).toBe('ok')
+	})
+
 	it('flags a release workflow still authenticating npm publish with NPM_TOKEN', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

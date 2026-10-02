@@ -9,14 +9,6 @@
 import type { CiJob, GitLabSpec } from '../../base/ci.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
-/**
- * Release on demand, never per merge (#740): a run queued on every push to
- * `main` went stale as soon as the next merge landed. A dispatch (hotfix, ad
- * hoc) or a closed milestone ("ship this batch") releases everything merged
- * since the last tag, still behind the `release` environment's approval.
- */
-const RELEASE_IF = `github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'milestone')`
-
 /** Coverage is uploaded when Vitest is the test runner (it emits an lcov report). */
 export function usesCoverage(config: ProjectConfig): boolean {
 	return config.testing.framework === 'vitest'
@@ -105,9 +97,10 @@ export interface JobOptions {
 	/** The package declares a `bin`, so CI smoke-tests the packed tarball (#693). */
 	bin?: boolean
 	/**
-	 * The `environment:` the existing ci.yml's release job declares. Carried into
-	 * a regenerated workflow so `fix github-actions` never strips the publish gate
-	 * that `fix release-environment` added (#740).
+	 * The `environment:` the existing release job declares — in release.yml, or
+	 * in a pre-#753 ci.yml being migrated. Carried into the regenerated release
+	 * workflow so `fix github-actions` never strips the publish gate that
+	 * `fix release-environment` added (#740).
 	 */
 	releaseEnvironment?: string | null
 }
@@ -152,9 +145,8 @@ function jobSteps(steps: (string | null)[]): string | null {
 }
 
 /**
- * The GitHub Actions jobs for a JS repo, in workflow order. The `release` job
- * needs the ids of everything that ran before it, so the list is assembled
- * rather than filtered from a fixed shape.
+ * The GitHub Actions CI jobs for a JS repo, in workflow order. The release is
+ * not one of them — it is its own workflow, `renderReleaseWorkflow` (#753).
  */
 export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[] {
 	const hasTypeScript = config.typescript.enabled
@@ -263,20 +255,68 @@ ${attw}${publint}${packSmoke}
 		})
 	}
 
-	if (isLibrary && config.semanticRelease) {
-		jobs.push({
-			id: 'release',
-			// Gate the publish on everything that ran before it.
-			needs: jobs.map((job) => job.id),
-			if: RELEASE_IF,
-			extra: `${opts.releaseEnvironment ? `    environment: ${opts.releaseEnvironment}\n` : ''}    permissions:
+	return jobs
+}
+
+/** Where the release lives (#753) — its own workflow, so its concurrency is its own. */
+export const RELEASE_WORKFLOW = '.github/workflows/release.yml'
+
+/**
+ * The release workflow for a library that publishes with semantic-release, or
+ * null when nothing is released.
+ *
+ * Split out of ci.yml (#753): there, a release waiting on approval held up the
+ * push runs behind it, and approving it late released a stale checkout that
+ * semantic-release refused ("behind remote"). Here a newer request supersedes
+ * a waiting one — which has published nothing yet — and the job checks out
+ * the default branch's tip when it starts, i.e. after approval. It runs only
+ * install → build → test: the commit already passed full CI on its way to main.
+ */
+export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = {}): string | null {
+	if (config.projectType !== 'library' || !config.semanticRelease) return null
+	const build =
+		buildsSomething(config, opts) && hasScript(opts, 'build')
+			? `
+      - name: 🏗️ Build project
+        run: pnpm build
+`
+			: ''
+	const test =
+		config.testing.framework !== 'none' && hasScript(opts, 'test')
+			? `
+      - name: 🧪 Run tests
+        run: pnpm test
+`
+			: ''
+	return `name: 🚀 Release
+
+# On demand only, never per merge (#740): a dispatch (hotfix, ad hoc) or a
+# closed milestone ("ship this batch").
+on:
+  workflow_dispatch:
+  milestone:
+    types: [closed]
+
+# A newer request supersedes an older one still waiting for approval (#753).
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  release:
+${opts.releaseEnvironment ? `    environment: ${opts.releaseEnvironment}\n` : ''}    runs-on: ubuntu-latest
+    permissions:
       contents: write
       issues: write
       pull-requests: write
-      id-token: write`,
-			steps: `      - name: 📦 Checkout repository
+      id-token: write
+    steps:
+      - name: 📦 Checkout repository
         uses: actions/checkout@v7
         with:
+          # The tip, not the event's SHA: the job starts after approval, and
+          # semantic-release refuses a checkout that main has moved past.
+          ref: \${{ github.event.repository.default_branch }}
           fetch-depth: 0
           # RELEASE_TOKEN (admin PAT) lets semantic-release push the version
           # commit + tag to a protected main; GITHUB_TOKEN can't bypass branch
@@ -292,14 +332,9 @@ ${attw}${publint}${packSmoke}
       - name: 📦 Setup pnpm
         uses: pnpm/action-setup@v6
 
-      - name: 📦 Restore dependencies cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.pnpm-store
-            node_modules
-          key: \${{ needs.dependencies.outputs.cache-key }}
-
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+${build}${test}
       - name: 🔧 Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
@@ -314,7 +349,8 @@ ${attw}${publint}${packSmoke}
       - name: 🚀 Run semantic-release
         # Publishes to npm via OIDC trusted publishing — no NPM_TOKEN. Requires
         # the \`id-token: write\` permission above + a trusted publisher configured
-        # for the package on npmjs.com (Settings → Trusted Publisher).
+        # for the package on npmjs.com (Settings → Trusted Publisher, workflow
+        # release.yml).
         env:
           GITHUB_TOKEN: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
@@ -325,15 +361,12 @@ ${attw}${publint}${packSmoke}
           # "No relevant changes" is a clean no-op, not this case.
           if grep -q "is behind the remote one" release.log; then
             if [ "\${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::warning::main moved on during this run; nothing was published. Run the workflow again from main's tip."
+              echo "::warning::main moved on during this run; nothing was published. Run the workflow again."
             else
               echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
             fi
-          fi`,
-		})
-	}
-
-	return jobs
+          fi
+`
 }
 
 /**

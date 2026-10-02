@@ -328,6 +328,9 @@ export function computeFileList(config: ProjectConfig): string[] {
 		files.push('.husky/commit-msg', 'commitlint.config.mjs')
 	}
 	files.push('.github/workflows/ci.yml')
+	if (config.projectType === 'library' && config.semanticRelease) {
+		files.push('.github/workflows/release.yml')
+	}
 	if (config.securityAutomation) {
 		files.push(
 			'.github/dependabot.yml',

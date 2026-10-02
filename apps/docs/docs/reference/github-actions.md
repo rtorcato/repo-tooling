@@ -66,12 +66,24 @@ under you, and Dependabot's `github-actions` ecosystem bumps the tag for you.
 
 ## Scaffolded workflows
 
-Every scaffold gets a `ci.yml` (lint / typecheck / test / build, and release for
-libraries) out of the box. The `release` job runs only on `workflow_dispatch` or
-when a milestone is closed, never on a plain push to `main`. One approval then
-ships a whole batch of merges (#740). `doctor` reports a `ci.yml` whose publishing
-job still fires on push, and `fix github-actions` regenerates it, keeping the
-job's `environment:`. Beyond that, repo-tooling ships **optional deploy
+Every scaffold gets a `ci.yml` (lint / typecheck / test / build) out of the box,
+and a library that publishes with semantic-release also gets a `release.yml`.
+The release runs only on `workflow_dispatch` or when a milestone is closed, never
+on a plain push to `main`. One approval then ships a whole batch of merges
+(#740). Since #753 it is its own workflow:
+
+- **A newer request supersedes a waiting one** (`concurrency: release`,
+  `cancel-in-progress: true`). A run still waiting for approval has published
+  nothing, so cancelling it is safe — and CI on `main` can now cancel freely too.
+- **It releases `main`'s tip.** The job checks out the default branch when it
+  starts, i.e. after approval, not the commit that triggered it.
+- **It does not re-run CI.** install → build → test, then semantic-release.
+
+`doctor` reports a release job still inside `ci.yml`, a `release.yml` without
+superseding concurrency, or one that fires on push. `fix github-actions` migrates
+the old layout, carrying the release job's `environment:` into `release.yml`.
+Re-point the npm trusted publisher's workflow filename to `release.yml` when you
+migrate, or OIDC publishing fails. Beyond that, repo-tooling ships **optional deploy
 workflows** you add on demand — they're too deploy-target-specific to scaffold
 by default, so the setup wizard never prompts for them.
 

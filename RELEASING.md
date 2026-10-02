@@ -1,15 +1,21 @@
 # Releasing
 
-This package publishes to npm via [semantic-release](https://semantic-release.gitbook.io/) **on demand, not on every merge** (#740). The CI workflow lives in `.github/workflows/ci.yml` (`release` job).
+This package publishes to npm via [semantic-release](https://semantic-release.gitbook.io/) **on demand, not on every merge** (#740). The release lives in its own workflow, `.github/workflows/release.yml` (#753); `ci.yml` only runs checks.
 
 ## Release trigger
 
-The `release` job runs only when:
+`release.yml` runs only when:
 
 - **a milestone is closed**: closing it means "ship this batch", or
-- **the workflow is dispatched**: `gh workflow run ci.yml --ref main`, or the "Run workflow" button, for hotfixes and ad hoc releases.
+- **the workflow is dispatched**: `gh workflow run release.yml`, or the "Run workflow" button, for hotfixes and ad hoc releases.
 
 Either one releases everything merged since the last tag, in one run. Pushes and PRs run the checks only. Merging a burst of PRs no longer queues a release run per merge, each one stale as soon as the next merge landed.
+
+How a release run behaves (#753):
+
+- **A newer request supersedes a waiting one.** The workflow's concurrency group is `release` with `cancel-in-progress: true`: dispatch twice, or close a milestone after dispatching, and only the newest run waits for approval. A run still waiting has published nothing, so cancelling it is safe.
+- **It releases `main`'s tip, whenever it is approved.** The job checks out the default branch when it starts, not the commit that triggered it, so merges that landed while it waited are released too, and semantic-release never refuses a stale checkout.
+- **It does not re-run CI.** `main`'s tip already passed CI; the job runs install → build → test, then semantic-release (~2 min).
 
 What gets released is decided by the **conventional commit** messages on `main` since the last tag:
 
@@ -85,7 +91,7 @@ OIDC eliminates the long-lived `NPM_TOKEN`. To set it up:
 2. Add a publisher with:
    - Provider: **GitHub Actions**
    - Repository: `rtorcato/repo-tooling`
-   - Workflow filename: `ci.yml`
+   - Workflow filename: `release.yml` (it was `ci.yml` before #753 — update an existing trusted publisher, or OIDC publish fails)
    - Environment: *(leave blank unless one is configured)*
 3. The `release` job already has `permissions: id-token: write`, which is all OIDC requires from CI.
 4. Once configured, remove `NPM_TOKEN` from the workflow env and delete the secret from GitHub.

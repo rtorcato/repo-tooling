@@ -1,34 +1,84 @@
+import fs from 'fs-extra'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildPresetConfig } from '../../../src/cli/commands/setup-presets.js'
 import { renderGitHubWorkflow } from '../../../src/base/ci.js'
-import { pushReleaseJob, workflowJobs } from '../../../src/base/github-settings.js'
-import { githubJobs } from '../../../src/languages/js/ci.js'
+import { checkGitHubActions } from '../../../src/base/checks.js'
+import { publishingJob, pushReleaseJob, workflowJobs } from '../../../src/base/github-settings.js'
+import { githubJobs, renderReleaseWorkflow } from '../../../src/languages/js/ci.js'
+import { useTmpDir } from '../../helpers/tmp-dir.js'
 
+const newTmpDir = useTmpDir()
+const lib = () => buildPresetConfig('library', 'x')
 const render = (releaseEnvironment?: string) =>
-	renderGitHubWorkflow(githubJobs(buildPresetConfig('library', 'x'), { releaseEnvironment }))
+	renderReleaseWorkflow(lib(), { releaseEnvironment }) ?? ''
 
-describe('generated release job (#690, #740)', () => {
+describe('generated release workflow (#690, #740, #753)', () => {
 	it('releases only on dispatch or a closed milestone, never on push', () => {
 		const yml = render()
-		expect(yml).toContain(
-			"(github.event_name == 'workflow_dispatch' || github.event_name == 'milestone')"
-		)
-		expect(yml).toContain('  milestone:\n    types: [closed]\n')
-		expect(yml).not.toContain('head_commit.message, ')
+		expect(yml).toContain('on:\n  workflow_dispatch:\n  milestone:\n    types: [closed]\n')
+		expect(yml).not.toMatch(/^\s*push:/m)
 		expect(pushReleaseJob(yml)).toBeNull()
 		// bash -e has no pipefail; without it a failed release piped to tee goes green.
 		expect(yml).toContain('set -o pipefail\n          npx semantic-release 2>&1 | tee release.log')
-		expect(yml).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
 	})
 
-	it('only a workflow with a release job listens for milestones', () => {
-		const yml = renderGitHubWorkflow(githubJobs(buildPresetConfig('web-app', 'x')))
-		expect(yml).not.toContain('milestone:')
+	it('supersedes a waiting run and releases the default branch tip', () => {
+		const yml = render()
+		expect(yml).toContain('concurrency:\n  group: release\n  cancel-in-progress: true\n')
+		expect(yml).toContain('ref: ${{ github.event.repository.default_branch }}')
+		// install → build → test only; no CI fan-out, no `needs:`.
+		expect([...workflowJobs(yml).keys()]).toEqual(['release'])
+		expect(yml).not.toContain('needs:')
+		expect(yml).toContain('pnpm install --frozen-lockfile')
+		expect(yml).toContain('npm install -g npm@^11.5.1')
+		expect(yml).not.toContain('npm@latest')
 	})
 
-	it('carries the release environment into a regenerated workflow', () => {
+	it('CI no longer publishes, listens for milestones, or holds runs on main', () => {
+		const ci = renderGitHubWorkflow(githubJobs(lib()))
+		expect(publishingJob(ci)).toBeNull()
+		expect(ci).not.toContain('milestone:')
+		expect(ci).toContain('cancel-in-progress: true')
+	})
+
+	it('only a semantic-release library gets one', () => {
+		expect(renderReleaseWorkflow(buildPresetConfig('web-app', 'x'))).toBeNull()
+	})
+
+	it('carries the release environment', () => {
 		expect(workflowJobs(render('release')).get('release')).toContain('    environment: release\n')
 		expect(workflowJobs(render()).get('release')).not.toContain('environment:')
+	})
+})
+
+describe('doctor on the release layout (#753)', () => {
+	const preset = renderGitHubWorkflow(githubJobs(lib()))
+	const presetRelease = render()
+	const setup = async (files: Record<string, string>) => {
+		const dir = newTmpDir()
+		for (const [f, body] of Object.entries(files)) {
+			await fs.outputFile(join(dir, '.github', 'workflows', f), body)
+		}
+		return checkGitHubActions(dir, preset, presetRelease)
+	}
+
+	it('passes the generated pair', async () => {
+		expect((await setup({ 'ci.yml': preset, 'release.yml': presetRelease })).status).toBe('ok')
+	})
+
+	it('flags a release job still inside ci.yml', async () => {
+		const ci = `${preset}\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx semantic-release\n`
+		const r = await setup({ 'ci.yml': ci })
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('ci.yml: `release` publishes from CI')
+	})
+
+	it('flags a release.yml that does not supersede a waiting run', async () => {
+		const stale = presetRelease.replace('cancel-in-progress: true', 'cancel-in-progress: false')
+		const r = await setup({ 'ci.yml': preset, 'release.yml': stale })
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('does not supersede a waiting one')
 	})
 })
 

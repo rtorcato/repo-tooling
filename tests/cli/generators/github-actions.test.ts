@@ -2,7 +2,11 @@ import fs from 'fs-extra'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
-import { CI_WORKFLOW, generateGitHubActions } from '../../../src/cli/generators/github-actions.js'
+import {
+	CI_WORKFLOW,
+	generateGitHubActions,
+	RELEASE_WORKFLOW,
+} from '../../../src/cli/generators/github-actions.js'
 import { checkPublishJob, findNpmPublishJob } from '../../../src/languages/js/npm-trust.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -165,19 +169,59 @@ describe('generateGitHubActions', () => {
 		expect(content).toContain('Build project')
 	})
 
-	it('includes release job for library + semanticRelease', async () => {
+	it('puts the release in release.yml for library + semanticRelease (#753)', async () => {
 		const dir = newTmpDir()
-		await generateGitHubActions(
+		const written = await generateGitHubActions(
 			baseConfig({ projectType: 'library', semanticRelease: true, bundler: 'tsup' }),
 			dir
 		)
 
-		const content = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
-		expect(content).toContain('release:')
+		expect(written).toContain(RELEASE_WORKFLOW)
+		expect(await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')).not.toContain('semantic-release')
+		const content = await fs.readFile(join(dir, RELEASE_WORKFLOW), 'utf-8')
 		expect(content).toContain('semantic-release')
 		// Publishes via OIDC trusted publishing — id-token permission, no NPM_TOKEN secret.
 		expect(content).toContain('id-token: write')
 		expect(content).not.toContain('secrets.NPM_TOKEN')
+	})
+
+	// A pre-#753 ci.yml: the release job, gated behind an environment.
+	const OLD_LAYOUT = `name: CI
+on:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm test
+  release:
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx semantic-release
+`
+	const libRelease = () =>
+		baseConfig({ projectType: 'library', semanticRelease: true, bundler: 'tsup' })
+
+	it('migrates a release job out of ci.yml, keeping its environment (#753)', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, WORKFLOW_PATH), OLD_LAYOUT)
+		const written = await generateGitHubActions(libRelease(), dir, { overwrite: true })
+
+		expect(written).toEqual(expect.arrayContaining([CI_WORKFLOW, RELEASE_WORKFLOW]))
+		expect(await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')).not.toContain('semantic-release')
+		const release = await fs.readFile(join(dir, RELEASE_WORKFLOW), 'utf-8')
+		expect(release).toContain('  release:\n    environment: release\n')
+	})
+
+	it('never adds release.yml beside a ci.yml it left publishing', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, WORKFLOW_PATH), OLD_LAYOUT)
+		const written = await generateGitHubActions(libRelease(), dir)
+
+		expect(written).not.toContain(RELEASE_WORKFLOW)
+		expect(await fs.pathExists(join(dir, RELEASE_WORKFLOW))).toBe(false)
 	})
 
 	it('release job can publish via OIDC: id-token + an npm >= 11.5.1 upgrade (#687)', async () => {

@@ -1,8 +1,13 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 import { renderGitHubWorkflow } from '../../base/ci.js'
-import { jobEnvironment, workflowJobs } from '../../base/github-settings.js'
-import { githubJobs, usesCoverage } from '../../languages/js/ci.js'
+import { jobEnvironment, publishingJob, workflowJobs } from '../../base/github-settings.js'
+import {
+	githubJobs,
+	RELEASE_WORKFLOW,
+	renderReleaseWorkflow,
+	usesCoverage,
+} from '../../languages/js/ci.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 // Minimal Codecov config — auto targets keep it from failing a fresh repo that
@@ -22,15 +27,27 @@ const CODECOV_YML = `coverage:
 
 /** Matches the fixer's declared output, so `fix` reports the same path it lists. */
 export const CI_WORKFLOW = '.github/workflows/ci.yml'
+export { RELEASE_WORKFLOW }
+
+const readIfExists = async (p: string) =>
+	(await fs.pathExists(p)) ? await fs.readFile(p, 'utf-8') : null
+
+/** The `environment:` of the workflow's publishing job, if it has one. */
+function releaseEnvironmentOf(yaml: string | null): string | null {
+	const job = yaml ? publishingJob(yaml) : null
+	const body = job && yaml ? workflowJobs(yaml).get(job) : undefined
+	return body ? jobEnvironment(body) : null
+}
 
 /**
- * @param overwrite Replace a ci.yml that no longer matches the preset. Off by
- * default: this used to write unconditionally, so a consuming repo's customized
- * workflow — an extra job, a Dependabot-bumped action pin — was reverted on
- * every sync with no diff, no prompt and no backup (#349, the mechanism behind
- * #340). Same self-enforced safe-add as github-workflows.ts, widened to "or is
- * byte-identical anyway" so a no-op regeneration still reports honestly. Only a
- * caller that has told the user this workflow itself is drifting passes true.
+ * @param overwrite Replace a ci.yml (and release.yml) that no longer matches
+ * the preset. Off by default: this used to write unconditionally, so a
+ * consuming repo's customized workflow — an extra job, a Dependabot-bumped
+ * action pin — was reverted on every sync with no diff, no prompt and no backup
+ * (#349, the mechanism behind #340). Same self-enforced safe-add as
+ * github-workflows.ts, widened to "or is byte-identical anyway" so a no-op
+ * regeneration still reports honestly. Only a caller that has told the user
+ * this workflow itself is drifting passes true.
  * @param scripts The target's package.json scripts, so the workflow only calls
  * commands that exist (#364). Omit on the `setup` path, which writes the
  * scripts itself as part of the same scaffold.
@@ -54,15 +71,34 @@ export async function generateGitHubActions(
 	// shared entry point would mean inventing a fake config to pass in. Both
 	// paths meet at renderGitHubWorkflow() in src/base/ci.ts, which is the seam
 	// that actually matters.
-	const ciPath = path.join(workflowsDir, 'ci.yml')
-	const existing = (await fs.pathExists(ciPath)) ? await fs.readFile(ciPath, 'utf-8') : null
-	const releaseJob = existing ? workflowJobs(existing).get('release') : undefined
-	const releaseEnvironment = releaseJob ? jobEnvironment(releaseJob) : null
-	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin, releaseEnvironment }))
+	const ciPath = path.join(targetDir, CI_WORKFLOW)
+	const releasePath = path.join(targetDir, RELEASE_WORKFLOW)
+	const existing = await readIfExists(ciPath)
+	const existingRelease = await readIfExists(releasePath)
 	const filesWritten: string[] = []
+
+	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin }))
+	let ci = existing
 	if (overwrite || existing === null || existing === workflow) {
 		await fs.writeFile(ciPath, workflow)
 		filesWritten.push(CI_WORKFLOW)
+		ci = workflow
+	}
+
+	// The release lives in its own workflow (#753). Migrating a pre-#753 ci.yml
+	// carries its release job's `environment:` over, so the publish gate that
+	// `fix release-environment` added survives. Never written while ci.yml still
+	// publishes — two release paths would race each other to npm.
+	const releaseEnvironment = releaseEnvironmentOf(existingRelease) ?? releaseEnvironmentOf(existing)
+	const release = renderReleaseWorkflow(config, { scripts, releaseEnvironment })
+	const ciPublishes = ci !== null && publishingJob(ci) !== null
+	if (
+		release &&
+		!ciPublishes &&
+		(overwrite || existingRelease === null || existingRelease === release)
+	) {
+		await fs.writeFile(releasePath, release)
+		filesWritten.push(RELEASE_WORKFLOW)
 	}
 
 	// codecov.yml is the CI's coverage-upload companion — emit it alongside ci.yml
