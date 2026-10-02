@@ -108,16 +108,27 @@ by default, so the setup wizard never prompts for them.
 A repo scaffolded before #753 still releases from a job inside `ci.yml`. Move
 it over in this order:
 
-1. **Bump `@rtorcato/repo-tooling`** to a release that contains #763 (v5.4.2 or
-   later).
+1. **Bump `@rtorcato/repo-tooling`** to a release that contains #775.
 2. **Run `npx @rtorcato/repo-tooling fix github-actions --yes`**
-   ([`fix github-actions`](../guides/cli.md#available-targets)). It moves only
-   the release job out of `ci.yml` and keeps every other job, trigger and
-   comment. It drops a `needs:` the move empties, and keeps the job's
-   `environment:`. Review the diff before you commit it. If the release job
-   has steps the generated `release.yml` doesn't (a docs redeploy, a failure
-   notification), it refuses with `release-job-custom-steps` and writes
-   nothing; move those steps into `release.yml` by hand.
+   ([`fix github-actions`](../guides/cli.md#available-targets)). It moves your
+   semantic-release job out of `ci.yml` into `release.yml` as is: its steps
+   and step names, `env:`, `environment:`, `if: failure()` steps and comments
+   all come along. It rewrites only what can't work in a workflow of its own:
+   - it deletes the job's `needs:` and job-level `if:`, since the release
+     triggers replace both;
+   - an `actions/cache` step keyed on `needs.<job>.outputs.*` becomes
+     `pnpm install --frozen-lockfile`;
+   - the checkout gets the dispatched-ref `ref:` and `fetch-depth: 0`, keeping
+     its other inputs (such as `token`);
+   - a job with no `permissions:` gets `ci.yml`'s top-level block, and
+     `id-token: write` is added for OIDC publishing.
+
+   Every other job, trigger and comment in `ci.yml` stays, and a `needs:` the
+   move empties is dropped. If the moved job still reads `needs.` somewhere
+   (a step using another job's output), it refuses with `release-job-needs`,
+   names each step, and writes nothing. Review the diff before you commit it.
+   Repos that publish with Changesets (`changesets/action`) or Release Please
+   are skipped: `ci.yml` is left alone, and `doctor` does not report them.
 3. **Re-point the npm trusted publisher.** On npmjs.com → package → Settings →
    Trusted Publisher, set the workflow to `release.yml` and the environment to
    `release`. Do this in the same sitting as merging step 2. Releases only run

@@ -30,6 +30,28 @@ export interface CiJob {
 	steps: string
 }
 
+/**
+ * The release workflow's header through `jobs:` (#753): on demand only, and a
+ * newer request supersedes a waiting one. Shared by the template and by a
+ * release job moved out of ci.yml as is (#775).
+ */
+export const RELEASE_WORKFLOW_HEADER = `name: 🚀 Release
+
+# On demand only, never per merge (#740): a dispatch (hotfix, ad hoc) or a
+# closed milestone ("ship this batch").
+on:
+  workflow_dispatch:
+  milestone:
+    types: [closed]
+
+# A newer request supersedes an older one still waiting for approval (#753).
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+`
+
 /** Header through `jobs:` — triggers and concurrency are language-independent. */
 /** The generated CI workflow's `name:` — the docs workflow's `workflow_run` must match it. */
 export const CI_WORKFLOW_NAME = '🚀 CI/CD Pipeline'

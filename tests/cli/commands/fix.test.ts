@@ -1968,26 +1968,38 @@ jobs:
 		expect(await fs.readFile(join(dir, 'codecov.yml'), 'utf-8')).toBe('comment: false\n')
 	})
 
-	// #771: release.yml is rendered from the template, so a step only the old job
-	// had would vanish silently. Refuse instead, and write nothing.
+	// #775: the release job moves as is, so its own steps survive (#771); only a
+	// `needs.` the move can't resolve refuses, and then nothing is written.
 	const releaseJobWith = (steps: string) =>
 		CUSTOM.replace('    steps:\n      - run: npx semantic-release\n', `    steps:\n${steps}`)
 
-	it('refuses to migrate a release job with custom steps', async () => {
+	it('keeps a release job’s custom steps when it migrates', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		const yaml = releaseJobWith(`      - name: 📦 Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: 🚀 Run semantic-release
+		await fs.outputFile(
+			ci(dir),
+			releaseJobWith(`      - name: 🚀 Run semantic-release
         run: npx semantic-release
 
       - name: 📘 Redeploy the docs after a publish
         run: gh workflow run docs.yml
+`)
+		)
+		await fixCommand('github-actions', { directory: dir, yes: true })
 
-      - name: 🔔 Report release failure
-        if: failure()
-        uses: actions/github-script@v7
+		expect(await fs.readFile(ci(dir), 'utf-8')).toBe(MIGRATED)
+		const release = await fs.readFile(join(dir, '.github/workflows/release.yml'), 'utf-8')
+		expect(release).toContain('📘 Redeploy the docs after a publish')
+	})
+
+	it('refuses to migrate a release job that still reads `needs.`', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const yaml = releaseJobWith(`      - name: 📝 Stamp
+        run: echo "\${{ needs.verify.outputs.x }}"
+
+      - name: 🚀 Run semantic-release
+        run: npx semantic-release
 `)
 		await fs.outputFile(ci(dir), yaml)
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -2000,8 +2012,8 @@ jobs:
 			)
 			expect(exitSpy).toHaveBeenCalledWith(1)
 			const out = errSpy.mock.calls.flat().join('\n')
-			expect(out).toContain('📘 Redeploy the docs after a publish, 🔔 Report release failure')
-			expect(out).not.toContain('Install dependencies')
+			expect(out).toContain('refusing to move `release`')
+			expect(out).toContain('📝 Stamp')
 			expect(await fs.readFile(ci(dir), 'utf-8')).toBe(yaml)
 			expect(await fs.pathExists(join(dir, '.github/workflows/release.yml'))).toBe(false)
 		} finally {

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import chalk from 'chalk'
 import fs from 'fs-extra'
+import { RELEASE_WORKFLOW_HEADER } from './ci.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -753,80 +754,186 @@ export function pushReleaseJob(yaml: string): string | null {
 	return null
 }
 
-interface WorkflowStep {
-	name?: string
-	uses?: string
-	run?: string
+/**
+ * The id of the first job that runs semantic-release, or null (#775). Only
+ * such a job moves to release.yml: one publishing with `changesets/action` or
+ * Release Please is the repo's own release flow, and is left where it is. A
+ * `uses:` or `name:` that merely mentions it does not count.
+ */
+export function semanticReleaseJob(yaml: string): string | null {
+	for (const [job, raw] of workflowJobs(yaml)) {
+		const lines = withoutComments(raw).split('\n')
+		if (lines.some((l) => !/^\s*(?:-\s+)?(?:uses|name):/.test(l) && /semantic-release/.test(l)))
+			return job
+	}
+	return null
 }
 
+/** The line after the block that the key on `lines[at]` opens (its deeper-indented lines). */
+function blockEnd(lines: string[], at: number): number {
+	const indent = indentOf(lines[at] ?? '')
+	let end = at + 1
+	while (
+		end < lines.length &&
+		(isBlankOrComment(lines[end]) || indentOf(lines[end] ?? '') > indent)
+	)
+		end++
+	// Blank and comment lines trailing the block introduce what follows.
+	while (end > at + 1 && isBlankOrComment(lines[end - 1])) end--
+	return end
+}
+
+/** The `[start, end)` of each list item under the `steps:` key on `lines[at]`. */
+function stepRanges(lines: string[], at: number): [number, number][] {
+	const end = blockEnd(lines, at)
+	const first = lines.slice(at + 1, end).find((l) => !isBlankOrComment(l))
+	if (first === undefined) return []
+	const item = indentOf(first)
+	const starts: number[] = []
+	for (let i = at + 1; i < end; i++) {
+		const l = lines[i] ?? ''
+		if (indentOf(l) === item && l.trim().startsWith('-')) starts.push(i)
+	}
+	return starts.map((s, n) => {
+		let e = starts[n + 1] ?? end
+		while (e > s + 1 && isBlankOrComment(lines[e - 1])) e--
+		return [s, e]
+	})
+}
+
+/** A step's label: its `name:`, else its `uses:`, else the first line of its `run:`. */
+function stepLabel(text: string): string {
+	for (const key of ['name', 'uses', 'run']) {
+		const v = new RegExp(`^\\s*(?:-\\s+)?${key}:[ \\t]*(.*)$`, 'm').exec(text)?.[1]?.trim()
+		if (v && !/^[|>][-+]?$/.test(v)) return unquote(v)
+	}
+	return '(unnamed step)'
+}
+
+const DISPATCHED_REF =
+	"${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}"
+
+/** The template release job's grants, for a ci.yml that declares none at all. */
+const DEFAULT_PERMISSIONS = ['contents: write', 'issues: write', 'pull-requests: write']
+
 /**
- * The `steps:` of one job body (or of every job, given a whole workflow): each
- * step's `name:`, `uses:` (version dropped) and `run:` (block form joined).
+ * `release.yml` holding job `id` of `ci` as is (#775) — its steps, names,
+ * `env:`, `environment:`, comments and indent style — under the standard
+ * release header, with only what cannot survive outside ci.yml rewritten:
  *
- * ponytail: line surgery like `workflowJobs`, no YAML parser — enough to tell
- * one step from another, not to read anything else about it.
+ * - its `needs:` and job-level `if:` go; the triggers replace both;
+ * - an `actions/cache` step keyed on `needs.*` becomes a `pnpm install`;
+ * - the checkout releases the dispatched branch's tip, with full history;
+ * - it gets ci.yml's top-level `permissions:` when it has none, plus
+ *   `id-token: write` for OIDC publishing.
+ *
+ * `needs` lists what still reads `needs.` afterwards — a step's label, or the
+ * job id for a job-level key. Non-empty means the move cannot work.
+ *
+ * ponytail: line surgery like `removeWorkflowJob`, no YAML parser. A `read-all`
+ * permissions scalar is kept as written, without `id-token: write`.
  */
-function workflowSteps(text: string): WorkflowStep[] {
-	const lines = text.split('\n')
-	const steps: WorkflowStep[] = []
-	for (let i = 0; i < lines.length; i++) {
-		if (!/^\s*steps:\s*$/.test(lines[i] ?? '')) continue
-		const keyIndent = indentOf(lines[i] ?? '')
-		let step: WorkflowStep | null = null
-		let itemIndent = -1
-		for (i++; i < lines.length; i++) {
-			const line = lines[i] ?? ''
-			if (isBlankOrComment(line)) continue
-			const indent = indentOf(line)
-			if (indent <= keyIndent) {
-				i--
-				break
-			}
-			if (itemIndent === -1) itemIndent = indent
-			let body = line.trim()
-			if (indent === itemIndent && body.startsWith('-')) {
-				step = {}
-				steps.push(step)
-				body = body.slice(1).trim()
-			} else if (indent !== itemIndent + 2) continue
-			const kv = /^(name|uses|run):\s*(.*)$/.exec(body)
-			if (!step || !kv) continue
-			const key = kv[1] as keyof WorkflowStep
-			let value = unquote((kv[2] ?? '').trim())
-			if (key === 'run' && /^[|>][-+]?$/.test(value)) {
-				const block: string[] = []
-				while (
-					i + 1 < lines.length &&
-					((lines[i + 1] ?? '').trim() === '' || indentOf(lines[i + 1] ?? '') > itemIndent + 2)
+export function migrateReleaseJob(
+	ci: string,
+	id: string
+): { release: string; needs: string[] } | null {
+	const all = ci.split('\n')
+	const span = jobSpans(all).find((s) => s.id === id)
+	if (!span) return null
+	let end = span.end
+	while (end > span.start + 1 && isBlankOrComment(all[end - 1])) end--
+	const lines = all.slice(span.start, end)
+	const keyIndent = indentOf(lines.slice(1).find((l) => !isBlankOrComment(l)) ?? '')
+	const pad = (n: number) => ' '.repeat(n)
+	const keyAt = (key: string) =>
+		lines.findIndex((l, i) => i > 0 && indentOf(l) === keyIndent && l.trim().startsWith(`${key}:`))
+
+	for (const key of ['needs', 'if']) {
+		const at = keyAt(key)
+		if (at !== -1) lines.splice(at, blockEnd(lines, at) - at)
+	}
+
+	if (keyAt('permissions') === -1) {
+		const top = all.findIndex((l) => /^permissions:/.test(l))
+		const block =
+			top === -1
+				? ['permissions:', ...DEFAULT_PERMISSIONS.map((p) => `  ${p}`)]
+				: all.slice(top, blockEnd(all, top))
+		const steps = keyAt('steps')
+		lines.splice(
+			steps === -1 ? lines.length : steps,
+			0,
+			...block.map((l) => (l.trim() ? pad(keyIndent) + l : l))
+		)
+	}
+	const perm = keyAt('permissions')
+	const inline = (lines[perm] ?? '').replace(/^\s*permissions:\s*/, '').trim()
+	if (inline === '') {
+		const permEnd = blockEnd(lines, perm)
+		const child = lines.slice(perm + 1, permEnd).find((l) => !isBlankOrComment(l))
+		const at = lines.findIndex((l, i) => i > perm && i < permEnd && /^\s*id-token:/.test(l))
+		const line = `${pad(child ? indentOf(child) : keyIndent + 2)}id-token: write`
+		if (at === -1) lines.splice(permEnd, 0, line)
+		else lines[at] = line
+	} else if (inline.startsWith('{')) {
+		const flow = /id-token:/.test(inline)
+			? inline.replace(/id-token:\s*\w+/, 'id-token: write')
+			: inline.replace(/\s*\}$/, (_, i) => `${i > 1 ? ', ' : ' '}id-token: write }`)
+		lines[perm] = `${pad(keyIndent)}permissions: ${flow}`
+	}
+
+	const steps = keyAt('steps')
+	// Back to front, so a rewrite never shifts a range still to come.
+	for (const [start, stop] of steps === -1 ? [] : stepRanges(lines, steps).reverse()) {
+		const text = withoutComments(lines.slice(start, stop).join('\n'))
+		const dash = /^\s*-\s+/.exec(lines[start] ?? '')?.[0] ?? `${pad(keyIndent + 2)}- `
+		const inner = dash.length
+		if (/uses:\s*['"]?actions\/cache(?:\/restore)?@/.test(text) && /needs\./.test(text)) {
+			lines.splice(
+				start,
+				stop - start,
+				`${dash}name: 📦 Install dependencies`,
+				`${pad(inner)}run: pnpm install --frozen-lockfile`
+			)
+		} else if (/uses:\s*['"]?actions\/checkout@/.test(text)) {
+			const w = lines.findIndex(
+				(l, i) => i > start && i < stop && indentOf(l) === inner && /^with:\s*$/.test(l.trim())
+			)
+			if (w === -1) {
+				lines.splice(
+					stop,
+					0,
+					`${pad(inner)}with:`,
+					`${pad(inner + 2)}ref: ${DISPATCHED_REF}`,
+					`${pad(inner + 2)}fetch-depth: 0`
 				)
-					block.push((lines[++i] ?? '').trim())
-				value = block.join('\n').trim()
+				continue
 			}
-			if (key === 'uses') value = value.replace(/@.*$/, '')
-			step[key] = value
+			const withEnd = blockEnd(lines, w)
+			const child = lines.slice(w + 1, withEnd).find((l) => !isBlankOrComment(l))
+			const c = child ? indentOf(child) : inner + 2
+			const has = (key: string) =>
+				lines.findIndex(
+					(l, i) => i > w && i < withEnd && indentOf(l) === c && l.trim().startsWith(`${key}:`)
+				)
+			if (has('fetch-depth') === -1) lines.splice(withEnd, 0, `${pad(c)}fetch-depth: 0`)
+			const ref = has('ref')
+			if (ref === -1) lines.splice(w + 1, 0, `${pad(c)}ref: ${DISPATCHED_REF}`)
+			else lines.splice(ref, blockEnd(lines, ref) - ref, `${pad(c)}ref: ${DISPATCHED_REF}`)
 		}
 	}
-	return steps
-}
 
-/**
- * The steps of `job` in `yaml` that none of `templates` reproduces (#771): a
- * step whose `name:`, `uses:` action and `run:` command the templates all
- * lack, and that does not publish. Matching on any one of the three lets a
- * renamed install / build / test step count as the template's own. Labelled by
- * name, else `uses:`, else `run:`.
- */
-export function customJobSteps(yaml: string, job: string, templates: string[]): string[] {
-	const body = workflowJobs(yaml).get(job)
-	if (!body) return []
-	const known = templates.flatMap(workflowSteps)
-	const has = (key: keyof WorkflowStep, v?: string) =>
-		v !== undefined && known.some((s) => s[key] === v)
-	// The publish itself, however it is spelled, is the template's own last step.
-	return workflowSteps(body)
-		.filter((s) => !has('name', s.name) && !has('uses', s.uses) && !has('run', s.run))
-		.filter((s) => !PUBLISH_COMMAND.test(s.run ?? ''))
-		.map((s) => s.name ?? s.uses ?? s.run?.split('\n')[0] ?? '(empty step)')
+	const needs: string[] = []
+	const ranges = steps === -1 ? [] : stepRanges(lines, keyAt('steps'))
+	const inStep = (i: number) => ranges.some(([s, e]) => i >= s && i < e)
+	if (/needs\./.test(withoutComments(lines.filter((_, i) => !inStep(i)).join('\n')))) {
+		needs.push(id)
+	}
+	for (const [s, e] of ranges) {
+		const text = withoutComments(lines.slice(s, e).join('\n'))
+		if (/needs\./.test(text)) needs.push(stepLabel(text))
+	}
+	return { release: `${RELEASE_WORKFLOW_HEADER}${lines.join('\n')}\n`, needs }
 }
 
 /** The id of the first job in this workflow that publishes, or null. */

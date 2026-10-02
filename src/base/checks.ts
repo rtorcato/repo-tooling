@@ -11,7 +11,7 @@ import {
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import { dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
-import { customJobSteps, publishingJob, pushReleaseJob } from './github-settings.js'
+import { migrateReleaseJob, pushReleaseJob, semanticReleaseJob } from './github-settings.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -212,16 +212,17 @@ export async function checkGitHubActions(
 		}
 		const ci = preset ? await read('ci.yml') : null
 		if (preset && ci !== null) {
-			// The preset publishes from release.yml, never from CI (#753).
-			const ciRelease = presetRelease ? publishingJob(ci) : null
+			// The preset publishes from release.yml, never from CI (#753). Only a
+			// semantic-release job moves; Changesets / Release Please stay (#775).
+			const ciRelease = presetRelease ? semanticReleaseJob(ci) : null
 			if (ciRelease) {
 				deltas.push(
 					`ci.yml: \`${ciRelease}\` publishes from CI (preset releases from release.yml, where a newer request supersedes a waiting one)`
 				)
-				// `fix github-actions` refuses to drop these (#771), so say what to do.
-				const custom = presetRelease ? customJobSteps(ci, ciRelease, [presetRelease, preset]) : []
-				if (custom.length > 0) {
-					hint = `Move \`${ciRelease}\`'s own steps into release.yml by hand — ${custom.join(', ')} — then delete \`${ciRelease}\` from ci.yml; \`fix github-actions\` refuses rather than drop them`
+				// `fix github-actions` refuses on these (#775), so say what to do.
+				const needs = migrateReleaseJob(ci, ciRelease)?.needs ?? []
+				if (needs.length > 0) {
+					hint = `Remove the \`needs.\` references from \`${ciRelease}\` — ${needs.join(', ')} — then run \`fix github-actions\`; release.yml has no other job to read them from`
 				}
 			}
 			pinDeltas('ci.yml', ci, preset)

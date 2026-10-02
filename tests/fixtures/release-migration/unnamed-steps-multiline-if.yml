@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: key
+        run: echo "key=deps" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm build
+
+  release:
+    needs:
+      - dependencies
+      - build
+    if: >-
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: ${{ needs.dependencies.outputs.cache-key }}
+      - run: pnpm build
+      - run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
