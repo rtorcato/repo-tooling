@@ -810,11 +810,12 @@ function workflowSteps(text: string): WorkflowStep[] {
 }
 
 /**
- * The steps of `job` in `yaml` that none of `templates` reproduces (#771): a
- * step whose `name:`, `uses:` action and `run:` command the templates all
- * lack, and that does not publish. Matching on any one of the three lets a
- * renamed install / build / test step count as the template's own. Labelled by
- * name, else `uses:`, else `run:`.
+ * The steps of `job` in `yaml` that none of `templates` reproduces (#771), and
+ * that do not publish. A named step is the template's own only if a template
+ * step has the same `name:` — matching it on `uses:` / `run:` would drop a
+ * custom step that merely shares an action or command (#773). An unnamed step
+ * falls back to its `uses:` action or `run:` command. Labelled by name, else
+ * `uses:`, else `run:`.
  */
 export function customJobSteps(yaml: string, job: string, templates: string[]): string[] {
 	const body = workflowJobs(yaml).get(job)
@@ -824,7 +825,9 @@ export function customJobSteps(yaml: string, job: string, templates: string[]): 
 		v !== undefined && known.some((s) => s[key] === v)
 	// The publish itself, however it is spelled, is the template's own last step.
 	return workflowSteps(body)
-		.filter((s) => !has('name', s.name) && !has('uses', s.uses) && !has('run', s.run))
+		.filter((s) =>
+			s.name !== undefined ? !has('name', s.name) : !has('uses', s.uses) && !has('run', s.run)
+		)
 		.filter((s) => !PUBLISH_COMMAND.test(s.run ?? ''))
 		.map((s) => s.name ?? s.uses ?? s.run?.split('\n')[0] ?? '(empty step)')
 }

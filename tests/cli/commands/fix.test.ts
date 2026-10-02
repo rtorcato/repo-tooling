@@ -2010,15 +2010,45 @@ jobs:
 		}
 	})
 
-	it('migrates a release job whose steps are all template equivalents', async () => {
+	// #773: a named step is matched on its name only, so sharing an action with a
+	// template step does not make it the template's own.
+	it('refuses a named custom step whose uses: matches a template step', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		// The pre-#753 template's own release job, plus a renamed install step.
+		const yaml = releaseJobWith(`      - name: 📥 Check out the docs repo
+        uses: actions/checkout@v4
+      - name: 🚀 Run semantic-release
+        run: npx semantic-release
+`)
+		await fs.outputFile(ci(dir), yaml)
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('github-actions', { directory: dir, yes: true })).rejects.toThrow(
+				'exit'
+			)
+			const out = errSpy.mock.calls.flat().join('\n')
+			expect(out).toContain('📥 Check out the docs repo')
+			expect(await fs.readFile(ci(dir), 'utf-8')).toBe(yaml)
+		} finally {
+			exitSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
+	it('migrates a release job whose steps are all template equivalents', async () => {
+		const dir = newTmpDir()
+		// A test script renders the template's shared setup steps (cache restore and
+		// all), which a named step now has to match by name (#773).
+		await seedPackageJson(dir, { scripts: { test: 'vitest' } })
+		// The pre-#753 template's own release job, plus an unnamed install step
+		// that matches the template on `run:` alone (#773).
 		await fs.outputFile(
 			ci(dir),
 			releaseJobWith(`      - uses: actions/checkout@v4
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: 📦 Restore dependencies cache
         uses: actions/cache@v6
       - name: 🔧 Configure Git
