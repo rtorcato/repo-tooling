@@ -1879,3 +1879,92 @@ describe('fix github-actions packageManager', () => {
 		expect(workflow).not.toContain('run: pnpm coverage')
 	})
 })
+
+// #761: `fix github-actions` regenerated a publishing ci.yml from the preset,
+// taking the repo's own jobs (and any required check named after one) with it.
+describe('fix github-actions release migration', () => {
+	const CUSTOM = `name: CI
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  # path filter the repo wrote itself
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo filter
+
+  verify:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm verify
+
+  release:
+    needs: [changes, verify]
+    if: github.event_name == 'workflow_dispatch'
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx semantic-release
+
+  notify:
+    needs: [verify, release]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+`
+	const MIGRATED = `name: CI
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  # path filter the repo wrote itself
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo filter
+
+  verify:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm verify
+
+  notify:
+    needs: [verify]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo done
+`
+	const ci = (dir: string) => join(dir, '.github/workflows/ci.yml')
+
+	it('moves only the release job out of ci.yml', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(ci(dir), CUSTOM)
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		expect(await fs.readFile(ci(dir), 'utf-8')).toBe(MIGRATED)
+		const release = await fs.readFile(join(dir, '.github/workflows/release.yml'), 'utf-8')
+		expect(release).toContain('semantic-release')
+		expect(release).toContain('    environment: release\n')
+	})
+
+	it('never overwrites an existing codecov.yml', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(ci(dir), CUSTOM)
+		await fs.writeFile(join(dir, 'codecov.yml'), 'comment: false\n')
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		expect(await fs.readFile(join(dir, 'codecov.yml'), 'utf-8')).toBe('comment: false\n')
+	})
+})

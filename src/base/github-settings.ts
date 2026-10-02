@@ -572,45 +572,120 @@ const unquote = (s: string) => s.replace(/^['"]|['"]$/g, '')
  * level below that, which holds for every workflow Actions accepts.
  */
 export function workflowJobs(yaml: string): Map<string, string> {
-	const jobs = new Map<string, string>()
 	const lines = yaml.split('\n')
-	const start = lines.findIndex((l) => /^jobs:\s*$/.test(l))
-	if (start === -1) return jobs
+	const jobs = new Map<string, string>()
+	for (const { id, start, end } of jobSpans(lines)) {
+		jobs.set(id, lines.slice(start + 1, end).join('\n'))
+	}
+	return jobs
+}
 
-	const indentOf = (l: string) => l.length - l.trimStart().length
+const indentOf = (l: string) => l.length - l.trimStart().length
+const isBlankOrComment = (l: string | undefined) => /^\s*(#.*)?$/.test(l ?? '')
+
+/** Each job's line range in `lines`: `start` is its header line, `end` is exclusive. */
+function jobSpans(lines: string[]): { id: string; start: number; end: number }[] {
+	const spans: { id: string; start: number; end: number }[] = []
+	const start = lines.findIndex((l) => /^jobs:\s*$/.test(l))
+	if (start === -1) return spans
+
 	// The block runs until the next top-level key. A column-0 comment is not one —
 	// it ends nothing, so skipping it keeps a stray comment between `jobs:` and its
 	// first job from truncating the block and hiding every job below it.
 	let end = lines.length
 	for (let i = start + 1; i < lines.length; i++) {
 		const l = lines[i] ?? ''
-		if (l.trim() !== '' && !l.trimStart().startsWith('#') && indentOf(l) === 0) {
+		if (!isBlankOrComment(l) && indentOf(l) === 0) {
 			end = i
 			break
 		}
 	}
-	const body = lines.slice(start + 1, end)
-	const first = body.find((l) => l.trim() !== '' && !l.trimStart().startsWith('#'))
-	if (first === undefined) return jobs
+	const first = lines.slice(start + 1, end).find((l) => !isBlankOrComment(l))
+	if (first === undefined) return spans
 	const jobIndent = indentOf(first)
 
-	let id: string | null = null
-	let buf: string[] = []
-	for (const line of body) {
+	for (let i = start + 1; i < end; i++) {
+		const line = lines[i] ?? ''
 		const header =
 			line.trim() !== '' && indentOf(line) === jobIndent
 				? /^([\w.-]+):/.exec(line.trim())?.[1]
 				: undefined
-		if (header) {
-			if (id) jobs.set(id, buf.join('\n'))
-			id = header
-			buf = []
-		} else if (id) {
-			buf.push(line)
-		}
+		if (!header) continue
+		const prev = spans.at(-1)
+		if (prev) prev.end = i
+		spans.push({ id: header, start: i, end })
 	}
-	if (id) jobs.set(id, buf.join('\n'))
-	return jobs
+	return spans
+}
+
+/**
+ * `yaml` with job `id` cut out and every other line left byte-for-byte (#761),
+ * apart from the `needs:` entries that named it and the `workflow_dispatch` /
+ * `milestone` triggers only it referred to. Blank and comment lines trailing the
+ * job stay — they usually introduce the next job.
+ *
+ * ponytail: line surgery like `workflowJobs`, no YAML parser. A flow-style
+ * `on: [push, workflow_dispatch]` keeps its entries; only block-form triggers
+ * are pruned.
+ */
+export function removeWorkflowJob(yaml: string, id: string): string {
+	let lines = yaml.split('\n')
+	const span = jobSpans(lines).find((s) => s.id === id)
+	if (!span) return yaml
+	let end = span.end
+	while (end > span.start + 1 && isBlankOrComment(lines[end - 1])) end--
+	const removed = withoutComments(lines.slice(span.start, end).join('\n'))
+	lines.splice(span.start, end - span.start)
+	// Don't leave a double blank where the job sat between two blank lines.
+	if (lines[span.start - 1]?.trim() === '' && lines[span.start]?.trim() === '') {
+		lines.splice(span.start, 1)
+	}
+
+	const named = (s: string) => unquote(s.trim()) === id
+	// Indent of the `needs:` key whose block list we are inside, if any.
+	let needsBlock: number | null = null
+	lines = lines.flatMap((line) => {
+		if (needsBlock !== null && line.trim() !== '' && indentOf(line) <= needsBlock) {
+			needsBlock = null
+		}
+		if (/^\s*needs:\s*$/.test(line)) needsBlock = indentOf(line)
+		const item = needsBlock !== null ? /^\s*-\s*(\S+)\s*$/.exec(line) : null
+		if (item && named(item[1] ?? '')) return []
+		const scalar = /^\s*needs:\s*([^\s[]\S*)\s*$/.exec(line)
+		if (scalar && named(scalar[1] ?? '')) return []
+		const flow = /^(\s*needs:\s*)\[(.*)\]\s*$/.exec(line)
+		if (!flow) return [line]
+		const all = (flow[2] ?? '').split(',').map((s) => s.trim())
+		const keep = all.filter((s) => !named(s))
+		if (keep.length === all.length) return [line]
+		return keep.length ? [`${flow[1]}[${keep.join(', ')}]`] : []
+	})
+
+	for (const event of ['workflow_dispatch', 'milestone']) {
+		if (!removed.includes(event)) continue
+		const rest = [...workflowJobs(lines.join('\n')).values()]
+		if (rest.some((body) => withoutComments(body).includes(event))) continue
+		lines = removeTrigger(lines, event)
+	}
+	return lines.join('\n')
+}
+
+/** Drops a block-form `on:` trigger and anything nested under it. */
+function removeTrigger(lines: string[], event: string): string[] {
+	const on = lines.findIndex((l) => /^['"]?on['"]?:\s*$/.test(l))
+	if (on === -1) return lines
+	for (let i = on + 1; i < lines.length; i++) {
+		const l = lines[i] ?? ''
+		if (!isBlankOrComment(l) && indentOf(l) === 0) break
+		if (!new RegExp(`^\\s+${event}:`).test(l)) continue
+		let j = i + 1
+		while (j < lines.length && (lines[j]?.trim() === '' || indentOf(lines[j] ?? '') > indentOf(l)))
+			j++
+		// A blank line that separated the trigger block from what follows stays.
+		while (j > i + 1 && lines[j - 1]?.trim() === '') j--
+		return [...lines.slice(0, i), ...lines.slice(j)]
+	}
+	return lines
 }
 
 /**

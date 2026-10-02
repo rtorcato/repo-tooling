@@ -215,12 +215,35 @@ jobs:
 		expect(release).toContain('  release:\n    environment: release\n')
 	})
 
-	it('never adds release.yml beside a ci.yml it left publishing', async () => {
+	it('migrates without overwrite, leaving every other job byte-for-byte (#761)', async () => {
 		const dir = newTmpDir()
 		await fs.outputFile(join(dir, WORKFLOW_PATH), OLD_LAYOUT)
 		const written = await generateGitHubActions(libRelease(), dir)
 
+		expect(written).toEqual(expect.arrayContaining([CI_WORKFLOW, RELEASE_WORKFLOW]))
+		expect(await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')).toBe(
+			OLD_LAYOUT.slice(0, OLD_LAYOUT.indexOf('  release:'))
+		)
+	})
+
+	it('leaves a customized ci.yml with no release job unchanged (#761)', async () => {
+		const dir = newTmpDir()
+		const custom = OLD_LAYOUT.slice(0, OLD_LAYOUT.indexOf('  release:'))
+		await fs.outputFile(join(dir, WORKFLOW_PATH), custom)
+		const written = await generateGitHubActions(libRelease(), dir)
+
+		expect(written).not.toContain(CI_WORKFLOW)
+		expect(await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')).toBe(custom)
+	})
+
+	it('never adds release.yml beside a ci.yml it left publishing', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, WORKFLOW_PATH), OLD_LAYOUT)
+		// No release.yml to move the job into, so ci.yml keeps it.
+		const written = await generateGitHubActions(baseConfig({ semanticRelease: false }), dir)
+
 		expect(written).not.toContain(RELEASE_WORKFLOW)
+		expect(await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')).toBe(OLD_LAYOUT)
 		expect(await fs.pathExists(join(dir, RELEASE_WORKFLOW))).toBe(false)
 	})
 
