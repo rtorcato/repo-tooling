@@ -23,10 +23,13 @@ describe('generated release workflow (#690, #740, #753)', () => {
 		expect(yml).toContain('set -o pipefail\n          npx semantic-release 2>&1 | tee release.log')
 	})
 
-	it('supersedes a waiting run and releases the default branch tip', () => {
+	it('supersedes a waiting run and releases the dispatched branch tip', () => {
 		const yml = render()
 		expect(yml).toContain('concurrency:\n  group: release\n  cancel-in-progress: true\n')
-		expect(yml).toContain('ref: ${{ github.event.repository.default_branch }}')
+		// A dispatch from `beta` releases beta (#771); a milestone, the default branch.
+		expect(yml).toContain(
+			"ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}"
+		)
 		// install → build → test only; no CI fan-out, no `needs:`.
 		expect([...workflowJobs(yml).keys()]).toEqual(['release'])
 		expect(yml).not.toContain('needs:')
@@ -72,6 +75,15 @@ describe('doctor on the release layout (#753)', () => {
 		const r = await setup({ 'ci.yml': ci })
 		expect(r.status).toBe('drift')
 		expect(r.detail).toContain('ci.yml: `release` publishes from CI')
+		expect(r.hint).toContain('fix github-actions --diff')
+	})
+
+	it('names the release job steps to move by hand (#771)', async () => {
+		const ci = `${preset}\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx semantic-release\n      - name: 📘 Redeploy docs\n        run: gh workflow run docs.yml\n`
+		const r = await setup({ 'ci.yml': ci })
+		expect(r.status).toBe('drift')
+		expect(r.hint).toContain('📘 Redeploy docs')
+		expect(r.hint).toContain('into release.yml by hand')
 	})
 
 	it('flags a release.yml that does not supersede a waiting run', async () => {

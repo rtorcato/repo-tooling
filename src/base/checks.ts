@@ -11,7 +11,7 @@ import {
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import { dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
-import { publishingJob, pushReleaseJob } from './github-settings.js'
+import { customJobSteps, publishingJob, pushReleaseJob } from './github-settings.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -199,6 +199,8 @@ export async function checkGitHubActions(
 			return (await fs.pathExists(p)) ? await fs.readFile(p, 'utf-8') : null
 		}
 		const deltas: string[] = []
+		let hint =
+			'Run `npx @rtorcato/repo-tooling fix github-actions --diff` to see the delta before overwriting — a pin *ahead* of the preset means regenerating would downgrade it'
 		/** Only the intersection is comparable — an action the preset never emits is the consumer's own business. */
 		const pinDeltas = (file: string, actual: string, expected: string) => {
 			const ours = actionPins(expected)
@@ -216,6 +218,11 @@ export async function checkGitHubActions(
 				deltas.push(
 					`ci.yml: \`${ciRelease}\` publishes from CI (preset releases from release.yml, where a newer request supersedes a waiting one)`
 				)
+				// `fix github-actions` refuses to drop these (#771), so say what to do.
+				const custom = presetRelease ? customJobSteps(ci, ciRelease, [presetRelease, preset]) : []
+				if (custom.length > 0) {
+					hint = `Move \`${ciRelease}\`'s own steps into release.yml by hand — ${custom.join(', ')} — then delete \`${ciRelease}\` from ci.yml; \`fix github-actions\` refuses rather than drop them`
+				}
 			}
 			pinDeltas('ci.yml', ci, preset)
 		}
@@ -240,7 +247,7 @@ export async function checkGitHubActions(
 				check: 'GitHub Actions',
 				status: 'drift',
 				detail: `workflows disagree with the preset: ${deltas.join('; ')}`,
-				hint: 'Run `npx @rtorcato/repo-tooling fix github-actions --diff` to see the delta before overwriting — a pin *ahead* of the preset means regenerating would downgrade it',
+				hint,
 			}
 		}
 

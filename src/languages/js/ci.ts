@@ -269,7 +269,9 @@ export const RELEASE_WORKFLOW = '.github/workflows/release.yml'
  * push runs behind it, and approving it late released a stale checkout that
  * semantic-release refused ("behind remote"). Here a newer request supersedes
  * a waiting one — which has published nothing yet — and the job checks out
- * the default branch's tip when it starts, i.e. after approval. It runs only
+ * the released branch's tip when it starts, i.e. after approval: the dispatched
+ * branch (so a dispatch from `beta` cuts a prerelease, #771), or the default
+ * branch on a closed milestone. It runs only
  * install → build → test: the commit already passed full CI on its way to main.
  */
 export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = {}): string | null {
@@ -315,8 +317,11 @@ ${opts.releaseEnvironment ? `    environment: ${opts.releaseEnvironment}\n` : ''
         uses: actions/checkout@v7
         with:
           # The tip, not the event's SHA: the job starts after approval, and
-          # semantic-release refuses a checkout that main has moved past.
-          ref: \${{ github.event.repository.default_branch }}
+          # semantic-release refuses a checkout the branch has moved past. A
+          # dispatch releases the branch it ran from — dispatch from a prerelease
+          # branch (e.g. beta) to cut a prerelease; a closed milestone releases
+          # the default branch.
+          ref: \${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}
           fetch-depth: 0
           # RELEASE_TOKEN (admin PAT) lets semantic-release push the version
           # commit + tag to a protected main; GITHUB_TOKEN can't bypass branch

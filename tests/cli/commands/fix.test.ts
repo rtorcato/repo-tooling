@@ -1967,4 +1967,70 @@ jobs:
 
 		expect(await fs.readFile(join(dir, 'codecov.yml'), 'utf-8')).toBe('comment: false\n')
 	})
+
+	// #771: release.yml is rendered from the template, so a step only the old job
+	// had would vanish silently. Refuse instead, and write nothing.
+	const releaseJobWith = (steps: string) =>
+		CUSTOM.replace('    steps:\n      - run: npx semantic-release\n', `    steps:\n${steps}`)
+
+	it('refuses to migrate a release job with custom steps', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		const yaml = releaseJobWith(`      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 Run semantic-release
+        run: npx semantic-release
+
+      - name: 📘 Redeploy the docs after a publish
+        run: gh workflow run docs.yml
+
+      - name: 🔔 Report release failure
+        if: failure()
+        uses: actions/github-script@v7
+`)
+		await fs.outputFile(ci(dir), yaml)
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('github-actions', { directory: dir, yes: true })).rejects.toThrow(
+				'exit'
+			)
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			const out = errSpy.mock.calls.flat().join('\n')
+			expect(out).toContain('📘 Redeploy the docs after a publish, 🔔 Report release failure')
+			expect(out).not.toContain('Install dependencies')
+			expect(await fs.readFile(ci(dir), 'utf-8')).toBe(yaml)
+			expect(await fs.pathExists(join(dir, '.github/workflows/release.yml'))).toBe(false)
+		} finally {
+			exitSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
+	it('migrates a release job whose steps are all template equivalents', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		// The pre-#753 template's own release job, plus a renamed install step.
+		await fs.outputFile(
+			ci(dir),
+			releaseJobWith(`      - uses: actions/checkout@v4
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: 📦 Restore dependencies cache
+        uses: actions/cache@v6
+      - name: 🔧 Configure Git
+        run: git config --global user.name "github-actions[bot]"
+      - name: 🚀 Run semantic-release
+        run: |
+          npx semantic-release
+`)
+		)
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		expect(await fs.readFile(ci(dir), 'utf-8')).toBe(MIGRATED)
+		expect(await fs.pathExists(join(dir, '.github/workflows/release.yml'))).toBe(true)
+	})
 })
