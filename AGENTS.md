@@ -20,7 +20,8 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `setup --config <path>` | ✅ | `--dry-run` only | Scaffold with a full `ProjectConfig` JSON file. See `setup --config-schema`. |
 | `setup --config-schema` | ✅ | ✅ (JSON Schema) | Print the JSON Schema for `ProjectConfig`. Use to validate configs before scaffolding. |
 | `setup --dry-run` | ✅ | ✅ | Print resolved config + file list without writing. Pair with `--preset` or `--config`. |
-| `doctor --json` | ✅ | ✅ | Audit a project. Returns `{ directory, results: [{ check, status, detail, hint? }] }`. Status: `ok` / `drift` / `missing` / `optional-missing` / `declared`. |
+| `doctor --json` | ✅ | ✅ | Audit a project. Returns `{ directory, results: [{ check, status, detail, hint? }] }`. Status: `ok` / `drift` / `missing` / `optional-missing` / `declared` / `skipped`. |
+| `doctor --offline` | ✅ | ✅ | Skip every check that reads live GitHub state via `gh` (branch protection, repo settings, secrets, milestones); they report `status: "skipped"`. Use it for CI gates, so the result never depends on timing or on which account runs it. |
 | `doctor --rules-from <owner/repo>` | ✅ | ✅ | Report how this repo's `config`/`rules` differ from a reference repo's `.repo-tooling.json` (read over `gh`). Informational only — adds a `rulesReference` key to the JSON, never a check result, never affects the exit code. |
 | `setup --from <owner/repo>` | ❌ (seeds the wizard) | `--dry-run` only | Seed the wizard's defaults from a reference repo's recorded config. Seeded, not skipped — every question is still asked. |
 | `fix --json --yes` | ✅ | ✅ | Walk every doctor finding, apply fixers. Returns `FixActionRecord[]` with `status: applied | dry-run | skipped | already-ok | unsupported`. |

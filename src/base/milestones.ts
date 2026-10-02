@@ -19,7 +19,8 @@ import type { CheckResult } from './types.js'
  * expands `{owner}/{repo}` from the remote itself.
  */
 
-const CHECK = 'Milestones'
+export const MILESTONES_CHECK = 'Milestones'
+const CHECK = MILESTONES_CHECK
 
 /** The title `fix` gives the rolling milestone it opens. */
 export const NEXT_MILESTONE = 'next'

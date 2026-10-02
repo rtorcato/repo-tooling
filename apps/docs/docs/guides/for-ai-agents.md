@@ -174,7 +174,7 @@ pnpm install
 DOCTOR=$(npx @rtorcato/repo-tooling doctor --json -d .)
 
 # 2. Parse, decide whether to fix everything or specific items
-#    (For agents: filter results where status !== "ok" && status !== "optional-missing" && status !== "declared")
+#    (For agents: filter results where status is "drift", "missing" or "optional-missing")
 
 # 3. Apply all fixable findings
 npx @rtorcato/repo-tooling fix --yes --json -d .
@@ -182,6 +182,14 @@ npx @rtorcato/repo-tooling fix --yes --json -d .
 # 4. Confirm
 npx @rtorcato/repo-tooling doctor --json -d .
 ```
+
+### "Gate CI on doctor"
+
+```bash
+npx @rtorcato/repo-tooling doctor --json --offline -d .
+```
+
+`--offline` skips every check that reads live GitHub state over `gh` (repo settings, secrets, milestones). Those checks report `status: "skipped"` and never count toward the exit code, so the gate doesn't depend on timing or on which account runs it.
 
 ### "Add Dependabot to this repo (and nothing else)"
 
@@ -192,7 +200,7 @@ npx @rtorcato/repo-tooling fix dependabot --yes --json -d .
 ## Exit codes
 
 - `setup` — `0` on success, `1` on failure (validation error, write failure).
-- `doctor` — `0` if every check is `ok`, `optional-missing`, or `declared`; `1` if any `drift` or `missing`.
+- `doctor` — `0` if every check is `ok`, `optional-missing`, `declared`, or `skipped`; `1` if any `drift` or `missing`.
 - `fix` — always `0` (intent expressed; rerun `doctor` to confirm state). Unknown target → `1` with a JSON error payload.
 - `list` — `0`.
 - `copy` — `0` on success, `1` on unknown config name.

@@ -18,9 +18,9 @@ import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
 import { type DetectedLanguage, detectAuditLanguage } from '../utils/detect-language.js'
-import { checkGitHubSettings } from '../../base/github-settings.js'
-import { checkRepositorySecrets } from '../../base/secrets.js'
-import { checkMilestones } from '../../base/milestones.js'
+import { checkGitHubSettings, GITHUB_SETTINGS_CHECKS } from '../../base/github-settings.js'
+import { checkRepositorySecrets, SECRETS_CHECK } from '../../base/secrets.js'
+import { checkMilestones, MILESTONES_CHECK } from '../../base/milestones.js'
 import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
 import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
@@ -90,6 +90,50 @@ export interface DoctorOptions {
 	json?: boolean
 	/** `--rules-from <owner/repo>`: report how this repo's rules differ from that repo's (#563). */
 	rulesFrom?: string
+	/** `--offline`: skip every check that reads live GitHub state via `gh` (#755). */
+	offline?: boolean
+}
+
+export interface RunDoctorOptions {
+	offline?: boolean
+}
+
+/**
+ * A check that reads live GitHub state through `gh` (#755). Declared with
+ * `remote: true` so `--offline` skips it: a CI gate must not turn on the repo's
+ * milestone or settings state, nor on which account runs it. Every check that
+ * spawns `gh` goes through this — a test runs doctor offline with `gh` stubbed
+ * and fails if anything still calls it.
+ */
+interface RemoteCheck {
+	remote: true
+	/** The check names it reports, so an offline run can still list them. */
+	names: readonly string[]
+	run: (dir: string) => Promise<CheckResult | CheckResult[]>
+}
+
+const REMOTE_CHECKS = {
+	// GitHub repo-settings drift (branch protection, merge settings, workflow
+	// permissions). Read-only; self-skips as `ok` outside a live GitHub repo.
+	githubSettings: { remote: true, names: GITHUB_SETTINGS_CHECKS, run: checkGitHubSettings },
+	secrets: { remote: true, names: [SECRETS_CHECK], run: checkRepositorySecrets },
+	// Milestone hygiene (#397) — same seam, same self-skip.
+	milestones: { remote: true, names: [MILESTONES_CHECK], run: checkMilestones },
+} satisfies Record<string, RemoteCheck>
+
+async function runRemote(
+	spec: RemoteCheck,
+	dir: string,
+	offline: boolean | undefined
+): Promise<CheckResult[]> {
+	if (offline) {
+		return spec.names.map((check) => ({
+			check,
+			status: 'skipped',
+			detail: 'offline — reads live GitHub state via gh',
+		}))
+	}
+	return [await spec.run(dir)].flat()
 }
 
 const PACKAGE = '@rtorcato/repo-tooling'
@@ -272,6 +316,8 @@ interface BaseCheckOptions {
 	language: DetectedLanguage
 	/** The module's `codeqlLanguages`; empty means CodeQL can't analyse it (#289). */
 	codeqlLanguages: readonly string[]
+	/** Skip the `remote: true` checks (#755). */
+	offline?: boolean
 }
 
 // The language-agnostic checks (src/base): repo hygiene, git hooks, CI,
@@ -301,12 +347,9 @@ async function runBaseChecks(
 	results.push(await checkGitHubActions(dir, opts.presetWorkflow))
 	results.push(await checkDependabot(dir))
 	results.push(await checkCodeQL(dir, opts.codeqlLanguages))
-	// GitHub repo-settings drift (branch protection, merge settings, workflow
-	// permissions). Read-only; self-skips as `ok` outside a live GitHub repo.
-	results.push(...(await checkGitHubSettings(dir)))
-	results.push(await checkRepositorySecrets(dir))
-	// Milestone hygiene (#397) — same seam, same self-skip.
-	results.push(await checkMilestones(dir))
+	for (const spec of Object.values(REMOTE_CHECKS)) {
+		results.push(...(await runRemote(spec, dir, opts.offline)))
+	}
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
 	results.push(await checkCommunityHealth(dir))
@@ -323,7 +366,10 @@ async function runBaseChecks(
 	return results
 }
 
-export async function runDoctor(dir: string): Promise<CheckResult[]> {
+export async function runDoctor(
+	dir: string,
+	{ offline }: RunDoctorOptions = {}
+): Promise<CheckResult[]> {
 	const targetDir = path.resolve(dir)
 
 	const lock = await readLockfile(targetDir)
@@ -353,6 +399,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: null,
 				language,
+				offline,
 				codeqlLanguages: languageModule?.codeqlLanguages ?? [],
 			})),
 		]
@@ -376,6 +423,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderSwiftWorkflow(await readSwiftPackage(targetDir)),
 				language,
+				offline,
 				codeqlLanguages: languageModule.codeqlLanguages,
 			})),
 			...(await runSwiftChecks(targetDir)),
@@ -400,6 +448,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderPythonWorkflow(await readPyproject(targetDir)),
 				language,
+				offline,
 				codeqlLanguages: languageModule.codeqlLanguages,
 			})),
 			...(await runPythonChecks(targetDir)),
@@ -426,6 +475,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				badges: { audience: 'public', fixTarget: null },
 				presetWorkflow: renderPerlWorkflow(await readPerlProject(targetDir)),
 				language,
+				offline,
 				codeqlLanguages: languageModule.codeqlLanguages,
 			})),
 			...(await runPerlChecks(targetDir)),
@@ -497,6 +547,7 @@ export async function runDoctor(dir: string): Promise<CheckResult[]> {
 				githubJobs(inferProjectConfig(pkg), { scripts: scriptsOf(pkg), bin: hasBin(pkg) })
 			),
 			language,
+			offline,
 			codeqlLanguages: languageModule.codeqlLanguages,
 		}))
 	)
@@ -510,6 +561,7 @@ const STATUS_ICONS: Record<CheckStatus, string> = {
 	missing: chalk.red('❌'),
 	'optional-missing': chalk.gray('➖'),
 	declared: chalk.blue('📝'),
+	skipped: chalk.gray('⏭️ '),
 }
 
 function statusLabel(status: CheckStatus): string {
@@ -524,6 +576,8 @@ function statusLabel(status: CheckStatus): string {
 			return chalk.gray('not configured')
 		case 'declared':
 			return chalk.blue('declared')
+		case 'skipped':
+			return chalk.gray('skipped')
 	}
 }
 
@@ -561,6 +615,7 @@ export function summarize(results: CheckResult[]): {
 	missing: number
 	optionalMissing: number
 	declared: number
+	skipped: number
 } {
 	return {
 		ok: results.filter((r) => r.status === 'ok').length,
@@ -568,6 +623,7 @@ export function summarize(results: CheckResult[]): {
 		missing: results.filter((r) => r.status === 'missing').length,
 		optionalMissing: results.filter((r) => r.status === 'optional-missing').length,
 		declared: results.filter((r) => r.status === 'declared').length,
+		skipped: results.filter((r) => r.status === 'skipped').length,
 	}
 }
 
@@ -602,7 +658,7 @@ function printRulesComparison(comparison: RulesComparison) {
 
 export async function doctorCommand(options: DoctorOptions = {}) {
 	const dir = options.directory ?? process.cwd()
-	const results = await runDoctor(dir)
+	const results = await runDoctor(dir, { offline: options.offline })
 	const comparison = options.rulesFrom
 		? await compareRulesWithReference(dir, options.rulesFrom)
 		: null
@@ -631,7 +687,7 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 		const summary = summarize(results)
 		console.log()
 		console.log(
-			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}, ${chalk.blue(`${summary.declared} declared`)}\n`
+			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}, ${chalk.blue(`${summary.declared} declared`)}${summary.skipped ? `, ${chalk.gray(`${summary.skipped} skipped`)}` : ''}\n`
 		)
 		const suggestions = nextStepSuggestions(results, await detectAuditLanguage(dir))
 		if (suggestions.length > 0) {
