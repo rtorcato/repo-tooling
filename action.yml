@@ -70,10 +70,8 @@ runs:
         # doctor exits 1 on findings; that is this action's gate, not an error,
         # so decide from the report rather than letting `set -e` end the step.
         status=0
-        # --offline (#755): live GitHub state (milestones, repo settings) depends
-        # on timing and on the runner's token, so it never gates a CI step.
         npx --yes "@rtorcato/repo-tooling@$version" doctor \
-          --directory "$target" --json --offline >"$report" || status=$?
+          --directory "$target" --json >"$report" || status=$?
         if [ ! -s "$report" ]; then
           echo "::error::repo-tooling doctor produced no JSON (exit $status)"
           exit 1
