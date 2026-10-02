@@ -25,7 +25,11 @@ export default config
 | `NPM_TOKEN` | Publish to npm registry |
 | `GITHUB_TOKEN` | Create GitHub releases (auto-provided) |
 
-## What it does on merge to `main`
+:::tip How do I release?
+With the `release.yml` layout a merge does not release; a dispatch of `release.yml` plus approval of the `release` environment does. The `npm-publish` skill walks an agent through the preflight checks and the dispatch. See `RELEASING.md`.
+:::
+
+## What it does when a release runs
 
 1. Analyses commit messages since the last release
 2. Determines the next semver version (`patch` / `minor` / `major`)

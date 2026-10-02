@@ -4,6 +4,8 @@ This package publishes to npm via [semantic-release](https://semantic-release.gi
 
 ## Release trigger
 
+Asking an agent "how do I release" or "cut a release"? The `npm-publish` skill (`skills/npm-publish/SKILL.md`) covers this flow.
+
 `release.yml` runs only when:
 
 - **a milestone is closed**: closing it means "ship this batch", or

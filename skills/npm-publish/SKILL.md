@@ -5,10 +5,10 @@ description: Use before releasing or publishing any package in a repo set up by 
 
 # npm-publish
 
-A repo set up by `@rtorcato/repo-tooling` releases through **automation on merge to
-`main`** — one of semantic-release, Changesets, or Release Please. Versioning, the
-git tag, the GitHub release, the CHANGELOG, and the npm publish all come from that
-pipeline. There is no manual release step under any of them.
+A repo set up by `@rtorcato/repo-tooling` releases through **automation** — one of semantic-release, Changesets, or Release
+Please. Versioning, the git tag, the GitHub release, the CHANGELOG, and the npm
+publish all come from that pipeline. Whether a merge to `main` triggers it depends on
+the layout (see semantic-release below). You never do the release steps by hand.
 
 ## The rule
 
@@ -53,7 +53,33 @@ decision:
 - `feat!:` / `BREAKING CHANGE:` → major
 - `chore:` / `docs:` / `refactor:` / `test:` → **no release**
 
-To ship a change: give it the right commit type and merge to `main`.
+To ship a change: give it the right commit type and merge to `main`. Whether that
+merge also releases depends on the layout:
+
+- **Release job in `ci.yml`** (older layout): the merge releases. Nothing more to do.
+- **`.github/workflows/release.yml` with `workflow_dispatch`** (5.4.0+): a merge does
+  **not** release. A release is a dispatch of `release.yml` plus a human approving the
+  `release` environment (or closing a milestone, if the workflow listens for that).
+
+#### Releasing under `release.yml`
+
+Only when the user **explicitly asks** to release ("cut a release", "ship it"). Never
+dispatch on your own initiative. Then:
+
+1. Check `main`'s CI is green: `gh run list --branch main --workflow ci.yml --limit 1`.
+2. Check there is a releasable commit since the last tag:
+   `git log "$(git describe --tags --abbrev=0)"..origin/main --format=%s` has a `fix:`,
+   `feat:`, or breaking commit. If not, say "nothing to release" and **dispatch nothing**.
+3. Name any run still waiting: `gh run list --workflow release.yml --status waiting`.
+   A new dispatch supersedes it (`cancel-in-progress`); it has published nothing, so
+   that is safe, but tell the user.
+4. Dispatch: `gh workflow run release.yml --ref main`.
+5. Print the run URL (`gh run list --workflow release.yml --limit 1`) and tell the user
+   the next step is theirs: approve the `release` environment.
+6. Optionally watch the run and report the published version.
+
+**Never approve the environment yourself.** The ban on `npm publish`, `npm version`,
+`git tag`, and CHANGELOG edits still applies.
 
 ### Changesets
 
