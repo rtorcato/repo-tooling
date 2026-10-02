@@ -1,5 +1,6 @@
 import fs from 'fs-extra'
 import path from 'node:path'
+import { coverageUploadWorkflow } from '../../base/checks.js'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { FixerAbort } from '../../base/fixers.js'
 import {
@@ -10,12 +11,7 @@ import {
 	semanticReleaseJob,
 	workflowJobs,
 } from '../../base/github-settings.js'
-import {
-	githubJobs,
-	RELEASE_WORKFLOW,
-	renderReleaseWorkflow,
-	usesCoverage,
-} from '../../languages/js/ci.js'
+import { githubJobs, RELEASE_WORKFLOW, renderReleaseWorkflow } from '../../languages/js/ci.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 // Minimal Codecov config — auto targets keep it from failing a fresh repo that
@@ -144,11 +140,12 @@ export async function generateGitHubActions(
 		filesWritten.push(RELEASE_WORKFLOW)
 	}
 
-	// codecov.yml is the CI's coverage-upload companion — emit it alongside ci.yml
-	// whenever the workflow uploads coverage, so the codecov badge isn't red. An
-	// existing one is the repo's own coverage policy — never overwritten (#761).
+	// codecov.yml is the coverage-upload companion — emit it only when a workflow
+	// (the ci.yml just written included) actually runs codecov-action, not merely
+	// because the config has tests (#779). An existing one is the repo's own
+	// coverage policy — never overwritten (#761).
 	const codecovPath = path.join(targetDir, 'codecov.yml')
-	if (usesCoverage(config) && !(await fs.pathExists(codecovPath))) {
+	if (!(await fs.pathExists(codecovPath)) && (await coverageUploadWorkflow(targetDir))) {
 		await fs.writeFile(codecovPath, CODECOV_YML)
 		filesWritten.push('codecov.yml')
 	}

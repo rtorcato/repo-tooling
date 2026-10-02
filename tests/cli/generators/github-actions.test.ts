@@ -124,6 +124,30 @@ describe('generateGitHubActions', () => {
 		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(false)
 	})
 
+	// #779: codecov.yml follows the workflows, not the config's test framework.
+	it('emits no codecov.yml when the kept workflow never uploads coverage', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(
+			join(dir, WORKFLOW_PATH),
+			'name: CI\njobs:\n  test:\n    steps:\n      - run: pnpm test\n'
+		)
+		await generateGitHubActions(baseConfig({ testing: { framework: 'vitest' } }), dir)
+
+		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(false)
+	})
+
+	it('emits codecov.yml when a kept workflow uploads coverage, never overwriting one', async () => {
+		const dir = newTmpDir()
+		const upload = 'name: Cov\njobs:\n  cov:\n    steps:\n      - uses: codecov/codecov-action@v7\n'
+		await fs.outputFile(join(dir, '.github/workflows/coverage.yml'), upload)
+		const written = await generateGitHubActions(baseConfig({ testing: { framework: 'none' } }), dir)
+		expect(written).toContain('codecov.yml')
+
+		await fs.writeFile(join(dir, 'codecov.yml'), 'comment: false\n')
+		expect(await generateGitHubActions(baseConfig(), dir)).not.toContain('codecov.yml')
+		expect(await fs.readFile(join(dir, 'codecov.yml'), 'utf-8')).toBe('comment: false\n')
+	})
+
 	it('includes build job when bundler is configured', async () => {
 		const dir = newTmpDir()
 		await generateGitHubActions(baseConfig({ bundler: 'tsup' }), dir)

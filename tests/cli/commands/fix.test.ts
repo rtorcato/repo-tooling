@@ -1868,6 +1868,33 @@ describe('fix github-actions packageManager', () => {
 		expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
 	})
 
+	// #779: a workflow that pins pnpm itself needs no packageManager, and one that
+	// never uploads coverage needs no codecov.yml.
+	it('leaves package.json alone when pnpm/action-setup has a version input', async () => {
+		const dir = newTmpDir()
+		// private: no release.yml, whose own pnpm/action-setup would need the pin.
+		await seedPackageJson(dir, { private: true })
+		await fs.outputFile(
+			join(dir, '.github/workflows/ci.yml'),
+			'name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: pnpm/action-setup@v6\n        with:\n          version: 11\n      - run: pnpm test\n'
+		)
+		const before = await fs.readFile(join(dir, 'package.json'), 'utf-8')
+		const fixer = getFixers().find((f) => f.target === 'github-actions')
+		if (!fixer) throw new Error('github-actions fixer missing')
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		// Coverage upload, not GitHub Actions, so the repo's own ci.yml is kept.
+		const { filesWritten } = await fixer.run({
+			targetDir: dir,
+			pkg,
+			result: { check: 'Coverage upload', status: 'missing', detail: '' },
+		} as never)
+
+		expect(filesWritten).not.toContain('package.json')
+		expect(filesWritten).not.toContain('codecov.yml')
+		expect(await fs.readFile(join(dir, 'package.json'), 'utf-8')).toBe(before)
+		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(false)
+	})
+
 	it('only references scripts the repo actually has', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir, { scripts: { typecheck: 'tsc --noEmit' } })

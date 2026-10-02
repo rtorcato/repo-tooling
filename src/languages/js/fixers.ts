@@ -30,6 +30,7 @@ import {
 	generateNvmrc,
 	generateSizeLimitConfig,
 	generateVscodeExtensions,
+	pnpmSetupNeedsVersion,
 } from '../../cli/generators/misc.js'
 import { hasBin, hasCommitlint, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
@@ -503,7 +504,7 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'github-actions',
 		description:
-			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library, + codecov.yml when tests run); migrates a release job out of ci.yml',
+			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library, + codecov.yml when a workflow uploads coverage); migrates a release job out of ci.yml',
 		appliesTo: ['GitHub Actions', 'Coverage upload', NPM_OIDC_CHECK],
 		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'codecov.yml', 'package.json (packageManager field)'],
 		canFixDrift: true,
@@ -519,9 +520,13 @@ export const FIXERS: Fixer[] = [
 				bin: hasBin(pkg),
 				commitlint: hasCommitlint(pkg),
 			})
-			// `pnpm/action-setup` is emitted without a `version:` input, so without
-			// this every job dies at setup with "No pnpm version is specified".
-			if ((await ensurePackageManager(targetDir)) === 'added') {
+			// `pnpm/action-setup` without a `version:` input dies at setup with "No
+			// pnpm version is specified" unless packageManager is set — so pin it
+			// then, and only then; otherwise leave package.json alone (#779).
+			if (
+				(await pnpmSetupNeedsVersion(targetDir)) &&
+				(await ensurePackageManager(targetDir)) === 'added'
+			) {
 				filesWritten.push('package.json')
 			}
 			if (!filesWritten.includes(CI_WORKFLOW)) {
