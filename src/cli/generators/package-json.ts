@@ -236,7 +236,7 @@ function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record
 export const SIZE_LIMIT_SCRIPTS: Record<string, string> = { 'size-limit': 'size-limit' }
 
 /** Shared by the same two paths, for the same reason. */
-export const SIZE_LIMIT_VERSION = '^11.2.0'
+export const SIZE_LIMIT_VERSION = '^14.1.0'
 
 export async function ensureScripts(
 	targetDir: string,

@@ -1,6 +1,6 @@
 # size-limit preset
 
-Bundle-size budget enforcement for TypeScript/JavaScript libraries, powered by [size-limit](https://github.com/ai/size-limit) + `@size-limit/preset-small-lib` (esbuild + brotli — measures what a downstream consumer actually downloads).
+Bundle-size budget enforcement for TypeScript/JavaScript libraries, powered by [size-limit](https://github.com/ai/size-limit) + `@size-limit/preset-small-lib` (rolldown + brotli as of v14, esbuild before — measures what a downstream consumer actually downloads).
 
 ## Installation
 
