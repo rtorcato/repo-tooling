@@ -212,16 +212,34 @@ export function trustMismatch(
 	const nwo = want.nwo.toLowerCase()
 	const file = want.file.toLowerCase()
 	const env = want.environment?.toLowerCase() ?? null
-	const leaves = entries.map((e) => stringsOf(e))
-	const forRepo = leaves.filter((s) => s.some((x) => x === nwo || x.endsWith(`/${nwo}`)))
+	const forRepo = entries.filter((e) =>
+		stringsOf(e).some((x) => x === nwo || x.endsWith(`/${nwo}`))
+	)
 	if (forRepo.length === 0) return `no trusted publisher for ${want.nwo}`
-	const forFile = forRepo.filter((s) =>
-		s.some((x) => x === file || x.endsWith(`/${file}`) || x.includes(`/${file}@`))
+	const forFile = forRepo.filter((e) =>
+		stringsOf(e).some((x) => x === file || x.endsWith(`/${file}`) || x.includes(`/${file}@`))
 	)
 	if (forFile.length === 0)
 		return `the trusted publisher for ${want.nwo} names a different workflow (want ${want.file})`
-	if (env && !forFile.some((s) => s.includes(env))) {
+	if (env && !forFile.some((e) => stringsOf(e).includes(env))) {
 		return `the trusted publisher for ${want.nwo} has no \`${want.environment}\` environment, but the job declares one`
+	}
+	// The reverse (#785): npm rejects — as a 404 — every publish from a job that
+	// omits the environment the publisher was registered with.
+	const required = env ? [] : forFile.map(environmentOf)
+	if (required.length > 0 && required.every(Boolean)) {
+		return `the trusted publisher for ${want.nwo} requires the \`${required[0]}\` environment, but the publishing job declares none — add \`environment: ${required[0]}\` to the job`
+	}
+	return null
+}
+
+/** The first non-empty `environment` string anywhere in a trusted-publisher entry. */
+function environmentOf(v: unknown): string | null {
+	if (!v || typeof v !== 'object') return null
+	for (const [k, x] of Object.entries(v)) {
+		if (k.toLowerCase() === 'environment' && typeof x === 'string' && x) return x
+		const inner = environmentOf(x)
+		if (inner) return inner
 	}
 	return null
 }

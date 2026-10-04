@@ -51,7 +51,9 @@ describe('generated release workflow (#690, #740, #753)', () => {
 
 	it('carries the release environment', () => {
 		expect(workflowJobs(render('release')).get('release')).toContain('    environment: release\n')
-		expect(workflowJobs(render()).get('release')).not.toContain('environment:')
+		expect(workflowJobs(render('staging')).get('release')).toContain('    environment: staging\n')
+		// Defaults to `release`, or an env-scoped npm trusted publisher 404s (#785).
+		expect(workflowJobs(render()).get('release')).toContain('    environment: release\n')
 	})
 })
 
