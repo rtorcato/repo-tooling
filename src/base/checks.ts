@@ -483,11 +483,15 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
 	// agent block or the Claude skill is installed — the markers `fix ai` writes.
 	let blockFile: string | null = null
 	const stale: string[] = []
+	const unmanaged: string[] = []
 	for (const rel of ['AGENTS.md', 'CLAUDE.md', path.join('.github', 'copilot-instructions.md')]) {
 		const filepath = path.join(dir, rel)
 		if (!(await fs.pathExists(filepath))) continue
 		const content = await fs.readFile(filepath, 'utf8')
-		if (!content.includes(BLOCK_START)) continue
+		if (!content.includes(BLOCK_START)) {
+			unmanaged.push(rel)
+			continue
+		}
 		blockFile ??= rel
 		if (hasStaleAgentBlock(content)) stale.push(rel)
 	}
@@ -508,6 +512,14 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
 			check: 'AI setup',
 			status: 'ok',
 			detail: blockFile ? `${blockFile} has the agent block` : '.claude skill installed',
+		}
+	}
+	if (unmanaged.length > 0) {
+		return {
+			check: 'AI setup',
+			status: 'optional-missing',
+			detail: `${unmanaged.join(', ')} present but carry no repo-tooling agent block`,
+			hint: 'Run `npx @rtorcato/repo-tooling fix ai` to add the agent block in place (existing content is kept)',
 		}
 	}
 	return {

@@ -547,6 +547,22 @@ describe('doctor extended checks', () => {
 		expect(results.find((r) => r.check === 'AI setup')?.status).toBe('ok')
 	})
 
+	it('AI setup: names hand-written agent files that lack the block (#782)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		let result = (await runDoctor(dir)).find((r) => r.check === 'AI setup')
+		expect(result?.detail).toContain('no AI agent files')
+
+		await fs.writeFile(join(dir, 'AGENTS.md'), '# Hand-written\n')
+		await fs.writeFile(join(dir, 'CLAUDE.md'), '# Hand-written\n')
+		result = (await runDoctor(dir)).find((r) => r.check === 'AI setup')
+		expect(result?.status).toBe('optional-missing')
+		expect(result?.detail).toBe(
+			'AGENTS.md, CLAUDE.md present but carry no repo-tooling agent block'
+		)
+		expect(result?.hint).toContain('fix ai')
+	})
+
 	it('AI setup: drift when a managed block still names the dead js-tooling bin (#393)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
