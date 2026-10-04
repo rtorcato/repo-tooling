@@ -100,7 +100,9 @@ export interface JobOptions {
 	 * The `environment:` the existing release job declares — in release.yml, or
 	 * in a pre-#753 ci.yml being migrated. Carried into the regenerated release
 	 * workflow so `fix github-actions` never strips the publish gate that
-	 * `fix release-environment` added (#740).
+	 * `fix release-environment` added (#740). Absent, the job still declares
+	 * `release` (#785): a trusted publisher registered with an environment
+	 * rejects a job without one, and GitHub creates it unprotected on first use.
 	 */
 	releaseEnvironment?: string | null
 	/**
@@ -332,7 +334,8 @@ export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = 
 `
 			: ''
 	return `${RELEASE_WORKFLOW_HEADER}  release:
-${opts.releaseEnvironment ? `    environment: ${opts.releaseEnvironment}\n` : ''}    runs-on: ubuntu-latest
+    environment: ${opts.releaseEnvironment || 'release'}
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       issues: write

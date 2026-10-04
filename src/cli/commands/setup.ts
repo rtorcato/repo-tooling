@@ -700,7 +700,7 @@ async function promptForConfig(
  * The npmjs.com trusted-publisher values for a scaffold whose release job
  * publishes (#687). Owner/repo aren't known yet at setup time, so they stay
  * placeholders; `fix npm-trusted-publisher` derives them once the repo exists.
- * The generated job declares no environment until `fix release-environment`.
+ * The generated job always declares `environment: release` (#785).
  */
 export function npmPublishFor(config: ProjectConfig): NpmPublishGuide | null {
 	if (config.language === 'swift' || config.projectType !== 'library' || !config.semanticRelease)
@@ -710,7 +710,7 @@ export function npmPublishFor(config: ProjectConfig): NpmPublishGuide | null {
 		owner: '<owner>',
 		repo: '<repo>',
 		file: 'release.yml',
-		environment: null,
+		environment: 'release',
 	})
 }
 

@@ -130,6 +130,17 @@ describe('checkNpmTrustedPublisher', () => {
 		expect(ok.status).toBe('ok')
 	})
 
+	it('drift when the publisher requires an environment the job does not declare (#785)', async () => {
+		const dir = await seed(JOB())
+		const r = await checkNpmTrustedPublisher(
+			dir,
+			PKG,
+			fakeNpm({ trust: res(true, entry('ci.yml', 'release')) })
+		)
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('add `environment: release` to the job')
+	})
+
 	it('drift on an empty list', async () => {
 		const dir = await seed(JOB())
 		const r = await checkNpmTrustedPublisher(dir, PKG, fakeNpm())
