@@ -31,7 +31,7 @@ Runs an esbuild build with opinionated defaults:
 | `splitting` | `true` |
 | `sourcemap` | development only |
 | `minify` | production only |
-| `plugins` | `esbuild-node-externals` |
+| `plugins` | `esbuild-node-externals`, only when `package.json` declares `dependencies`, `peerDependencies` or `optionalDependencies` |
 
 ### `getEntryPoints(dir, fileExtension?, excludeTestFiles?)`
 

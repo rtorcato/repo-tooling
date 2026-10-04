@@ -1,7 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as esbuild from 'esbuild'
-import { nodeExternalsPlugin } from 'esbuild-node-externals'
 
 // EXAMPLE ENTRY POINTS
 // const folders = await getEntrypointFolders('src')
@@ -41,12 +40,33 @@ export async function buildCode(entryPoints = []) {
 			//     },
 			//   },
 			// ],
-			plugins: [nodeExternalsPlugin()],
+			plugins: await externalsPlugins(),
 		}
 		await esbuild.build(buildPrefs)
 	} else {
 		console.log('No entry points provided. Skipping build.')
 	}
+}
+/**
+ * `esbuild-node-externals` is an optional peer, so it is imported only when the
+ * project's package.json declares something for it to externalize. A
+ * zero-dependency library builds without installing it.
+ * @param {string} [cwd=process.cwd()] - Directory holding the package.json
+ * @returns {Promise<import('esbuild').Plugin[]>}
+ */
+export async function externalsPlugins(cwd = process.cwd()) {
+	let pkg = {}
+	try {
+		pkg = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf8'))
+	} catch {
+		// no readable package.json: nothing declared to externalize
+	}
+	const declared = ['dependencies', 'peerDependencies', 'optionalDependencies'].some(
+		(field) => Object.keys(pkg[field] ?? {}).length > 0
+	)
+	if (!declared) return []
+	const { nodeExternalsPlugin } = await import('esbuild-node-externals')
+	return [nodeExternalsPlugin()]
 }
 /**
  * Returns a list of entry point files in a directory.
