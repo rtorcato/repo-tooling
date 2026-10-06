@@ -20,8 +20,11 @@ const fixture = (name: string) =>
 const DISPATCHED_REF =
 	"ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}"
 
+// The job's own steps — `in-flight`'s check is the header's (#790).
 const stepNames = (yaml: string) =>
-	[...yaml.matchAll(/^\s*- name:\s*(.+)$/gm)].map((m) => m[1]?.trim())
+	[...(yaml.split('\n  release:\n')[1] ?? yaml).matchAll(/^\s*- name:\s*(.+)$/gm)].map((m) =>
+		m[1]?.trim()
+	)
 
 /**
  * ponytail: the package ships no YAML parser, so "parses" is the structure the
@@ -29,10 +32,15 @@ const stepNames = (yaml: string) =>
  */
 function expectWellFormedRelease(release: string, job: string) {
 	expect(release.startsWith(RELEASE_WORKFLOW_HEADER)).toBe(true)
-	expect([...workflowJobs(release).keys()]).toEqual([job])
+	expect([...workflowJobs(release).keys()]).toEqual(['in-flight', job])
 	expect(release).not.toMatch(/\t/)
-	expect(release).not.toContain('needs.')
-	expect(release).not.toMatch(/^\s*needs:/m)
+	// The gate on `in-flight` (#790) is the only `needs` it keeps.
+	expect(workflowJobs(release).get(job)).toMatch(
+		/^( +)needs: in-flight\n\1# Supersede .*\n\1concurrency:\n\1 {2}group: release\n\1 {2}cancel-in-progress: \$\{\{ needs\.in-flight\.outputs\.publishing != 'true' \}\}\n/m
+	)
+	const own = release.replace('needs: in-flight', '').replace('needs.in-flight.', '')
+	expect(own).not.toContain('needs.')
+	expect(own).not.toMatch(/^\s*needs:/m)
 }
 
 const migrate = (name: string) => {
@@ -61,6 +69,21 @@ describe('migrateReleaseJob (#775)', () => {
 		expect(release).toContain('        if: failure()\n')
 		// The job-level `if:` that held it to main/beta is gone; the dispatch ref decides.
 		expect(release).not.toContain("refs/heads/beta'")
+	})
+
+	it('re-indents a four-space job under the header and drops its own concurrency (#790)', () => {
+		const ci =
+			'on:\n  workflow_dispatch:\njobs:\n    release:\n        concurrency: deploy\n        environment: release\n        runs-on: ubuntu-latest\n        steps:\n            - run: |\n                  npx semantic-release\n'
+		const r = migrateReleaseJob(ci, 'release')
+		if (!r) throw new Error('no release job')
+		expect(r.needs).toEqual([])
+		expectWellFormedRelease(r.release, 'release')
+		expect(r.release).not.toContain('concurrency: deploy')
+		expect(r.release).toContain('  release:\n      needs: in-flight\n')
+		expect(r.release).toContain('      environment: release\n      runs-on: ubuntu-latest\n')
+		expect(r.release).toContain(
+			'      steps:\n          - run: |\n                npx semantic-release\n'
+		)
 	})
 
 	it('migrates unnamed steps and a multi-line `if:`', () => {
