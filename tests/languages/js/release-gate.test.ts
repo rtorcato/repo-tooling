@@ -23,16 +23,27 @@ describe('generated release workflow (#690, #740, #753)', () => {
 		expect(yml).toContain('set -o pipefail\n          npx semantic-release 2>&1 | tee release.log')
 	})
 
-	it('supersedes a waiting run and releases the dispatched branch tip', () => {
+	it('supersedes a waiting run, never a publishing one (#790)', () => {
 		const yml = render()
-		expect(yml).toContain('concurrency:\n  group: release\n  cancel-in-progress: true\n')
+		// No workflow-level group: it would cancel a run mid-publish too.
+		expect(yml).not.toMatch(/^concurrency:/m)
+		const inFlight = workflowJobs(yml).get('in-flight') ?? ''
+		expect(inFlight).toContain('      actions: read\n')
+		expect(inFlight).toContain('actions/workflows/release.yml/runs?status=in_progress')
+		expect(workflowJobs(yml).get('release')).toContain(
+			"    needs: in-flight\n    # Supersede a run still waiting for approval, never one publishing (#753, #790).\n    concurrency:\n      group: release\n      cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}\n"
+		)
+	})
+
+	it('releases the dispatched branch tip', () => {
+		const yml = render()
 		// A dispatch from `beta` releases beta (#771); a milestone, the default branch.
 		expect(yml).toContain(
 			"ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.repository.default_branch }}"
 		)
-		// install → build → test only; no CI fan-out, no `needs:`.
-		expect([...workflowJobs(yml).keys()]).toEqual(['release'])
-		expect(yml).not.toContain('needs:')
+		// install → build → test only; no CI fan-out, only the in-flight check.
+		expect([...workflowJobs(yml).keys()]).toEqual(['in-flight', 'release'])
+		expect(yml.match(/^\s*needs:.*$/gm)).toEqual(['    needs: in-flight'])
 		expect(yml).toContain('pnpm install --frozen-lockfile')
 		expect(yml).toContain('npm install -g npm@^11.5.1')
 		expect(yml).not.toContain('npm@latest')
@@ -88,11 +99,20 @@ describe('doctor on the release layout (#753)', () => {
 		expect(r.hint).toContain('needs.')
 	})
 
+	const cancelling = /cancel-in-progress: .*/
+
 	it('flags a release.yml that does not supersede a waiting run', async () => {
-		const stale = presetRelease.replace('cancel-in-progress: true', 'cancel-in-progress: false')
+		const stale = presetRelease.replace(cancelling, 'cancel-in-progress: false')
 		const r = await setup({ 'ci.yml': preset, 'release.yml': stale })
 		expect(r.status).toBe('drift')
 		expect(r.detail).toContain('does not supersede a waiting one')
+	})
+
+	it('flags a release.yml that can cancel a publishing run (#790)', async () => {
+		const pre790 = presetRelease.replace(cancelling, 'cancel-in-progress: true')
+		const r = await setup({ 'ci.yml': preset, 'release.yml': pre790 })
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('can cancel one already publishing')
 	})
 })
 

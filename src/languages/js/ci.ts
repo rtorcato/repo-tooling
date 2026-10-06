@@ -6,7 +6,12 @@
  * pnpm-store cache, the `pnpm <script>` commands. The shell around it lives in
  * `src/base/ci.ts` and is shared with Swift/Perl/Python (#287/#289/#290).
  */
-import { type CiJob, type GitLabSpec, RELEASE_WORKFLOW_HEADER } from '../../base/ci.js'
+import {
+	type CiJob,
+	type GitLabSpec,
+	RELEASE_JOB_GATE,
+	RELEASE_WORKFLOW_HEADER,
+} from '../../base/ci.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 /** Coverage is uploaded when Vitest is the test runner (it emits an lcov report). */
@@ -311,7 +316,8 @@ export const RELEASE_WORKFLOW = '.github/workflows/release.yml'
  * Split out of ci.yml (#753): there, a release waiting on approval held up the
  * push runs behind it, and approving it late released a stale checkout that
  * semantic-release refused ("behind remote"). Here a newer request supersedes
- * a waiting one — which has published nothing yet — and the job checks out
+ * a waiting one — which has published nothing yet — but queues behind one
+ * already publishing (#790). The job checks out
  * the released branch's tip when it starts, i.e. after approval: the dispatched
  * branch (so a dispatch from `beta` cuts a prerelease, #771), or the default
  * branch on a closed milestone. It runs only
@@ -334,6 +340,7 @@ export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = 
 `
 			: ''
 	return `${RELEASE_WORKFLOW_HEADER}  release:
+${RELEASE_JOB_GATE.map((l) => `    ${l}`).join('\n')}
     environment: ${opts.releaseEnvironment || 'release'}
     runs-on: ubuntu-latest
     permissions:

@@ -236,9 +236,16 @@ export async function checkGitHubActions(
 					`release.yml: \`${pushJob}\` publishes on push to main (preset releases on workflow_dispatch or a closed milestone)`
 				)
 			}
-			if (!/^[ \t]*cancel-in-progress:[ \t]*true\b/m.test(release)) {
+			// The preset cancels only while nothing is publishing (#790): a bare
+			// `true` kills a release mid-publish, `false` leaves a stale waiting run
+			// holding the group (#753).
+			if (/^[ \t]*cancel-in-progress:[ \t]*true\b/m.test(release)) {
 				deltas.push(
-					'release.yml: a newer release request does not supersede a waiting one (preset sets `cancel-in-progress: true`)'
+					'release.yml: a newer release request can cancel one already publishing (preset cancels only a run still waiting for approval)'
+				)
+			} else if (!/^[ \t]*cancel-in-progress:[ \t]*\$\{\{/m.test(release)) {
+				deltas.push(
+					'release.yml: a newer release request does not supersede a waiting one (preset cancels a run still waiting for approval)'
 				)
 			}
 			pinDeltas('release.yml', release, presetRelease)

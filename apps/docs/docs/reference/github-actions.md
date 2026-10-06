@@ -91,9 +91,12 @@ The release runs only on `workflow_dispatch` or when a milestone is closed, neve
 on a plain push to `main`. One approval then ships a whole batch of merges
 (#740). Since #753 it is its own workflow:
 
-- **A newer request supersedes a waiting one** (`concurrency: release`,
-  `cancel-in-progress: true`). A run still waiting for approval has published
-  nothing, so cancelling it is safe — and CI on `main` can now cancel freely too.
+- **A newer request supersedes a waiting one, never a publishing one**
+  (`concurrency: release` on the `release` job). A run still waiting for
+  approval has published nothing, so cancelling it is safe — and CI on `main`
+  can now cancel freely too. An approved run may already be on npm, so cancelling
+  it could leave a version with no GitHub Release (#790). An `in-flight` job
+  checks for one first, and the newer request then queues behind it instead.
 - **It releases the branch's tip.** The job checks out the branch when it
   starts, i.e. after approval, not the commit that triggered it. A dispatch
   releases the branch it was dispatched from, so dispatch from the prerelease
@@ -104,8 +107,9 @@ on a plain push to `main`. One approval then ships a whole batch of merges
   it: a cancel after approval can land after `semantic-release` has published,
   and then the release has happened anyway.
 
-`doctor` reports a release job still inside `ci.yml`, a `release.yml` without
-superseding concurrency, or one that fires on push. `fix github-actions` migrates
+`doctor` reports a release job still inside `ci.yml`, a `release.yml` whose
+concurrency does not supersede a waiting run or can cancel a publishing one, or
+one that fires on push. `fix github-actions` migrates
 the old layout, carrying the release job's `environment:` into `release.yml`.
 Re-point the npm trusted publisher's workflow filename to `release.yml` when you
 migrate, or OIDC publishing fails. Beyond that, repo-tooling ships **optional deploy

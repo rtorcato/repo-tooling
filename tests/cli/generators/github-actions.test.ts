@@ -236,7 +236,8 @@ jobs:
 		expect(written).toEqual(expect.arrayContaining([CI_WORKFLOW, RELEASE_WORKFLOW]))
 		expect(await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')).not.toContain('semantic-release')
 		const release = await fs.readFile(join(dir, RELEASE_WORKFLOW), 'utf-8')
-		expect(release).toContain('  release:\n    environment: release\n')
+		// The release job's own key; `in-flight` declares no environment (#790).
+		expect(release).toContain('    environment: release\n')
 	})
 
 	it('migrates without overwrite, leaving every other job byte-for-byte (#761)', async () => {

@@ -31,9 +31,21 @@ export interface CiJob {
 }
 
 /**
- * The release workflow's header through `jobs:` (#753): on demand only, and a
- * newer request supersedes a waiting one. Shared by the template and by a
- * release job moved out of ci.yml as is (#775).
+ * The release workflow's header through its `in-flight` job (#753, #790): on
+ * demand only, and a newer request supersedes a waiting one but never one
+ * already publishing. Shared by the template and by a release job moved out of
+ * ci.yml as is (#775); either way the release job gets {@link RELEASE_JOB_GATE}.
+ *
+ * A job waiting on environment approval holds its concurrency group, so only
+ * `cancel-in-progress: true` frees the group from a stale waiting run (#753).
+ * But that also kills an approved run mid-publish — after npm, before the
+ * GitHub Release (#790). Nothing in `concurrency:` can tell the two apart, so
+ * `in-flight` asks the API, and the release job cancels only when nothing is
+ * publishing. Otherwise it queues behind the publish and releases after it.
+ *
+ * ponytail: a run approved in the seconds between this check and the release
+ * job queueing can still be cancelled; closing that needs a lock outside
+ * Actions.
  */
 export const RELEASE_WORKFLOW_HEADER = `name: 🚀 Release
 
@@ -44,13 +56,47 @@ on:
   milestone:
     types: [closed]
 
-# A newer request supersedes an older one still waiting for approval (#753).
-concurrency:
-  group: release
-  cancel-in-progress: true
-
 jobs:
+  # Is an approved release already publishing? Then this request must queue
+  # behind it, not cancel it mid-publish (#790). One still waiting for approval
+  # has published nothing, so superseding that one is safe (#753).
+  in-flight:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      publishing: \${{ steps.check.outputs.publishing }}
+    steps:
+      - name: 🔎 Check for a release already publishing
+        id: check
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          publishing=false
+          # A run waiting for approval is \`waiting\`, not \`in_progress\`.
+          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?status=in_progress" --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id"); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" --jq '.jobs[] | select(.status == "in_progress" and .name != "in-flight") | .name' | grep -q .; then
+              publishing=true
+            fi
+          done
+          echo "publishing=$publishing" >> "$GITHUB_OUTPUT"
+          if [ "$publishing" = true ]; then
+            echo "::notice::A release is already publishing; this one runs after it."
+          fi
+
 `
+
+/**
+ * The release job's keys that pair with {@link RELEASE_WORKFLOW_HEADER}'s
+ * `in-flight` job, unindented — the caller pads them to the job's key indent.
+ */
+export const RELEASE_JOB_GATE = [
+	'needs: in-flight',
+	'# Supersede a run still waiting for approval, never one publishing (#753, #790).',
+	'concurrency:',
+	'  group: release',
+	"  cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}",
+]
 
 /** Header through `jobs:` — triggers and concurrency are language-independent. */
 /** The generated CI workflow's `name:` — the docs workflow's `workflow_run` must match it. */

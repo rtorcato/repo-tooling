@@ -3,7 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import chalk from 'chalk'
 import fs from 'fs-extra'
-import { RELEASE_WORKFLOW_HEADER } from './ci.js'
+import { RELEASE_JOB_GATE, RELEASE_WORKFLOW_HEADER } from './ci.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -821,7 +821,9 @@ const DEFAULT_PERMISSIONS = ['contents: write', 'issues: write', 'pull-requests:
  * `env:`, `environment:`, comments and indent style — under the standard
  * release header, with only what cannot survive outside ci.yml rewritten:
  *
- * - its `needs:` and job-level `if:` go; the triggers replace both;
+ * - its `needs:`, job-level `if:` and `concurrency:` go; the triggers and
+ *   {@link RELEASE_JOB_GATE} replace them (#790);
+ * - it is re-indented to the header's two-space job indent;
  * - an `actions/cache` step keyed on `needs.*` becomes a `pnpm install`;
  * - the checkout releases the dispatched branch's tip, with full history;
  * - it gets ci.yml's top-level `permissions:` when it has none, plus
@@ -848,7 +850,7 @@ export function migrateReleaseJob(
 	const keyAt = (key: string) =>
 		lines.findIndex((l, i) => i > 0 && indentOf(l) === keyIndent && l.trim().startsWith(`${key}:`))
 
-	for (const key of ['needs', 'if']) {
+	for (const key of ['needs', 'if', 'concurrency']) {
 		const at = keyAt(key)
 		if (at !== -1) lines.splice(at, blockEnd(lines, at) - at)
 	}
@@ -933,7 +935,13 @@ export function migrateReleaseJob(
 		const text = withoutComments(lines.slice(s, e).join('\n'))
 		if (/needs\./.test(text)) needs.push(stepLabel(text))
 	}
-	return { release: `${RELEASE_WORKFLOW_HEADER}${lines.join('\n')}\n`, needs }
+	// After the `needs.` scan: the gate's own `needs.in-flight` is no blocker.
+	const shift = 2 - indentOf(lines[0] ?? '')
+	const job = lines.map((l) =>
+		!l.trim() ? l : shift >= 0 ? pad(shift) + l : l.slice(Math.min(-shift, indentOf(l)))
+	)
+	job.splice(1, 0, ...RELEASE_JOB_GATE.map((l) => pad(keyIndent + shift) + l))
+	return { release: `${RELEASE_WORKFLOW_HEADER}${job.join('\n')}\n`, needs }
 }
 
 /** The id of the first job in this workflow that publishes, or null. */

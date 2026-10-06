@@ -8,13 +8,40 @@ on:
   milestone:
     types: [closed]
 
-# A waiting run has published nothing, so a newer request cancelling it is safe.
-concurrency:
-  group: release
-  cancel-in-progress: true
-
 jobs:
+  # Is an approved release already publishing? Then this request must queue
+  # behind it, not cancel it mid-publish (#790). One still waiting for approval
+  # has published nothing, so superseding that one is safe (#753).
+  in-flight:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      publishing: ${{ steps.check.outputs.publishing }}
+    steps:
+      - name: 🔎 Check for a release already publishing
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          publishing=false
+          # A run waiting for approval is `waiting`, not `in_progress`.
+          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?status=in_progress" --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id"); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" --jq '.jobs[] | select(.status == "in_progress" and .name != "in-flight") | .name' | grep -q .; then
+              publishing=true
+            fi
+          done
+          echo "publishing=$publishing" >> "$GITHUB_OUTPUT"
+          if [ "$publishing" = true ]; then
+            echo "::notice::A release is already publishing; this one runs after it."
+          fi
+
   release:
+    needs: in-flight
+    # Supersede a run still waiting for approval, never one publishing (#753, #790).
+    concurrency:
+      group: release
+      cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}
     # The merge-to-npm gate: the run waits here for the required reviewer (#429).
     environment: release
     runs-on: ubuntu-latest
