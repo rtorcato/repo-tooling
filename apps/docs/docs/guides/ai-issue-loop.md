@@ -9,7 +9,7 @@ description: repo-tooling works on its own. @rtorcato/repo-ai is an optional add
 Nothing in repo-tooling installs repo-ai, prompts for it, or fails a check
 because it's missing.
 
-**[`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) is optional.** It
+**[`@rtorcato/repo-ai`](https://docs.infrazero.dev/repo-ai/) is optional.** It
 adds an **ai-issue-loop**: a label-driven pipeline that takes a GitHub issue
 marked `ai-ready`, implements it in its own git worktree, opens a PR, has two
 agents review it, and hands it to you to merge. Adopt it on a repo when you want
@@ -57,9 +57,9 @@ npx @rtorcato/repo-ai setup         # skills, labels, agent identity, statusline
 `repo-ai setup` asks before each step, and `--yes` runs them all.
 
 After that, label an issue `ai-ready` and run `/ai-workflow` in Claude Code.
-repo-ai's [guide to the loop](https://rtorcato.github.io/repo-ai/docs/ai-loop)
+repo-ai's [guide to the loop](https://docs.infrazero.dev/repo-ai/docs/ai-loop)
 covers the label state machine, the safety gates and the limits. Its
-[command reference](https://rtorcato.github.io/repo-ai/docs/commands) covers
+[command reference](https://docs.infrazero.dev/repo-ai/docs/commands) covers
 every `repo-ai` command.
 
 ## Moving over from repo-tooling 3.x

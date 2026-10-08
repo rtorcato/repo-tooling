@@ -195,7 +195,7 @@ throwaway fixtures) — in any session:
 
 repo-tooling works entirely on its own. If you also want agents working your
 GitHub issues, the optional companion
-[`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) runs a label-driven
+[`@rtorcato/repo-ai`](https://docs.infrazero.dev/repo-ai/) runs a label-driven
 loop: an `ai-ready` issue becomes a worktree, a PR and two agent reviews, then
 waits for you to merge. It builds on the repo standard repo-tooling sets up
 (branch protection, the release gate, worktree config) and keeps its settings in
