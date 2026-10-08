@@ -28,10 +28,9 @@ on:
         default: '22'
         type: string
 
+# Least privilege per job: only deploy can write Pages or mint an OIDC token.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -40,6 +39,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read # configure-pages reads the site's Pages config
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -58,7 +60,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Read-only (job is contents/pages: read). Docs builds that call the GitHub API, e.g. to
+      # sync release notes, otherwise share the runner IP's 60/hr unauthenticated limit.
       - name: Build docs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm --filter ${{ inputs.build-filter }} build
 
       - name: Upload artifact
@@ -72,6 +78,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
