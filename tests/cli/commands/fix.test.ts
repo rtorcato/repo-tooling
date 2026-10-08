@@ -1868,8 +1868,7 @@ describe('fix github-actions packageManager', () => {
 		expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
 	})
 
-	// #779: a workflow that pins pnpm itself needs no packageManager, and one that
-	// never uploads coverage needs no codecov.yml.
+	// #779: a workflow that pins pnpm itself needs no packageManager.
 	it('leaves package.json alone when pnpm/action-setup has a version input', async () => {
 		const dir = newTmpDir()
 		// private: no release.yml, whose own pnpm/action-setup would need the pin.
@@ -1882,17 +1881,15 @@ describe('fix github-actions packageManager', () => {
 		const fixer = getFixers().find((f) => f.target === 'github-actions')
 		if (!fixer) throw new Error('github-actions fixer missing')
 		const pkg = await fs.readJson(join(dir, 'package.json'))
-		// Coverage upload, not GitHub Actions, so the repo's own ci.yml is kept.
+		// npm OIDC publish, not GitHub Actions, so the repo's own ci.yml is kept.
 		const { filesWritten } = await fixer.run({
 			targetDir: dir,
 			pkg,
-			result: { check: 'Coverage upload', status: 'missing', detail: '' },
+			result: { check: 'npm OIDC publish', status: 'missing', detail: '' },
 		} as never)
 
 		expect(filesWritten).not.toContain('package.json')
-		expect(filesWritten).not.toContain('codecov.yml')
 		expect(await fs.readFile(join(dir, 'package.json'), 'utf-8')).toBe(before)
-		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(false)
 	})
 
 	it('only references scripts the repo actually has', async () => {
@@ -1983,16 +1980,6 @@ jobs:
 		const release = await fs.readFile(join(dir, '.github/workflows/release.yml'), 'utf-8')
 		expect(release).toContain('semantic-release')
 		expect(release).toContain('    environment: release\n')
-	})
-
-	it('never overwrites an existing codecov.yml', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		await fs.outputFile(ci(dir), CUSTOM)
-		await fs.writeFile(join(dir, 'codecov.yml'), 'comment: false\n')
-		await fixCommand('github-actions', { directory: dir, yes: true })
-
-		expect(await fs.readFile(join(dir, 'codecov.yml'), 'utf-8')).toBe('comment: false\n')
 	})
 
 	// #775: the release job moves as is, so its own steps survive (#771); only a

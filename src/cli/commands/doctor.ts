@@ -38,7 +38,6 @@ import {
 	checkCodeowners,
 	checkCodeQL,
 	checkCommunityHealth,
-	checkCoverageUpload,
 	checkDependabot,
 	checkEditorConfig,
 	checkFile,
@@ -376,7 +375,6 @@ async function runBaseChecks(
 	results.push(
 		await checkReadmeBadges(dir, opts.badges.audience, opts.badges.fixTarget, opts.badges.name)
 	)
-	results.push(await checkCoverageUpload(dir))
 	return results
 }
 

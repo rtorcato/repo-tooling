@@ -437,54 +437,6 @@ export async function checkCodeQL(dir: string, languages: readonly string[]): Pr
 	}
 }
 
-/** The workflow file that uploads coverage via codecov-action, or null when none does. */
-export async function coverageUploadWorkflow(dir: string): Promise<string | null> {
-	const workflowsDir = path.join(dir, '.github', 'workflows')
-	try {
-		const files = (await fs.readdir(workflowsDir)).filter(
-			(f) => f.endsWith('.yml') || f.endsWith('.yaml')
-		)
-		for (const f of files) {
-			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
-			if (/codecov\/codecov-action/.test(content)) return f
-		}
-	} catch {
-		// no workflows dir
-	}
-	return null
-}
-
-// A README that advertises a Codecov badge but a CI that never uploads coverage
-// leaves the badge permanently red. Only flags when the badge is actually present
-// (no badge → nothing to back, so it's not applicable).
-export async function checkCoverageUpload(dir: string): Promise<CheckResult> {
-	const readmePath = path.join(dir, 'README.md')
-	const readme = (await fs.pathExists(readmePath)) ? await fs.readFile(readmePath, 'utf8') : ''
-	if (!/codecov\.io/.test(readme)) {
-		return {
-			check: 'Coverage upload',
-			status: 'ok',
-			detail: 'no coverage badge in README (nothing to back)',
-		}
-	}
-
-	const workflow = await coverageUploadWorkflow(dir)
-	if (workflow) {
-		return {
-			check: 'Coverage upload',
-			status: 'ok',
-			detail: `coverage badge backed by codecov-action in .github/workflows/${workflow}`,
-		}
-	}
-
-	return {
-		check: 'Coverage upload',
-		status: 'drift',
-		detail: 'README has a Codecov badge but no CI step uploads coverage (badge stays red)',
-		hint: 'Run `npx @rtorcato/repo-tooling fix github-actions` to regenerate ci.yml with a Codecov upload step',
-	}
-}
-
 export async function checkAiSetup(dir: string): Promise<CheckResult> {
 	// Consider AI setup present if one of the block-managed files carries the
 	// agent block or the Claude skill is installed — the markers `fix ai` writes.
@@ -697,7 +649,7 @@ export async function checkPrePushHook(dir: string, p: GitHooksProfile): Promise
 
 /**
  * Who the README's badges are for. The language module decides: a private npm
- * package and a SwiftPM library disagree on whether npm/coverage badges would
+ * package and a SwiftPM library disagree on whether npm badges would
  * 404, but "does the README carry status badges" is the same question either way.
  */
 export type BadgeAudience = 'public' | 'private' | 'not-applicable'
@@ -712,7 +664,7 @@ export async function checkReadmeBadges(
 ): Promise<CheckResult> {
 	const check = 'README badges'
 	const hint = fixTarget
-		? `Run \`npx @rtorcato/repo-tooling fix ${fixTarget}\` to add CI/npm/coverage/license badges`
+		? `Run \`npx @rtorcato/repo-tooling fix ${fixTarget}\` to add CI/npm/license badges`
 		: 'Add CI and license badges to README.md'
 	const readmePath = path.join(dir, 'README.md')
 	const readme = (await fs.pathExists(readmePath)) ? await fs.readFile(readmePath, 'utf8') : ''
@@ -723,10 +675,10 @@ export async function checkReadmeBadges(
 			return {
 				check,
 				status: 'drift',
-				detail: 'README has npm/coverage badges but the package is private (they 404)',
+				detail: 'README has npm badges but the package is private (they 404)',
 				hint: fixTarget
 					? `Run \`npx @rtorcato/repo-tooling fix ${fixTarget}\` to rebuild badges for a private repo`
-					: 'Remove the npm/coverage badges — they 404 for a private package',
+					: 'Remove the npm badges — they 404 for a private package',
 			}
 		}
 		return { check, status: 'ok', detail: 'not applicable (private package)' }
@@ -736,8 +688,7 @@ export async function checkReadmeBadges(
 	}
 
 	const hasBadges =
-		readme.includes(BADGE_START) ||
-		/img\.shields\.io|badge\.svg|badge\.fury\.io|codecov\.io/.test(readme)
+		readme.includes(BADGE_START) || /img\.shields\.io|badge\.svg|badge\.fury\.io/.test(readme)
 	if (hasBadges) {
 		return { check, status: 'ok', detail: 'README carries status badges' }
 	}

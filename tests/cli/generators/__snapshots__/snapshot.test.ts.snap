@@ -187,12 +187,6 @@ jobs:
       - name: 🧪 Run tests
         run: pnpm coverage
 
-      - name: 📊 Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
-        with:
-          token: \${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
   build:
     runs-on: ubuntu-latest
     needs: [dependencies, check-skip]

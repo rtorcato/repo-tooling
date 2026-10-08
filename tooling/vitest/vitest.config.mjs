@@ -14,8 +14,8 @@ export default defineConfig({
 		exclude: [...configDefaults.exclude, '.claude/**'],
 		coverage: {
 			provider: 'v8',
-			// lcov feeds Codecov (the CI we generate uploads it); text is the local
-			// console summary; the rest back the HTML report.
+			// lcov feeds editor and coverage tooling; text is the local console
+			// summary; the rest back the HTML report.
 			reporter: ['text', 'lcov', 'json', 'html', 'json-summary'],
 		},
 	},

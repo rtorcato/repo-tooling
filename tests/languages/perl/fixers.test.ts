@@ -63,7 +63,7 @@ describe('perl fixers', () => {
 			.filter((check) => !fixable.has(check))
 		// `language` and `Monorepo` are informational. `Git identity` is unfixable
 		// by design (#328) — only the operator knows their own address. `README
-		// badges` and `Coverage upload` need a package.json to build from, which a
+		// badges` needs a package.json to build from, which a
 		// Perl repo hasn't got. `lockfile` has no Perl preset to record yet (see
 		// the note atop src/languages/perl/fixers.ts). `Perl distribution` and
 		// `Perl tests` are content only the project can write. `Release gate` and
@@ -78,7 +78,6 @@ describe('perl fixers', () => {
 			'Release secrets',
 			'Repository secrets',
 			'README badges',
-			'Coverage upload',
 			'Perl distribution',
 			'Perl tests',
 		])

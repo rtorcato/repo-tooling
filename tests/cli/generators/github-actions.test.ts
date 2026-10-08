@@ -104,48 +104,13 @@ describe('generateGitHubActions', () => {
 		expect(content).not.toContain('Run tests')
 	})
 
-	it('uploads coverage and emits codecov.yml for Vitest', async () => {
+	it('runs the tests with coverage for Vitest', async () => {
 		const dir = newTmpDir()
 		await generateGitHubActions(baseConfig({ testing: { framework: 'vitest' } }), dir)
 
 		const content = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
 		expect(content).toContain('pnpm coverage')
-		expect(content).toContain('codecov/codecov-action@v7')
-		expect(content).toContain('CODECOV_TOKEN')
-		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(true)
-	})
-
-	it('does not upload coverage or emit codecov.yml when tests are absent', async () => {
-		const dir = newTmpDir()
-		await generateGitHubActions(baseConfig({ testing: { framework: 'none' } }), dir)
-
-		const content = await fs.readFile(join(dir, WORKFLOW_PATH), 'utf-8')
-		expect(content).not.toContain('codecov')
-		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(false)
-	})
-
-	// #779: codecov.yml follows the workflows, not the config's test framework.
-	it('emits no codecov.yml when the kept workflow never uploads coverage', async () => {
-		const dir = newTmpDir()
-		await fs.outputFile(
-			join(dir, WORKFLOW_PATH),
-			'name: CI\njobs:\n  test:\n    steps:\n      - run: pnpm test\n'
-		)
-		await generateGitHubActions(baseConfig({ testing: { framework: 'vitest' } }), dir)
-
-		expect(await fs.pathExists(join(dir, 'codecov.yml'))).toBe(false)
-	})
-
-	it('emits codecov.yml when a kept workflow uploads coverage, never overwriting one', async () => {
-		const dir = newTmpDir()
-		const upload = 'name: Cov\njobs:\n  cov:\n    steps:\n      - uses: codecov/codecov-action@v7\n'
-		await fs.outputFile(join(dir, '.github/workflows/coverage.yml'), upload)
-		const written = await generateGitHubActions(baseConfig({ testing: { framework: 'none' } }), dir)
-		expect(written).toContain('codecov.yml')
-
-		await fs.writeFile(join(dir, 'codecov.yml'), 'comment: false\n')
-		expect(await generateGitHubActions(baseConfig(), dir)).not.toContain('codecov.yml')
-		expect(await fs.readFile(join(dir, 'codecov.yml'), 'utf-8')).toBe('comment: false\n')
+		expect(content).not.toContain('Upload coverage')
 	})
 
 	it('includes build job when bundler is configured', async () => {
@@ -369,10 +334,8 @@ describe('generateGitHubActions script gating', () => {
 		expect(workflow).not.toContain('run: pnpm check')
 		expect(workflow).not.toContain('run: pnpm knip')
 		expect(workflow).not.toMatch(/^ {2}lint:$/m)
-		// No coverage script → run the tests that do exist, and drop the upload
-		// since there'd be no lcov to send.
+		// No coverage script → run the tests that do exist.
 		expect(workflow).toContain('run: pnpm test')
-		expect(workflow).not.toContain('codecov-action')
 		// No build script → no build job.
 		expect(workflow).not.toContain('run: pnpm build')
 	})
@@ -394,7 +357,6 @@ describe('generateGitHubActions script gating', () => {
 		expect(workflow).toContain('run: pnpm check')
 		expect(workflow).toContain('run: pnpm knip')
 		expect(workflow).toContain('run: pnpm coverage')
-		expect(workflow).toContain('codecov-action')
 		expect(workflow).toContain('run: pnpm build')
 		expect(workflow).toContain('run: pnpm attw')
 	})

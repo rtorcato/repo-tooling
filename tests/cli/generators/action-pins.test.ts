@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
  *
  * Matches ANY org, not just `actions/`. The first cut of this test was scoped to
  * `actions/` and so covered 24 of the 42 emitted pins; the 18 it skipped were
- * already drifting the day it landed (codecov-action was two majors behind, and
+ * already drifting the day it landed (one action was two majors behind, and
  * pnpm/action-setup was pinned at both v4 and v6 within the emitted set).
  *
  * ponytail: a text scan over the sources, not a generator invocation. The pins

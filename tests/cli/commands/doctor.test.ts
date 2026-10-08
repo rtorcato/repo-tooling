@@ -52,7 +52,6 @@ const BASE_CHECKS = [
 	'Community health',
 	'AI setup',
 	'README badges',
-	'Coverage upload',
 ]
 
 describe('doctor base suite', () => {
@@ -1704,7 +1703,7 @@ describe('doctor README badges check', () => {
 		expect(b?.status).toBe('ok')
 	})
 
-	it('flags drift when a private package carries npm/coverage badges', async () => {
+	it('flags drift when a private package carries npm badges', async () => {
 		const dir = newTmpDir()
 		await fs.writeJson(join(dir, 'package.json'), {
 			name: 'demo',
@@ -1748,46 +1747,6 @@ describe('doctor README badges check', () => {
 		)
 		b = (await runDoctor(dir)).find((r) => r.check === 'README badges')
 		expect(b?.status).toBe('drift')
-	})
-
-	it('flags a Codecov badge with no CI coverage upload', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		await fs.writeFile(
-			join(dir, 'README.md'),
-			'# demo\n\n![Coverage](https://codecov.io/gh/o/r/branch/main/graph/badge.svg)\n'
-		)
-		await fs.ensureDir(join(dir, '.github', 'workflows'))
-		await fs.writeFile(join(dir, '.github', 'workflows', 'ci.yml'), 'name: CI\n')
-		const results = await runDoctor(dir)
-		const r = results.find((c) => c.check === 'Coverage upload')
-		expect(r?.status).toBe('drift')
-	})
-
-	it('passes coverage upload when ci.yml uses codecov-action', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		await fs.writeFile(
-			join(dir, 'README.md'),
-			'# demo\n\n![Coverage](https://codecov.io/gh/o/r/branch/main/graph/badge.svg)\n'
-		)
-		await fs.ensureDir(join(dir, '.github', 'workflows'))
-		await fs.writeFile(
-			join(dir, '.github', 'workflows', 'ci.yml'),
-			'name: CI\njobs:\n  test:\n    steps:\n      - uses: codecov/codecov-action@v7\n'
-		)
-		const results = await runDoctor(dir)
-		const r = results.find((c) => c.check === 'Coverage upload')
-		expect(r?.status).toBe('ok')
-	})
-
-	it('coverage upload not applicable without a Codecov badge', async () => {
-		const dir = newTmpDir()
-		await seedPackageJson(dir)
-		await fs.writeFile(join(dir, 'README.md'), '# demo\n')
-		const results = await runDoctor(dir)
-		const r = results.find((c) => c.check === 'Coverage upload')
-		expect(r?.status).toBe('ok')
 	})
 
 	it('nudges when a tool config lacks its recommended VS Code extension', async () => {

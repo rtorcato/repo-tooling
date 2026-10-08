@@ -36,23 +36,21 @@ describe('parseRepository', () => {
 })
 
 describe('buildBadgeRow', () => {
-	it('includes CI, npm, coverage, and license for a public repo', () => {
+	it('includes CI, npm, and license for a public repo', () => {
 		const row = buildBadgeRow({ name: 'my-lib', owner: 'o', repo: 'r' })
 		expect(row).toContain('actions/workflows/ci.yml/badge.svg')
 		expect(row).toContain('img.shields.io/npm/v/my-lib')
 		expect(row).toContain('img.shields.io/npm/dm/my-lib')
 		expect(row).toContain('bundlephobia/minzip/my-lib')
-		expect(row).toContain('codecov.io/gh/o/r')
 		expect(row).toContain('License-MIT')
 	})
 
-	it('drops npm/bundlephobia/coverage for a private repo, keeps CI + license', () => {
+	it('drops npm/bundlephobia for a private repo, keeps CI + license', () => {
 		const row = buildBadgeRow({ name: 'my-lib', owner: 'o', repo: 'r', isPrivate: true })
 		expect(row).toContain('actions/workflows/ci.yml')
 		expect(row).toContain('License-MIT')
 		expect(row).not.toContain('shields.io/npm')
 		expect(row).not.toContain('bundlephobia')
-		expect(row).not.toContain('codecov')
 	})
 
 	it('returns empty when only the license badge would render', () => {

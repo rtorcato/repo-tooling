@@ -11,7 +11,6 @@ One package. Full dev toolchain. TypeScript, linting, testing, commits, releases
 [![CI](https://github.com/rtorcato/repo-tooling/actions/workflows/ci.yml/badge.svg)](https://github.com/rtorcato/repo-tooling/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/@rtorcato%2Frepo-tooling.svg)](https://badge.fury.io/js/@rtorcato%2Frepo-tooling)
 [![Bundle size](https://img.shields.io/bundlephobia/minzip/@rtorcato/repo-tooling)](https://bundlephobia.com/package/@rtorcato/repo-tooling)
-[![Coverage](https://codecov.io/gh/rtorcato/repo-tooling/branch/main/graph/badge.svg)](https://codecov.io/gh/rtorcato/repo-tooling)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Why this exists
