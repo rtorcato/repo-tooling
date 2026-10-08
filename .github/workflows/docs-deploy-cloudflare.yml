@@ -80,7 +80,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Read-only (job is contents: read). Docs builds that call the GitHub API, e.g. to
+      # sync release notes, otherwise share the runner IP's 60/hr unauthenticated limit.
       - name: Build docs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm --filter ${{ inputs.build-filter }} build
 
       # Inputs go through env, never interpolated into the script.
