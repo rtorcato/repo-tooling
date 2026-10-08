@@ -74,10 +74,10 @@ README content is never touched, and repos without a `skills/` dir get nothing.
 ## Loop settings live in `.repo-ai.json`
 
 The ai-issue-loop pipeline lives in the optional package
-[`@rtorcato/repo-ai`](https://rtorcato.github.io/repo-ai/) (see
+[`@rtorcato/repo-ai`](https://docs.infrazero.dev/repo-ai/) (see
 [Using with repo-ai](./ai-issue-loop.md)), and so do its settings: the agent
 account and the required skills go in repo-ai's own `.repo-ai.json`. See
-[repo-ai's config docs](https://rtorcato.github.io/repo-ai/).
+[repo-ai's config docs](https://docs.infrazero.dev/repo-ai/).
 
 `rules.aiLoop` and `rules.requiredSkills` in `.repo-tooling.json` are
 deprecated. They still validate, and are removed in the next major. To move
