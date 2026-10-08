@@ -7,7 +7,7 @@ name: Reusable Deploy Docs (Cloudflare)
 #
 #   jobs:
 #     docs:
-#       uses: rtorcato/repo-tooling/.github/workflows/docs-deploy-cloudflare.yml@main
+#       uses: rtorcato/repo-tooling/.github/workflows/docs-deploy-cloudflare.yml@v6.0.0   # pin a release tag, not @main
 #       with:
 #         build-filter: '@rtorcato/<pkg>-docs'
 #         worker-name: my-docs
