@@ -9,7 +9,7 @@
     {
       "name": "repo-tooling",
       "source": "./",
-      "description": "Drive the @rtorcato/repo-tooling CLI (setup/doctor/fix) and follow the shared release rules. Three skills: repo-tooling (adopt/audit the presets), npm-publish (never hand-cut a release) and dogfood (run the tooling against throwaway fixtures). The ai-issue-loop skills moved to @rtorcato/repo-ai."
+      "description": "Drive the @rtorcato/repo-tooling CLI (setup/doctor/fix) and follow the shared release rules. Three skills: repo-tooling (adopt/audit the presets), npm-publish (never hand-cut a release) and dogfood (run the tooling against throwaway fixtures). The ai-issue-loop skills moved to @infrazero/repo-ai."
     }
   ]
 }

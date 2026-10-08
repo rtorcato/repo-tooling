@@ -53,6 +53,9 @@ importers:
       '@ianvs/prettier-plugin-sort-imports':
         specifier: ^4.7.1
         version: 4.7.1(prettier@3.9.9)
+      '@infrazero/repo-ai':
+        specifier: ^0.1.0
+        version: 0.1.0(@types/node@26.6.2)
       '@next/eslint-plugin-next':
         specifier: ^16.3.6
         version: 16.3.6(eslint@10.11.0(jiti@2.7.0))
@@ -62,9 +65,6 @@ importers:
       '@rollup/plugin-typescript':
         specifier: ^12.3.0
         version: 12.3.0(rollup@4.63.5)(tslib@2.8.1)(typescript@7.0.2)
-      '@rtorcato/repo-ai':
-        specifier: ^3.5.0
-        version: 3.5.0(@types/node@26.6.2)
       '@semantic-release/commit-analyzer':
         specifier: ^13.0.1
         version: 13.0.1(semantic-release@25.0.9(typescript@7.0.2))
@@ -2005,6 +2005,11 @@ packages:
       prettier-plugin-ember-template-tag:
         optional: true
 
+  '@infrazero/repo-ai@0.1.0':
+    resolution: {integrity: sha512-0lp3N8ci3fZWzLsteMp4nJPoWEeX/N1mSVrLo/GOD2XpvO4ujLLlElna4XWWU8hoLpVfsxlegODBH0sXEMFDPA==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   '@inquirer/ansi@2.0.8':
     resolution: {integrity: sha512-WpQM+Ti6Z40EFwwt+uL2p4UabT+W179zHp6HhLVOzfbwnVn05IPO/eXIZXGNqcT1jbQ15SujNLzQ39k4QPPxBQ==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
@@ -3237,11 +3242,6 @@ packages:
     resolution: {integrity: sha512-ypfC34F3RKXvCXBglGqGMsUSMKlgwd1HX9AOAlx9RoZZ6GaI42YHVeKpzg3JG+wpBUJYTG+NNZhqbDWL8tBZkw==}
     cpu: [x64]
     os: [win32]
-
-  '@rtorcato/repo-ai@3.5.0':
-    resolution: {integrity: sha512-OshM2gzX3AY1CbBYZlAWArUop506GSQGvWRsd0oYL2SPEiJpChEBcb8HlQOxophrJi5zkBWkFSd/bzpzTVkyZg==}
-    engines: {node: '>=22'}
-    hasBin: true
 
   '@rtorcato/shared-docs@1.14.0':
     resolution: {integrity: sha512-NRRPo1nyQgat3YeajNhz+Mqx9r48bcRFNnUcOADMGAT2rdu6lEMlZLVHnow4mGfyfr3blTYjV9TEhsA60zQE2g==}
@@ -4491,6 +4491,10 @@ packages:
 
   chalk@6.0.0:
     resolution: {integrity: sha512-2uNTXIuTTxk7ciZgAU1BQcgnchcG0xXnrs6jzkQfj9SsRa9M2s5zE8WT96hS6KmG4MzWHSrvH43DF1m4XRkrFg==}
+    engines: {node: '>=22'}
+
+  chalk@6.0.1:
+    resolution: {integrity: sha512-/Ce6KNm3vIbWdMlNna6RVIZ/ICQxnJxCicet5LBKK9ZffBkqzDw0xh9EiKSljdRtiIQ1S1z4YgcscUUGzNCWrA==}
     engines: {node: '>=22'}
 
   char-regex@1.0.2:
@@ -12609,6 +12613,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@infrazero/repo-ai@0.1.0(@types/node@26.6.2)':
+    dependencies:
+      chalk: 6.0.1
+      commander: 15.0.0
+      fs-extra: 11.4.1
+      inquirer: 14.2.2(@types/node@26.6.2)
+    transitivePeerDependencies:
+      - '@types/node'
+
   '@inquirer/ansi@2.0.8': {}
 
   '@inquirer/checkbox@5.2.5(@types/node@26.6.2)':
@@ -13749,15 +13762,6 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.63.5':
     optional: true
-
-  '@rtorcato/repo-ai@3.5.0(@types/node@26.6.2)':
-    dependencies:
-      chalk: 6.0.0
-      commander: 15.0.0
-      fs-extra: 11.4.1
-      inquirer: 14.2.2(@types/node@26.6.2)
-    transitivePeerDependencies:
-      - '@types/node'
 
   '@rtorcato/shared-docs@1.14.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     optionalDependencies:
@@ -15116,6 +15120,8 @@ snapshots:
   chalk@5.6.2: {}
 
   chalk@6.0.0: {}
+
+  chalk@6.0.1: {}
 
   char-regex@1.0.2: {}
 

@@ -1,6 +1,6 @@
 {
   "name": "repo-tooling",
-  "description": "Adopt and audit the @rtorcato/repo-tooling shared presets via its CLI, and follow the family's semantic-release publishing rules. The ai-issue-loop pipeline lives in @rtorcato/repo-ai.",
+  "description": "Adopt and audit the @rtorcato/repo-tooling shared presets via its CLI, and follow the family's semantic-release publishing rules. The ai-issue-loop pipeline lives in @infrazero/repo-ai.",
   "version": "1.0.0",
   "author": {
     "name": "Richard Torcato",

@@ -356,7 +356,7 @@ program
 		})
 	)
 
-// The ai-issue-loop pipeline moved to @rtorcato/repo-ai (#658). Kept as a
+// The ai-issue-loop pipeline moved to @infrazero/repo-ai (#658). Kept as a
 // pointer so a stale skill calling `repo-tooling loop …` fails loudly with the
 // fix, instead of commander's generic "unknown command".
 program
@@ -366,9 +366,9 @@ program
 	.helpOption(false)
 	.action(() => {
 		console.error(
-			chalk.red('`repo-tooling loop` moved to @rtorcato/repo-ai.') +
-				'\n  Run `npx @rtorcato/repo-ai loop …`, and refresh the skills with' +
-				'\n  `npx @rtorcato/repo-ai fix claude-skills --force-skills`.'
+			chalk.red('`repo-tooling loop` moved to @infrazero/repo-ai.') +
+				'\n  Run `npx @infrazero/repo-ai loop …`, and refresh the skills with' +
+				'\n  `npx @infrazero/repo-ai fix claude-skills --force-skills`.'
 		)
 		process.exitCode = 1
 	})

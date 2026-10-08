@@ -1255,7 +1255,7 @@ const PROTECTION_BODY = JSON.stringify({
 	// any required_pull_request_reviews as drift, so `fix github-settings` PUTs it
 	// back to null. A repo that deliberately requires approvals will have that
 	// silently reverted by the next unrelated fix run, with nothing in the output
-	// naming the rule that was removed. Known downstream case: @rtorcato/repo-ai's
+	// naming the rule that was removed. Known downstream case: @infrazero/repo-ai's
 	// ai-loop pipeline works around it with approval labels precisely because of this.
 	// Loosen the standard here first if a repo ever genuinely needs review gating.
 	required_pull_request_reviews: null,

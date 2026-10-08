@@ -74,7 +74,7 @@ README content is never touched, and repos without a `skills/` dir get nothing.
 ## Loop settings live in `.repo-ai.json`
 
 The ai-issue-loop pipeline lives in the optional package
-[`@rtorcato/repo-ai`](https://docs.infrazero.dev/repo-ai/) (see
+[`@infrazero/repo-ai`](https://docs.infrazero.dev/repo-ai/) (see
 [Using with repo-ai](./ai-issue-loop.md)), and so do its settings: the agent
 account and the required skills go in repo-ai's own `.repo-ai.json`. See
 [repo-ai's config docs](https://docs.infrazero.dev/repo-ai/).
@@ -84,7 +84,7 @@ deprecated. They still validate, and are removed in the next major. To move
 them across, run:
 
 ```bash
-npx @rtorcato/repo-ai fix config
+npx @infrazero/repo-ai fix config
 ```
 
 ## `rules.mcp.recommended`: names and reasons, never an install directive
