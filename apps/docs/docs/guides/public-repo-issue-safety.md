@@ -20,7 +20,7 @@ that was never authorized. Without gating, automation would act on both. This
 standard closes that by gating on signals an attacker **cannot forge**.
 
 This standard applies to any agent that acts on issues. The optional
-[`@rtorcato/repo-ai`](./ai-issue-loop.md) loop implements it.
+[`@infrazero/repo-ai`](./ai-issue-loop.md) loop implements it.
 
 ## 1. The two hard gates — both must hold
 

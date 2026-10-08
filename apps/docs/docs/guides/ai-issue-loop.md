@@ -1,7 +1,7 @@
 ---
 title: Using with repo-ai (optional)
 sidebar_label: Using with repo-ai
-description: repo-tooling works on its own. @rtorcato/repo-ai is an optional add-on that turns ai-ready GitHub issues into reviewed PRs, and builds on the repo standard repo-tooling sets up.
+description: repo-tooling works on its own. @infrazero/repo-ai is an optional add-on that turns ai-ready GitHub issues into reviewed PRs, and builds on the repo standard repo-tooling sets up.
 ---
 
 **repo-tooling doesn't need repo-ai.** Everything it does (`setup`, `doctor`,
@@ -9,7 +9,7 @@ description: repo-tooling works on its own. @rtorcato/repo-ai is an optional add
 Nothing in repo-tooling installs repo-ai, prompts for it, or fails a check
 because it's missing.
 
-**[`@rtorcato/repo-ai`](https://docs.infrazero.dev/repo-ai/) is optional.** It
+**[`@infrazero/repo-ai`](https://docs.infrazero.dev/repo-ai/) is optional.** It
 adds an **ai-issue-loop**: a label-driven pipeline that takes a GitHub issue
 marked `ai-ready`, implements it in its own git worktree, opens a PR, has two
 agents review it, and hands it to you to merge. Adopt it on a repo when you want
@@ -43,7 +43,7 @@ standard repo-tooling sets up, and each piece of that has its own `fix` target:
 - **Nothing in `.repo-tooling.json`**: repo-ai keeps its own settings in
   `.repo-ai.json`. Older repos that still have `rules.aiLoop` or
   `rules.requiredSkills` there can move them across with
-  `npx @rtorcato/repo-ai fix config`.
+  `npx @infrazero/repo-ai fix config`.
 
 You can meet the same standard by hand. repo-tooling is just the quickest way.
 
@@ -51,7 +51,7 @@ You can meet the same standard by hand. repo-tooling is just the quickest way.
 
 ```bash
 npx @rtorcato/repo-tooling doctor   # the repo standard above: fix anything it flags
-npx @rtorcato/repo-ai setup         # skills, labels, agent identity, statusline, then its own doctor
+npx @infrazero/repo-ai setup         # skills, labels, agent identity, statusline, then its own doctor
 ```
 
 `repo-ai setup` asks before each step, and `--yes` runs them all.
@@ -80,7 +80,7 @@ The loop shipped inside repo-tooling until 4.0.0.
 Reinstall the skills once with `--force-skills`:
 
 ```bash
-npx @rtorcato/repo-ai fix claude-skills --force-skills
+npx @infrazero/repo-ai fix claude-skills --force-skills
 ```
 
 Skills installed by repo-tooling carry its version stamp, so repo-ai can't tell
