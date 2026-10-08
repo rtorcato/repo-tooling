@@ -305,7 +305,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 		files.push('prettier.config.mjs')
 	}
 	if (config.testing.framework === 'vitest') {
-		files.push('vitest.config.ts', 'vitest.setup.ts', 'codecov.yml')
+		files.push('vitest.config.ts', 'vitest.setup.ts')
 	}
 	if (config.testing.framework === 'jest') {
 		files.push('jest.config.mjs')

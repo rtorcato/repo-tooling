@@ -20,7 +20,7 @@ describe('vitest preset exclude', () => {
 		expect(config.resolve?.alias).toBeUndefined()
 	})
 
-	it('emits lcov so the CI we generate has something to upload to Codecov', () => {
+	it('emits lcov for editor and coverage tooling', () => {
 		expect(config.test?.coverage?.reporter).toContain('lcov')
 	})
 })

@@ -92,7 +92,7 @@ Some checks read live GitHub state over `gh`: branch protection, merge and secur
 | Repo baseline | `package.json`, `.editorconfig`, `.nvmrc` / `.node-version`, `.vscode/extensions.json` |
 | Tooling presets | TypeScript, Biome, ESLint, Prettier, Vitest, Commitlint |
 | Automation | Husky, `lint-staged`, `verify` script, semantic-release, knip |
-| CI / supply chain | GitHub Actions, coverage upload, Dependabot, CodeQL, GitLab CI |
+| CI / supply chain | GitHub Actions, Dependabot, CodeQL, GitLab CI |
 | Build / docs | TypeDoc, docs site (Docusaurus), size-limit |
 | Ecosystem | Bun runtime, Turborepo / Nx, Tailwind / PostCSS |
 
@@ -207,13 +207,13 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `release-please` | `release-please-config.json` + manifest + workflow (alternative) |
 | `attw` | `@arethetypeswrong/cli` + an `attw` script, wired into `verify` |
 | `publint` | `publint` + a `publint --strict` script, wired into `verify` |
-| `badges` | status-badge row (CI, npm, coverage, license) in `README.md` |
+| `badges` | status-badge row (CI, npm, license) in `README.md` |
 
 **CI & supply chain**
 
 | Target | Scaffolds |
 |---|---|
-| `github-actions` | `.github/workflows/ci.yml` (+ `release.yml` for a semantic-release library; + `codecov.yml` when missing — an existing one is never touched; Vitest jobs upload coverage). A `ci.yml` that still has a release job gets just that job moved out into `release.yml` (its `environment:` carried over, `needs:` references and the `workflow_dispatch`/`milestone` triggers only it used dropped) — every other job, trigger and comment in `ci.yml` stays byte-for-byte. Otherwise a `ci.yml` that no longer matches the preset is left as-is unless the finding being fixed is the `GitHub Actions` drift itself — your edits are never silently reverted |
+| `github-actions` | `.github/workflows/ci.yml` (+ `release.yml` for a semantic-release library; Vitest jobs run `pnpm coverage`). A `ci.yml` that still has a release job gets just that job moved out into `release.yml` (its `environment:` carried over, `needs:` references and the `workflow_dispatch`/`milestone` triggers only it used dropped) — every other job, trigger and comment in `ci.yml` stays byte-for-byte. Otherwise a `ci.yml` that no longer matches the preset is left as-is unless the finding being fixed is the `GitHub Actions` drift itself — your edits are never silently reverted |
 | `gitlab-ci` | `.gitlab-ci.yml` (lint/typecheck/test/build mirrored from GitHub Actions) |
 | `dependabot` | `.github/dependabot.yml` (monthly, grouped: production-minor/dev-minor/major-updates) + the `dependabot-automerge.yml` workflow — see [Dependabot strategy](./dependabot-strategy.md) |
 | `renovate` | `renovate.json` (alternative to Dependabot) |

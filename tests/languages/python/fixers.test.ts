@@ -60,7 +60,7 @@ describe('python fixers', () => {
 			.filter((check) => !fixable.has(check))
 		// `language` and `Monorepo` are informational. `Git identity` is unfixable
 		// by design (#328) — only the operator knows their own address. `README
-		// badges` and `Coverage upload` need a package.json to build from, which a
+		// badges` needs a package.json to build from, which a
 		// Python repo hasn't got. `lockfile` has no Python preset to record yet
 		// (see the note atop src/languages/python/fixers.ts). `pyproject.toml` and
 		// `Python tests` are content only the project can write. `Release gate` and
@@ -75,7 +75,6 @@ describe('python fixers', () => {
 			'Release secrets',
 			'Repository secrets',
 			'README badges',
-			'Coverage upload',
 			'pyproject.toml',
 			'Python tests',
 		])

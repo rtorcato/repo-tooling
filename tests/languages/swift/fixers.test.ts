@@ -61,8 +61,7 @@ describe('swift fixers', () => {
 			.map((r) => r.check)
 			.filter((check) => !fixable.has(check))
 		// `language` and `Package.swift` are informational (scaffolding a manifest
-		// is `setup`'s job); `Coverage upload` is a base check only the JS CI
-		// generator satisfies; `README badges` needs a package.json name/repository
+		// is `setup`'s job); `README badges` needs a package.json name/repository
 		// to build the block from, which a Swift repo hasn't got (#309).
 		// `Git identity` is unfixable by design (#328) — only the operator knows
 		// their own address, so there is nothing for a fixer to write. `Swift
@@ -81,7 +80,6 @@ describe('swift fixers', () => {
 			'Release secrets',
 			'Repository secrets',
 			'README badges',
-			'Coverage upload',
 			'Package.swift',
 			'Swift targets',
 			'Swift tests',

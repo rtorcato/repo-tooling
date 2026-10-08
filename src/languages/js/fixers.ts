@@ -349,8 +349,7 @@ export const FIXERS: Fixer[] = [
 				await fs.writeFile(setupPath, savedSetup)
 			}
 			const filesWritten = ['vitest.config.ts']
-			// Without `coverage`/`test` the generated CI drops the whole test job,
-			// Codecov upload included (#377).
+			// Without `coverage`/`test` the generated CI drops the whole test job (#377).
 			if (await ensureScripts(targetDir, VITEST_SCRIPTS)) filesWritten.push('package.json')
 			return { filesWritten }
 		},
@@ -504,14 +503,14 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'github-actions',
 		description:
-			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library, + codecov.yml when a workflow uploads coverage); migrates a release job out of ci.yml',
-		appliesTo: ['GitHub Actions', 'Coverage upload', NPM_OIDC_CHECK],
-		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'codecov.yml', 'package.json (packageManager field)'],
+			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library); migrates a release job out of ci.yml',
+		appliesTo: ['GitHub Actions', NPM_OIDC_CHECK],
+		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'package.json (packageManager field)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg, result }) {
 			// Only a `GitHub Actions` finding means the user was shown that the
 			// workflow itself is wrong (and got the destructive-overwrite prompt).
-			// A sibling finding — Coverage upload, npm OIDC publish — must not take a
+			// A sibling finding — npm OIDC publish — must not take a
 			// customized ci.yml down with it (#349).
 			const filesWritten = await generateGitHubActions(inferProjectConfig(pkg), targetDir, {
 				overwrite: result.check === 'GitHub Actions',

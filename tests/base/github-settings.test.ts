@@ -436,17 +436,17 @@ jobs:
 		r.find((x) => x.check === 'Release secrets')
 
 	it('drifts when the release job reads a repo-level secret', async () => {
-		const exec = fakeGh({ repoSecrets: secrets('RELEASE_TOKEN', 'CODECOV_TOKEN') })
+		const exec = fakeGh({ repoSecrets: secrets('RELEASE_TOKEN', 'API_KEY') })
 		const c = check(await checkGitHubSettings(repoWithReleaseJob(), exec))
 		expect(c?.status).toBe('drift')
 		expect(c?.hint).toContain('RELEASE_TOKEN')
 		expect(c?.hint).toContain('Settings → Environments → release')
-		expect(c?.hint).not.toContain('CODECOV_TOKEN')
+		expect(c?.hint).not.toContain('API_KEY')
 	})
 
 	it('is ok when the secret lives on the release environment', async () => {
 		const exec = fakeGh({
-			repoSecrets: secrets('CODECOV_TOKEN'),
+			repoSecrets: secrets('API_KEY'),
 			releaseSecrets: secrets('RELEASE_TOKEN'),
 		})
 		expect(check(await checkGitHubSettings(repoWithReleaseJob(), exec))?.status).toBe('ok')

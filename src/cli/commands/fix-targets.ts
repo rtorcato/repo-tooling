@@ -24,7 +24,6 @@ export const FIX_TARGETS: Record<string, string> = {
 	'size-limit': 'size-limit',
 	'Tree-shake check': 'treeshake-check',
 	'GitHub Actions': 'github-actions',
-	'Coverage upload': 'github-actions',
 	'npm OIDC publish': 'github-actions',
 	'npm trusted publisher': 'npm-trusted-publisher',
 	Dependabot: 'dependabot',

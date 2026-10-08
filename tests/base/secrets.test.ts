@@ -18,7 +18,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo \${{ secrets.CODECOV_TOKEN }}
+      - run: echo \${{ secrets.API_KEY }}
   release:
     runs-on: ubuntu-latest
     environment: release
@@ -47,25 +47,25 @@ describe('checkRepositorySecrets', () => {
 	it('reports a missing secret with no fallback as missing, with a hint', async () => {
 		const r = await checkRepositorySecrets(await repo(), gh({}))
 		expect(r.status).toBe('missing')
-		expect(r.detail).toContain('CODECOV_TOKEN (ci.yml)')
+		expect(r.detail).toContain('API_KEY (ci.yml)')
 		expect(r.detail).toContain('RELEASE_TOKEN (ci.yml) [falls back to GITHUB_TOKEN]')
-		expect(r.hint).toContain('gh secret set CODECOV_TOKEN')
+		expect(r.hint).toContain('gh secret set API_KEY')
 	})
 
 	it('reports only fallback-masked secrets as drift', async () => {
 		const r = await checkRepositorySecrets(
 			await repo(),
-			gh({ repo: ok(['CODECOV_TOKEN']), env: ok(['ENV_ONLY']) })
+			gh({ repo: ok(['API_KEY']), env: ok(['ENV_ONLY']) })
 		)
 		expect(r.status).toBe('drift')
 		expect(r.detail).toContain('RELEASE_TOKEN')
-		expect(r.detail).not.toContain('CODECOV_TOKEN')
+		expect(r.detail).not.toContain('API_KEY')
 	})
 
 	it('counts org-scoped and environment-scoped secrets as set', async () => {
 		const r = await checkRepositorySecrets(
 			await repo(),
-			gh({ org: ok(['CODECOV_TOKEN', 'RELEASE_TOKEN']), env: ok(['ENV_ONLY']) })
+			gh({ org: ok(['API_KEY', 'RELEASE_TOKEN']), env: ok(['ENV_ONLY']) })
 		)
 		expect(r.status).toBe('ok')
 	})
@@ -73,7 +73,7 @@ describe('checkRepositorySecrets', () => {
 	it('is ok when everything is set at repo scope', async () => {
 		const r = await checkRepositorySecrets(
 			await repo(),
-			gh({ repo: ok(['CODECOV_TOKEN', 'RELEASE_TOKEN', 'ENV_ONLY']) })
+			gh({ repo: ok(['API_KEY', 'RELEASE_TOKEN', 'ENV_ONLY']) })
 		)
 		expect(r.status).toBe('ok')
 	})
@@ -87,7 +87,7 @@ describe('checkRepositorySecrets', () => {
 	it('does not flag an environment secret when the environment is unreadable', async () => {
 		const r = await checkRepositorySecrets(
 			await repo(),
-			gh({ repo: ok(['CODECOV_TOKEN', 'RELEASE_TOKEN']), env: fail })
+			gh({ repo: ok(['API_KEY', 'RELEASE_TOKEN']), env: fail })
 		)
 		expect(r.status).toBe('ok')
 	})

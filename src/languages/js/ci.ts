@@ -14,7 +14,7 @@ import {
 } from '../../base/ci.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
-/** Coverage is uploaded when Vitest is the test runner (it emits an lcov report). */
+/** CI runs the tests with coverage when Vitest is the test runner. */
 export function usesCoverage(config: ProjectConfig): boolean {
 	return config.testing.framework === 'vitest'
 }
@@ -236,24 +236,14 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
 	}
 
 	if (hasTests) {
-		const coverageUpload = hasCoverage
-			? `
-
-      - name: 📊 Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
-        with:
-          token: \${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false`
-			: ''
-		// Fall back to `pnpm test` when the repo has no coverage script — the
-		// coverage upload goes with it, since there'd be no lcov to upload.
+		// Fall back to `pnpm test` when the repo has no coverage script.
 		const useCoverage = hasCoverage && (!opts.scripts || 'coverage' in opts.scripts)
 		const steps = jobSteps([
 			stepFor(
 				opts,
 				useCoverage ? 'coverage' : 'test',
 				`      - name: 🧪 Run tests
-        run: ${useCoverage ? 'pnpm coverage' : 'pnpm test'}${useCoverage ? coverageUpload : ''}`
+        run: ${useCoverage ? 'pnpm coverage' : 'pnpm test'}`
 			),
 		])
 		if (steps) jobs.push({ id: 'test', needs: ['dependencies'], steps })

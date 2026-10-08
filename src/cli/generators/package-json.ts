@@ -357,7 +357,7 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 	// Testing frameworks
 	if (config.testing.framework === 'vitest') {
 		deps['vitest'] = '^4.1.9'
-		// Coverage provider so `pnpm coverage` (and the CI Codecov upload) works.
+		// Coverage provider so `pnpm coverage` (which CI runs) works.
 		deps['@vitest/coverage-v8'] = '^4.1.9'
 		if (config.testing.environment === 'browser' || config.testing.environment === 'both') {
 			deps['@vitest/ui'] = '^4.1.9'

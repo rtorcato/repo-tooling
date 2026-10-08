@@ -7,17 +7,13 @@ export const BADGE_END = '<!-- js-tooling:badges:end -->'
 export interface BadgeInputs {
 	/** Package name — drives the npm version/downloads/bundle-size badges. */
 	name?: string
-	/** GitHub owner + repo — drive the CI + coverage badges. */
+	/** GitHub owner + repo — drive the CI badge. */
 	owner?: string
 	repo?: string
-	/** Default branch used by the coverage badge. Default: `main`. */
-	branch?: string
-	/** Private or unpublished: skip npm/bundlephobia/coverage (they would 404). */
+	/** Private or unpublished: skip npm/bundlephobia (they would 404). */
 	isPrivate?: boolean
 	/** Ships a bundle worth sizing — drives bundlephobia. Default: true. */
 	bundled?: boolean
-	/** CI uploads coverage to Codecov — drives the coverage badge. Default: true. */
-	uploadsCoverage?: boolean
 }
 
 /**
@@ -51,15 +47,7 @@ export function parseRepository(repository: unknown): { owner: string; repo: str
  * repo-specific is derivable, so a badge row isn't worth adding.
  */
 export function buildBadgeRow(inputs: BadgeInputs): string {
-	const {
-		name,
-		owner,
-		repo,
-		branch = 'main',
-		isPrivate = false,
-		bundled = true,
-		uploadsCoverage = true,
-	} = inputs
+	const { name, owner, repo, isPrivate = false, bundled = true } = inputs
 	const slug = owner && repo ? `${owner}/${repo}` : null
 	const badges: string[] = []
 	let specific = false
@@ -84,11 +72,6 @@ export function buildBadgeRow(inputs: BadgeInputs): string {
 			`[![Bundle size](https://img.shields.io/bundlephobia/minzip/${name})](https://bundlephobia.com/package/${name})`
 		)
 	}
-	if (!isPrivate && slug && uploadsCoverage) {
-		badges.push(
-			`[![Coverage](https://codecov.io/gh/${slug}/branch/${branch}/graph/badge.svg)](https://codecov.io/gh/${slug})`
-		)
-	}
 	badges.push(
 		'[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)'
 	)
@@ -103,12 +86,11 @@ export function buildBadgeBlock(inputs: BadgeInputs): string {
 }
 
 /**
- * True when the text carries npm/bundlephobia/codecov badges (which 404 on
+ * True when the text carries npm/bundlephobia badges (which 404 on
  * private/unpublished). Given `name`, npm/bundlephobia badges count only when
  * they point at that package — a README may advertise *other* packages (#634).
  */
 export function hasPublicOnlyBadges(text: string, name?: string): boolean {
-	if (/codecov\.io/.test(text)) return true
 	if (!name) return /img\.shields\.io\/npm\/|bundlephobia/.test(text)
 	const refs = text.matchAll(
 		/(?:img\.shields\.io\/npm\/[\w-]+|bundlephobia\/[\w-]+|bundlephobia\.com\/package)\/([^\s)"'?#]+)/g

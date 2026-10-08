@@ -1,6 +1,5 @@
 import fs from 'fs-extra'
 import path from 'node:path'
-import { coverageUploadWorkflow } from '../../base/checks.js'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { FixerAbort } from '../../base/fixers.js'
 import {
@@ -13,21 +12,6 @@ import {
 } from '../../base/github-settings.js'
 import { githubJobs, RELEASE_WORKFLOW, renderReleaseWorkflow } from '../../languages/js/ci.js'
 import type { ProjectConfig } from '../commands/setup.js'
-
-// Minimal Codecov config — auto targets keep it from failing a fresh repo that
-// has no baseline yet, while the 1% threshold tolerates rounding noise.
-// https://docs.codecov.com/docs/codecov-yaml
-const CODECOV_YML = `coverage:
-  status:
-    project:
-      default:
-        target: auto
-        threshold: 1%
-    patch:
-      default:
-        target: auto
-        threshold: 1%
-`
 
 /** Matches the fixer's declared output, so `fix` reports the same path it lists. */
 export const CI_WORKFLOW = '.github/workflows/ci.yml'
@@ -140,14 +124,5 @@ export async function generateGitHubActions(
 		filesWritten.push(RELEASE_WORKFLOW)
 	}
 
-	// codecov.yml is the coverage-upload companion — emit it only when a workflow
-	// (the ci.yml just written included) actually runs codecov-action, not merely
-	// because the config has tests (#779). An existing one is the repo's own
-	// coverage policy — never overwritten (#761).
-	const codecovPath = path.join(targetDir, 'codecov.yml')
-	if (!(await fs.pathExists(codecovPath)) && (await coverageUploadWorkflow(targetDir))) {
-		await fs.writeFile(codecovPath, CODECOV_YML)
-		filesWritten.push('codecov.yml')
-	}
 	return filesWritten
 }

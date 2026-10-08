@@ -27,7 +27,6 @@ export interface RequiredSecret {
 }
 
 const WHERE_TO_GET: Record<string, string> = {
-	CODECOV_TOKEN: 'codecov.io -> your repo -> Settings -> Repository Upload Token',
 	RELEASE_TOKEN:
 		'a fine-grained PAT with contents: write (or a GitHub App token) that can push past branch protection',
 }
