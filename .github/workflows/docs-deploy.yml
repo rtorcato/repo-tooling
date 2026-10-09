@@ -5,7 +5,7 @@ name: Reusable Deploy Docs
 #   jobs:
 #     docs:
 #       permissions: { contents: read, pages: write, id-token: write }
-#       uses: rtorcato/repo-tooling/.github/workflows/docs-deploy.yml@main
+#       uses: rtorcato/repo-tooling/.github/workflows/docs-deploy.yml@v6.0.0   # pin a release tag, not @main
 #       with:
 #         build-filter: '@rtorcato/<pkg>-docs'
 #
