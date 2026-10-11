@@ -11,7 +11,7 @@ import {
 } from '../../languages/js/ci.js'
 import { inferProjectConfig } from '../../languages/js/fixers.js'
 import {
-	checkNpmTrustedPublisher,
+	checkNpmTrustedPublishers,
 	checkPublishJob,
 	findNpmPublishJob,
 	NPM_OIDC_CHECK,
@@ -24,7 +24,11 @@ import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
 import { type DetectedLanguage, detectAuditLanguage } from '../utils/detect-language.js'
-import { checkGitHubSettings, GITHUB_SETTINGS_CHECKS } from '../../base/github-settings.js'
+import {
+	checkGitHubSettings,
+	GITHUB_SETTINGS_CHECKS,
+	isPrivatePackage,
+} from '../../base/github-settings.js'
 import { checkRepositorySecrets, SECRETS_CHECK } from '../../base/secrets.js'
 import { checkMilestones, MILESTONES_CHECK } from '../../base/milestones.js'
 import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
@@ -197,13 +201,13 @@ async function checkReleaseToken(dir: string): Promise<CheckResult> {
 // Only relevant for public packages that actually publish to npm.
 async function checkNpmOidcPublish(dir: string, pkg: Pkg | null): Promise<CheckResult> {
 	const check = NPM_OIDC_CHECK
-	if (!pkg || pkg.private === true) {
+	// A private workspace root still publishes when a workspace package is public (#811).
+	if (!pkg || (pkg.private === true && (await isPrivatePackage(dir)))) {
 		return { check, status: 'optional-missing', detail: 'private package — no npm publish' }
 	}
 	try {
 		const job = await findNpmPublishJob(dir)
-		if (!job)
-			return { check, status: 'optional-missing', detail: 'no semantic-release workflow found' }
+		if (!job) return { check, status: 'optional-missing', detail: 'no workflow publishes to npm' }
 		return checkPublishJob(job)
 	} catch {
 		return { check, status: 'optional-missing', detail: 'unable to read .github/workflows/' }
@@ -526,7 +530,7 @@ export async function runDoctor(
 	results.push(await checkSizeLimit(targetDir, pkg))
 	results.push(await checkReleaseToken(targetDir))
 	results.push(await checkNpmOidcPublish(targetDir, pkg))
-	results.push(await checkNpmTrustedPublisher(targetDir, pkg))
+	results.push(...(await checkNpmTrustedPublishers(targetDir, pkg)))
 	results.push(await checkTypedoc(targetDir, pkg))
 	results.push(await checkAreTheTypesWrong(targetDir, pkg))
 	results.push(await checkPublint(targetDir, pkg))
