@@ -69,7 +69,7 @@ function isInside(targetDir: string, rel: string): boolean {
  * a `..` segment: a `packages: - '../shared-lib'` entry reads as plausible in a
  * monorepo but would write an out-of-repo symlink target into settings.json.
  */
-async function workspaceGlobs(targetDir: string): Promise<string[]> {
+export async function workspaceGlobs(targetDir: string): Promise<string[]> {
 	const yamlFile = path.join(targetDir, 'pnpm-workspace.yaml')
 	const yaml = (await fs.pathExists(yamlFile)) ? await fs.readFile(yamlFile, 'utf-8') : ''
 	const pkg = asObject(await fs.readJson(path.join(targetDir, 'package.json')).catch(() => null))

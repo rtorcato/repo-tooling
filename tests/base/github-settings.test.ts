@@ -297,6 +297,40 @@ ${env ? `    environment: ${env}\n` : ''}    steps:
 		expect(gate(await checkGitHubSettings(dir, fakeGh()))?.detail).toContain('not applicable')
 	})
 
+	it('checks a private monorepo root whose workspace package publishes (#808)', async () => {
+		const dir = repoWithWorkflow(
+			`name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: changesets/action@v1
+        with:
+          publish: pnpm release
+`,
+			{ private: true }
+		)
+		fs.outputFileSync(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n")
+		fs.outputJsonSync(join(dir, 'packages/a/package.json'), { name: 'a', private: true })
+		fs.outputJsonSync(join(dir, 'packages/b/package.json'), { name: 'b' })
+		const g = gate(await checkGitHubSettings(dir, fakeGh()))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('no `environment:`')
+	})
+
+	it('is not applicable when every workspace package is private too (#808)', async () => {
+		const dir = repoWithWorkflow(workflow(), { private: true, workspaces: ['packages/**'] })
+		fs.outputJsonSync(join(dir, 'packages/a/package.json'), { name: 'a', private: true })
+		// A public package under node_modules is a dependency, not a workspace.
+		fs.outputJsonSync(join(dir, 'packages/a/node_modules/dep/package.json'), { name: 'dep' })
+		expect(gate(await checkGitHubSettings(dir, fakeGh()))?.detail).toContain('not applicable')
+	})
+
 	it('drifts when the publish job has no environment and none exists', async () => {
 		const dir = repoWithWorkflow(workflow())
 		const g = gate(await checkGitHubSettings(dir, fakeGh()))

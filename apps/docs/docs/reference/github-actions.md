@@ -111,6 +111,8 @@ on a plain push to `main`. One approval then ships a whole batch of merges
 concurrency does not supersede a waiting run or can cancel a publishing one, or
 one that fires on push. `fix github-actions` migrates
 the old layout, carrying the release job's `environment:` into `release.yml`.
+A job with no `environment:` gets `environment: release`, so a fresh
+`release.yml` is always gated (#789).
 Re-point the npm trusted publisher's workflow filename to `release.yml` when you
 migrate, or OIDC publishing fails. Beyond that, repo-tooling ships **optional deploy
 workflows** you add on demand — they're too deploy-target-specific to scaffold
@@ -145,8 +147,8 @@ it over in this order:
 3. **Re-point the npm trusted publisher.** On npmjs.com → package → Settings →
    Trusted Publisher, set the workflow to `release.yml` and the environment to
    `release`. Do this in the same sitting as merging step 2. Releases only run
-   when dispatched, so there's no window as long as you don't release in
-   between.
+   when dispatched or when a milestone closes, so there's no window as long as
+   you don't do either in between.
 4. **Move release secrets to the environment.** Secrets such as
    `RELEASE_TOKEN` go from repo secrets to `release` environment secrets.
    `doctor`'s `Release secrets` check

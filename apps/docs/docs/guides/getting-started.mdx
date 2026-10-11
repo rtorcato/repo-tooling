@@ -166,9 +166,8 @@ import '@rtorcato/repo-tooling/typescript/base'
 
 ## CI/CD secrets
 
-For automated publishing via Semantic Release, add these to your GitHub repository secrets:
+The scaffolded `release.yml` publishes to npm with OIDC trusted publishing, so it needs no `NPM_TOKEN`. Register the workflow on npm with `fix npm-trusted-publisher`, and gate it with `fix release-environment`. See [Moving an existing repo to `release.yml`](../reference/github-actions.md#moving-an-existing-repo-to-releaseyml).
 
-1. **`NPM_TOKEN`** — npm authentication token
-2. **`GITHUB_TOKEN`** — automatically provided by GitHub Actions
+`GITHUB_TOKEN` is provided by GitHub Actions. If you add a `RELEASE_TOKEN` (an admin PAT that lets semantic-release push past branch protection), store it as a secret on the `release` environment, not as a repository secret. `doctor`'s **Release secrets** check flags it at repo level.
 
-`Settings → Secrets and variables → Actions`
+`Settings → Environments → release → Environment secrets`

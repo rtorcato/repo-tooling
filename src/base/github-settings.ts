@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process'
+import { glob } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import chalk from 'chalk'
 import fs from 'fs-extra'
+import { workspaceGlobs } from '../cli/generators/agent-rules.js'
 import { RELEASE_JOB_GATE, RELEASE_WORKFLOW_HEADER } from './ci.js'
 import type { CheckResult } from './types.js'
 
@@ -952,14 +954,28 @@ export function publishingJob(yaml: string): string | null {
 	return null
 }
 
-/** `private: true` — nothing reaches a registry, so no gate is owed. */
+/**
+ * `private: true` — nothing reaches a registry, so no gate is owed. A private
+ * monorepo root doesn't count when a workspace package isn't private (#808): a
+ * pnpm/Changesets repo always marks its root private while `packages/*` publish.
+ */
 async function isPrivatePackage(dir: string): Promise<boolean> {
 	try {
 		const pkg = await fs.readJson(path.join(dir, 'package.json'))
-		return pkg?.private === true
+		if (pkg?.private !== true) return false
 	} catch {
 		return false
 	}
+	const globs = await workspaceGlobs(dir)
+	if (globs.length === 0) return true
+	for await (const match of glob(
+		globs.map((g) => `${g}/package.json`),
+		{ cwd: dir, exclude: (p) => p.split(/[\\/]/).includes('node_modules') }
+	)) {
+		const ws = await fs.readJson(path.join(dir, match)).catch(() => null)
+		if (ws && ws.private !== true) return false
+	}
+	return true
 }
 
 interface PublishJob {
