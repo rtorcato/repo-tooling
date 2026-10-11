@@ -193,9 +193,11 @@ async function probeRepo(exec: GhExec): Promise<{ info: RepoInfo } | { skip: str
 	}
 }
 
-export async function checkGitHubSettings(dir: string, exec?: GhExec): Promise<CheckResult[]> {
+export async function checkGitHubSettings(target: string, exec?: GhExec): Promise<CheckResult[]> {
 	// Cheap gate first: no .git → never spawn (keeps tmp-dir doctor runs offline).
-	if (!(await fs.pathExists(path.join(dir, '.git')))) return skipAll('not a git repository')
+	// `-d packages/x` audits from the repo root, where the workflows live (#811).
+	const dir = await gitRoot(target)
+	if (!dir) return skipAll('not a git repository')
 
 	// Bind gh's cwd to the target dir so its repo resolution honors `-d` (#218).
 	const gh: GhExec = exec ?? ((args, stdin) => realGhExec(args, stdin, dir))
@@ -553,8 +555,10 @@ const RELEASE_ENVIRONMENT = 'release'
 /**
  * What a job has to run for a merge to the default branch to reach a registry.
  * `semantic-release` counts on its own — the shipped preset publishes with it.
+ * Shared with the npm OIDC checks so the two can't drift apart (#811).
  */
-const PUBLISH_COMMAND = /semantic-release|changesets\/action|(?:npm|pnpm|yarn)\s+publish/
+export const PUBLISH_COMMAND =
+	/semantic-release|changesets\/action|changeset\s+publish|(?:npm|pnpm|yarn)\s+publish/
 
 const GATE_HINT =
 	'Run `npx @rtorcato/repo-tooling fix release-environment` to create the `release` environment with required reviewers (you) and add `environment: release` to the publishing job — a merge to the default branch then leaves the run `waiting` instead of publishing'
@@ -959,23 +963,51 @@ export function publishingJob(yaml: string): string | null {
  * monorepo root doesn't count when a workspace package isn't private (#808): a
  * pnpm/Changesets repo always marks its root private while `packages/*` publish.
  */
-async function isPrivatePackage(dir: string): Promise<boolean> {
+export async function isPrivatePackage(dir: string): Promise<boolean> {
 	try {
 		const pkg = await fs.readJson(path.join(dir, 'package.json'))
 		if (pkg?.private !== true) return false
 	} catch {
 		return false
 	}
+	return (await publicWorkspacePackages(dir)).length === 0
+}
+
+export interface WorkspacePackage {
+	/** Relative to the workspace root, `/`-separated. */
+	dir: string
+	pkg: Record<string, unknown>
+}
+
+/** Workspace packages (`pnpm-workspace.yaml` / `workspaces`) not marked `private: true`, sorted by dir. */
+export async function publicWorkspacePackages(dir: string): Promise<WorkspacePackage[]> {
 	const globs = await workspaceGlobs(dir)
-	if (globs.length === 0) return true
+	const found: WorkspacePackage[] = []
+	if (globs.length === 0) return found
 	for await (const match of glob(
 		globs.map((g) => `${g}/package.json`),
 		{ cwd: dir, exclude: (p) => p.split(/[\\/]/).includes('node_modules') }
 	)) {
 		const ws = await fs.readJson(path.join(dir, match)).catch(() => null)
-		if (ws && ws.private !== true) return false
+		if (ws && typeof ws === 'object' && !Array.isArray(ws) && ws.private !== true) {
+			found.push({ dir: path.dirname(match).split(path.sep).join('/'), pkg: ws })
+		}
 	}
-	return true
+	return found.sort((a, b) => a.dir.localeCompare(b.dir))
+}
+
+/**
+ * The nearest of `dir` and its ancestors that holds `.git`, or null. A package
+ * audited with `-d packages/x` keeps its workflows at the repo root (#811).
+ */
+export async function gitRoot(dir: string): Promise<string | null> {
+	let d = path.resolve(dir)
+	for (;;) {
+		if (await fs.pathExists(path.join(d, '.git'))) return d
+		const up = path.dirname(d)
+		if (up === d) return null
+		d = up
+	}
 }
 
 interface PublishJob {
@@ -1490,8 +1522,9 @@ export function addJobEnvironment(yaml: string, jobId: string, env: string): str
  * A job already behind some *other* environment is a warning, not a rename —
  * this fixer scaffolds the standard, it does not migrate a custom setup.
  */
-export async function applyReleaseEnvironment(dir: string, exec?: GhExec): Promise<string[]> {
-	if (!(await fs.pathExists(path.join(dir, '.git')))) {
+export async function applyReleaseEnvironment(target: string, exec?: GhExec): Promise<string[]> {
+	const dir = await gitRoot(target)
+	if (!dir) {
 		console.error(chalk.gray('   skipped — not a git repository'))
 		return []
 	}

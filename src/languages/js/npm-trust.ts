@@ -12,7 +12,14 @@ import chalk from 'chalk'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { FixerAbort, type Fixer } from '../../base/fixers.js'
-import { type GhResult, jobEnvironment, workflowJobs } from '../../base/github-settings.js'
+import {
+	type GhResult,
+	gitRoot,
+	jobEnvironment,
+	PUBLISH_COMMAND,
+	publicWorkspacePackages,
+	workflowJobs,
+} from '../../base/github-settings.js'
 import type { CheckResult } from '../../base/types.js'
 import { parseRepository } from '../../cli/generators/badges.js'
 
@@ -40,7 +47,6 @@ export const NPM_TRUST_MIN = '11.15.0'
 export const NPM_UPGRADE_CMD = `npm install -g npm@^${NPM_OIDC_MIN}`
 
 const NPM_UPGRADE = /\bnpm\s+(?:install|i)\s+(?:-g|--global)\s+npm@/
-const PUBLISHES = /semantic-release|\bnpm\s+publish\b/
 
 /** a ≥ b for dotted numeric versions (prerelease tags ignored). */
 export function versionAtLeast(a: string, b: string): boolean {
@@ -71,16 +77,25 @@ const uncommented = (s: string) =>
 		.filter((l) => !l.trimStart().startsWith('#'))
 		.join('\n')
 
-/** The first workflow job that publishes to npm, or null. Throws when the directory can't be read. */
+/**
+ * The first workflow job that publishes to npm, or null. Throws when the
+ * directory can't be read. A package dir with no workflows of its own (`-d
+ * packages/x`) reads the git root's (#811).
+ */
 export async function findNpmPublishJob(dir: string): Promise<NpmPublishJob | null> {
-	const workflowsDir = path.join(dir, '.github', 'workflows')
-	if (!(await fs.pathExists(workflowsDir))) return null
+	let workflowsDir = path.join(dir, '.github', 'workflows')
+	if (!(await fs.pathExists(workflowsDir))) {
+		const root = await gitRoot(dir)
+		if (!root) return null
+		workflowsDir = path.join(root, '.github', 'workflows')
+		if (!(await fs.pathExists(workflowsDir))) return null
+	}
 	for (const file of (await fs.readdir(workflowsDir)).sort()) {
 		if (!/\.ya?ml$/.test(file)) continue
 		const content = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
-		if (!PUBLISHES.test(uncommented(content))) continue
+		if (!PUBLISH_COMMAND.test(uncommented(content))) continue
 		const jobs = [...workflowJobs(content).values()].map(uncommented)
-		const body = jobs.find((b) => PUBLISHES.test(b)) ?? uncommented(content)
+		const body = jobs.find((b) => PUBLISH_COMMAND.test(b)) ?? uncommented(content)
 		return { file, body, content, environment: jobEnvironment(body) }
 	}
 	return null
@@ -116,7 +131,7 @@ export function checkPublishJob(job: NpmPublishJob): CheckResult {
 			check,
 			status: 'drift',
 			detail: `${f}: the publishing job runs the npm bundled with Node — OIDC publish needs npm ≥ ${NPM_OIDC_MIN} and fails with ENEEDAUTH below it`,
-			hint: `add \`${NPM_UPGRADE_CMD}\` before semantic-release`,
+			hint: `add \`${NPM_UPGRADE_CMD}\` before the publish step`,
 		}
 	}
 	return { check, status: 'ok', detail: `${f} publishes via OIDC (no NPM_TOKEN)` }
@@ -357,6 +372,34 @@ export async function checkNpmTrustedPublisher(
 }
 
 /**
+ * The trusted-publisher check for every package the repo publishes: the root,
+ * or each public workspace package under a private root (#811). A workspace
+ * row's detail leads with its dir, and its fix hint gains `-d <dir>`.
+ */
+export async function checkNpmTrustedPublishers(
+	dir: string,
+	pkg: Record<string, unknown> | null,
+	npm: NpmExec = realNpmExec
+): Promise<CheckResult[]> {
+	const members = pkg?.private === true ? await publicWorkspacePackages(dir) : []
+	if (members.length === 0) return [await checkNpmTrustedPublisher(dir, pkg, npm)]
+	const results: CheckResult[] = []
+	for (const m of members) {
+		// A workspace package often leaves `repository` to the root.
+		const wsPkg = { ...m.pkg, repository: m.pkg.repository ?? pkg?.repository }
+		const r = await checkNpmTrustedPublisher(path.join(dir, m.dir), wsPkg, npm)
+		results.push({
+			...r,
+			detail: `${m.dir}: ${r.detail}`,
+			...(r.hint && {
+				hint: r.hint.replaceAll(`fix ${NPM_TRUST_FIX}\``, `fix ${NPM_TRUST_FIX} -d ${m.dir}\``),
+			}),
+		})
+	}
+	return results
+}
+
+/**
  * Register the trusted publisher with `npm trust github`, flags derived from the
  * publishing job. Dry-runs first and asks before the real call.
  */
@@ -366,6 +409,14 @@ export async function applyNpmTrustedPublisher(
 	assumeYes: boolean,
 	npm: NpmExec = realNpmExec
 ): Promise<string[]> {
+	const members = pkg?.private === true ? await publicWorkspacePackages(dir) : []
+	if (members.length > 0) {
+		throw new FixerAbort(
+			'npm-trust-unavailable',
+			'private workspace root — each published package registers its own trusted publisher',
+			members.map((m) => `fix ${NPM_TRUST_FIX} -d ${m.dir}`).join(' ; ')
+		)
+	}
 	const ctx = await trustContext(dir, pkg, npm, { needLogin: true })
 	if ('skip' in ctx) {
 		const hint = ctx.unpublished && ctx.guide ? ctx.guide.bootstrap.join(' → ') : undefined

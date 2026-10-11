@@ -7,6 +7,7 @@ import { npmPublishFor } from '../../../src/cli/commands/setup.js'
 import {
 	applyNpmTrustedPublisher,
 	checkNpmTrustedPublisher,
+	checkNpmTrustedPublishers,
 	checkPublishJob,
 	findNpmPublishJob,
 	type NpmExec,
@@ -87,6 +88,61 @@ describe('checkPublishJob', () => {
 	it('is ok with both', async () => {
 		const job = await findNpmPublishJob(await seed(JOB()))
 		expect(job && checkPublishJob(job).status).toBe('ok')
+	})
+})
+
+describe('Changesets monorepos (#811)', () => {
+	const CHANGESETS =
+		'jobs:\n  release:\n    environment: release\n    permissions:\n      id-token: write\n    steps:\n      - run: npm install -g npm@latest\n      - uses: changesets/action@v1\n        with:\n          publish: pnpm changeset publish\n'
+
+	/** A git repo: private root, packages/a public (no `repository`), packages/b private. */
+	async function monorepo() {
+		const dir = await seed(CHANGESETS)
+		await fs.ensureDir(join(dir, '.git'))
+		await fs.writeJson(join(dir, 'package.json'), {
+			private: true,
+			workspaces: ['packages/*'],
+			repository: 'github:acme/lib',
+		})
+		await fs.outputJson(join(dir, 'packages/a/package.json'), { name: '@acme/a' })
+		await fs.outputJson(join(dir, 'packages/b/package.json'), { name: '@acme/b', private: true })
+		return dir
+	}
+
+	it('finds a changesets/action job as the npm publish job', async () => {
+		const job = await findNpmPublishJob(await seed(CHANGESETS))
+		expect(job?.file).toBe('ci.yml')
+		expect(job && checkPublishJob(job).status).toBe('ok')
+	})
+
+	it('reads the git root workflows from a package dir (`-d packages/a`)', async () => {
+		const dir = await monorepo()
+		const job = await findNpmPublishJob(join(dir, 'packages/a'))
+		expect(job?.file).toBe('ci.yml')
+		expect(job?.environment).toBe('release')
+	})
+
+	it('checks each public workspace package, borrowing the root `repository`', async () => {
+		const dir = await monorepo()
+		const npm = fakeNpm({ trust: res(true, entry('ci.yml')) })
+		const rows = await checkNpmTrustedPublishers(
+			dir,
+			await fs.readJson(join(dir, 'package.json')),
+			npm
+		)
+		expect(rows).toHaveLength(1)
+		expect(rows[0]?.status).toBe('drift')
+		expect(rows[0]?.detail).toMatch(/^packages\/a: @acme\/a: .*`release` environment/)
+		expect(rows[0]?.hint).toContain('fix npm-trusted-publisher -d packages/a')
+	})
+
+	it('the fixer points at each package instead of registering the root', async () => {
+		const dir = await monorepo()
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		await expect(applyNpmTrustedPublisher(dir, pkg, true, fakeNpm())).rejects.toMatchObject({
+			code: 'npm-trust-unavailable',
+			hint: 'fix npm-trusted-publisher -d packages/a',
+		})
 	})
 })
 

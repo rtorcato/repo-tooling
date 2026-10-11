@@ -1592,6 +1592,44 @@ describe('nextStepSuggestions', () => {
 	})
 })
 
+describe('doctor npm OIDC check on a Changesets monorepo (#811)', () => {
+	/** Private root, one public and one private workspace package, a changesets/action release. */
+	async function changesetsMonorepo(release: string) {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'root', private: true })
+		await fs.outputFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n")
+		await fs.outputJson(join(dir, 'packages/lib/package.json'), { name: '@acme/lib' })
+		await fs.outputJson(join(dir, 'packages/demo/package.json'), { name: 'demo', private: true })
+		await fs.outputFile(join(dir, '.github/workflows/release.yml'), release)
+		return dir
+	}
+
+	it('checks the publish job instead of skipping the private root', async () => {
+		const dir = await changesetsMonorepo(
+			'jobs:\n  release:\n    steps:\n      - uses: changesets/action@v1\n        with:\n          publish: pnpm changeset publish\n        env:\n          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}\n'
+		)
+		const r = (await runDoctor(dir)).find((c) => c.check === 'npm OIDC publish')
+		expect(r?.status).toBe('drift')
+		expect(r?.detail).toContain('NPM_TOKEN')
+	})
+
+	it('is ok when the changesets job publishes via OIDC', async () => {
+		const dir = await changesetsMonorepo(
+			'jobs:\n  release:\n    permissions:\n      id-token: write\n    steps:\n      - run: npm install -g npm@latest\n      - uses: changesets/action@v1\n        with:\n          publish: pnpm changeset publish\n'
+		)
+		const r = (await runDoctor(dir)).find((c) => c.check === 'npm OIDC publish')
+		expect(r?.status).toBe('ok')
+	})
+
+	it('reports the trusted publisher per public workspace package, not the root', async () => {
+		const dir = await changesetsMonorepo(
+			'jobs:\n  release:\n    steps:\n      - run: pnpm changeset publish\n'
+		)
+		const rows = (await runDoctor(dir)).filter((c) => c.check === 'npm trusted publisher')
+		expect(rows.map((r) => r.detail.split(':')[0])).toEqual(['packages/lib'])
+	})
+})
+
 describe('doctor size-limit check (#739)', () => {
 	const statusFor = async (pkg: Record<string, unknown>) => {
 		const dir = newTmpDir()

@@ -331,6 +331,14 @@ jobs:
 		expect(gate(await checkGitHubSettings(dir, fakeGh()))?.detail).toContain('not applicable')
 	})
 
+	it('audits from the git root when run on a workspace package (#811)', async () => {
+		const dir = repoWithWorkflow(workflow(), { private: true, workspaces: ['packages/*'] })
+		fs.outputJsonSync(join(dir, 'packages/a/package.json'), { name: 'a' })
+		const g = gate(await checkGitHubSettings(join(dir, 'packages/a'), fakeGh()))
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('ci.yml')
+	})
+
 	it('drifts when the publish job has no environment and none exists', async () => {
 		const dir = repoWithWorkflow(workflow())
 		const g = gate(await checkGitHubSettings(dir, fakeGh()))
