@@ -79,3 +79,4 @@ Both tools share the same shape: CI consumes intent, bumps versions, writes a ch
 
 - If only `.changeset/config.json` exists, `doctor` reports `semantic-release` as ok with "using Changesets instead".
 - If both exist, `doctor` flags drift — you have two release tools fighting for the same job. Remove one.
+- "Publishes on merge" means nothing stands between a merge and npm. The [Release gate](../guides/cli.md#release-gate) check flags a `changesets/action` job with no protected `environment:`. That holds in a monorepo with a private root too, as long as a workspace package isn't private. `fix release-environment` adds the gate.

@@ -95,6 +95,19 @@ Some checks read live GitHub state over `gh`: branch protection, merge and secur
 | CI / supply chain | GitHub Actions, Dependabot, CodeQL, GitLab CI |
 | Build / docs | TypeDoc, docs site (Docusaurus), size-limit |
 | Ecosystem | Bun runtime, Turborepo / Nx, Tailwind / PostCSS |
+| GitHub (live, over `gh`) | Branch protection, merge settings, workflow permissions, code-scanning gate, security updates, release gate, release environment, release secrets, repository secrets, milestones |
+
+### Release gate
+
+The **Release gate** check looks for the workflow job that publishes (`semantic-release`, `changesets/action`, or `npm`/`pnpm`/`yarn publish`) and reports drift when nothing holds it before the registry:
+
+- the job declares no `environment:` and the repo has no `release` environment
+- the job names an environment the repo doesn't have (Actions creates it unprotected on first run)
+- the job names an environment with no required reviewers
+
+**Release environment** reports a `release` environment that no job references, and **Release secrets** reports publish secrets kept as repository secrets rather than on the environment. `fix release-environment` creates the environment with you as the required reviewer and adds `environment: release` to the job. It only runs when named.
+
+A repo that publishes nothing is `ok`, reported as *not applicable*. A root `package.json` with `private: true` counts as publishing nothing, unless it is a monorepo root with a workspace package that isn't private. The workspace packages come from `pnpm-workspace.yaml` or the `workspaces` field. A pnpm or Changesets monorepo always has a private root while `packages/*` publish, so the check still runs there.
 
 After the per-row results, doctor prints a **Next steps:** footer listing the exact `fix` command to run for each non-ok item:
 
@@ -205,6 +218,8 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `semantic-release` | `release.config.mjs` + plugins (skipped on private packages) |
 | `changesets` | `.changeset/config.json` (alternative to semantic-release) |
 | `release-please` | `release-please-config.json` + manifest + workflow (alternative) |
+| `release-environment` | the `release` environment on GitHub with you as required reviewer, plus `environment: release` on the publishing job (see [Release gate](#release-gate)). Runs only when named, never under bare `fix` or `--yes` |
+| `npm-trusted-publisher` | registers `release.yml` as the package's OIDC trusted publisher on npm via `npm trust github`. Refuses when the package isn't on npm yet, local npm is older than 11.15.0, or you aren't logged in. Runs only when named |
 | `attw` | `@arethetypeswrong/cli` + an `attw` script, wired into `verify` |
 | `publint` | `publint` + a `publint --strict` script, wired into `verify` |
 | `badges` | status-badge row (CI, npm, license) in `README.md` |
