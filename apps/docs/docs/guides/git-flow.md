@@ -70,13 +70,19 @@ puts every intermediate branch commit on `main`:
 
 ### Required status checks
 
-The required contexts are exactly the jobs that run on **`pull_request → main`**:
+Require exactly one context: **`ci`**. It's a gate job at the end of `ci.yml`
+that `needs:` every other job, runs with `if: always()`, and fails if any of them
+failed or was cancelled (skipped is fine).
 
-- `lint`
-- `typecheck`
-- `build`
-- `test (node 22)`
-- `test (node 24)`
+Never require a matrix leg such as `test (node 22)`. When the Node floor moves,
+that leg stops existing, never reports, and every PR sits at `BLOCKED` with all
+checks green. With only `ci` required, changing the matrix never touches
+protection. `doctor` flags a required matrix leg, or a required check that no CI
+job produces, and `fix github-settings` sets the contexts to `ci` (it waits
+until a workflow actually reports `ci`).
+
+The test matrix covers two Node versions: the `engines.node` floor and the
+newest Node.
 
 > **`commitlint` is intentionally not a required check.** It runs only on `push`
 > events (`github.event_name == 'push'`), so it never reports a status on a PR.

@@ -25,6 +25,16 @@ function gitRepo(): string {
 	return dir
 }
 
+/** A git repo whose CI has the `ci` gate job, so requiring `ci` is safe (#816). */
+function gitRepoWithGate(): string {
+	const dir = gitRepo()
+	fs.outputFileSync(
+		join(dir, '.github/workflows/ci.yml'),
+		'jobs:\n  ci:\n    runs-on: ubuntu-latest\n'
+	)
+	return dir
+}
+
 const ok = (stdout: string): GhResult => ({ ok: true, stdout, stderr: '', code: 0 })
 const fail = (stderr: string, code: number | null = 1): GhResult => ({
 	ok: false,
@@ -46,7 +56,7 @@ const COMPLIANT_REPO = JSON.stringify({
 	allow_rebase_merge: false,
 })
 const COMPLIANT_PROTECTION = JSON.stringify({
-	required_status_checks: { strict: false, contexts: ['lint', 'typecheck', 'build', 'test'] },
+	required_status_checks: { strict: false, contexts: ['ci'] },
 	enforce_admins: { enabled: false },
 	allow_force_pushes: { enabled: false },
 	allow_deletions: { enabled: false },
@@ -97,6 +107,8 @@ const ACTIVE_GATE = {
 interface GhOverrides {
 	repo?: GhResult
 	protection?: GhResult
+	/** `repos/owner/repo/branches/main`, the non-admin fallback (#816). */
+	branch?: GhResult
 	workflow?: GhResult
 	defaultSetup?: GhResult
 	rulesets?: GhResult
@@ -119,6 +131,8 @@ function fakeGh(overrides: GhOverrides = {}): GhExec {
 		const p = args[1]
 		if (p === 'repos/{owner}/{repo}') return overrides.repo ?? ok(COMPLIANT_REPO)
 		if (p?.includes('/protection')) return overrides.protection ?? ok(COMPLIANT_PROTECTION)
+		if (p === 'repos/owner/repo/branches/main')
+			return overrides.branch ?? ok(JSON.stringify({ protected: false }))
 		if (p?.includes('/actions/permissions/workflow'))
 			return overrides.workflow ?? ok(COMPLIANT_WORKFLOW)
 		if (p?.includes('/code-scanning/default-setup')) return overrides.defaultSetup ?? ok(CODEQL_OFF)
@@ -601,7 +615,7 @@ describe('checkGitHubSettings — drift', () => {
 		expect(bp?.detail).toContain('skipped')
 	})
 
-	it('drifts when a required status check is missing', async () => {
+	it('drifts when the `ci` gate is not required', async () => {
 		const protection = ok(
 			JSON.stringify({
 				required_status_checks: { strict: false, contexts: ['lint', 'build', 'test'] },
@@ -615,26 +629,69 @@ describe('checkGitHubSettings — drift', () => {
 			'Branch protection'
 		)
 		expect(bp?.status).toBe('drift')
-		expect(bp?.detail).toContain('typecheck')
+		expect(bp?.detail).toContain('missing required checks: ci')
 	})
 
-	it('accepts matrix status checks (`test (node 22)`) as satisfying `test`', async () => {
-		const protection = ok(
+	/** Protection requiring exactly `contexts`, everything else per the standard. */
+	const requiring = (contexts: string[]) =>
+		ok(
 			JSON.stringify({
-				required_status_checks: {
-					strict: false,
-					contexts: ['lint', 'typecheck', 'build', 'test (node 22)', 'test (node 24)'],
-				},
+				required_status_checks: { strict: false, contexts },
 				enforce_admins: { enabled: false },
 				allow_force_pushes: { enabled: false },
 				allow_deletions: { enabled: false },
 			})
 		)
+
+	it('flags a matrix leg required by name (#816)', async () => {
+		const protection = requiring(['ci', 'test (node 22)', 'test (24)'])
 		const bp = byName(
 			await checkGitHubSettings(gitRepo(), fakeGh({ protection })),
 			'Branch protection'
 		)
-		expect(bp?.status).toBe('ok')
+		expect(bp?.status).toBe('drift')
+		expect(bp?.detail).toContain('requires matrix legs by name: test (node 22), test (24)')
+	})
+
+	it('flags a required check that no CI job produces (#816)', async () => {
+		const dir = gitRepo()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/ci.yml'),
+			`jobs:
+  lint:
+    runs-on: ubuntu-latest
+  types:
+    name: typecheck # tsc
+    runs-on: ubuntu-latest
+  ci:
+    runs-on: ubuntu-latest
+`
+		)
+		const protection = requiring(['ci', 'lint', 'typecheck', 'build', 'codecov/patch'])
+		const bp = byName(await checkGitHubSettings(dir, fakeGh({ protection })), 'Branch protection')
+		expect(bp?.status).toBe('drift')
+		// `typecheck` is the `types` job's static name, and `codecov/patch` is an
+		// external status no job id makes, so only `build` is orphaned.
+		expect(bp?.detail).toContain('requires checks no CI job produces: build')
+		expect(bp?.detail).not.toMatch(/produces: [^;]*(typecheck|codecov)/)
+	})
+
+	it('reads the required checks from the branch endpoint without admin (#816)', async () => {
+		// A non-admin token gets a 404 on /protection even when the branch is protected.
+		const exec = fakeGh({
+			protection: fail('gh: Not Found (HTTP 404)'),
+			branch: ok(
+				JSON.stringify({
+					protected: true,
+					protection: { required_status_checks: { contexts: ['test (node 22)'] } },
+				})
+			),
+		})
+		const bp = byName(await checkGitHubSettings(gitRepo(), exec), 'Branch protection')
+		expect(bp?.status).toBe('drift')
+		expect(bp?.detail).toContain('missing required checks: ci')
+		expect(bp?.detail).toContain('test (node 22)')
+		expect(bp?.detail).toContain('required checks only')
 	})
 
 	it('drifts when merge settings are off (from the repo probe)', async () => {
@@ -768,10 +825,7 @@ describe('buildGhApplyCommands', () => {
 		])
 		// The protection PUT carries the standard body on stdin.
 		const body = JSON.parse(cmds[1]?.stdin ?? '{}')
-		expect(body.required_status_checks).toEqual({
-			strict: false,
-			contexts: ['lint', 'typecheck', 'build', 'test'],
-		})
+		expect(body.required_status_checks).toEqual({ strict: false, contexts: ['ci'] })
 		expect(body.enforce_admins).toBe(false)
 		expect(body.required_pull_request_reviews).toBeNull()
 	})
@@ -811,6 +865,8 @@ describe('applyGithubSettings', () => {
 			if (args[1] === 'repos/{owner}/{repo}') return overrides.repo ?? ok(COMPLIANT_REPO)
 			if (args.includes('--input')) return ok('') // protection PUT or ruleset POST
 			if (args[1]?.includes('/protection')) return overrides.protection ?? ok(COMPLIANT_PROTECTION)
+			if (args[1] === 'repos/owner/repo/branches/main')
+				return ok(JSON.stringify({ protected: false }))
 			if (args[1]?.includes('/actions/permissions/workflow'))
 				return overrides.workflow ?? ok(COMPLIANT_WORKFLOW)
 			if (args[1]?.includes('/code-scanning/default-setup'))
@@ -851,7 +907,7 @@ describe('applyGithubSettings', () => {
 				})
 			),
 		})
-		const labels = await applyGithubSettings(gitRepo(), exec)
+		const labels = await applyGithubSettings(gitRepoWithGate(), exec)
 		expect(labels).toEqual([
 			'merge settings (squash-only, auto-merge, delete-on-merge)',
 			'branch protection on main',
@@ -862,6 +918,15 @@ describe('applyGithubSettings', () => {
 		expect(mutations.map((c) => c.args[2])).toEqual(['PATCH', 'PUT', 'PUT'])
 		const protectionPut = mutations.find((c) => c.args.includes('--input'))
 		expect(protectionPut?.stdin).toContain('required_status_checks')
+	})
+
+	it('leaves protection alone while no CI job reports `ci` (#816)', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const { exec, calls } = recordingGh({ protection: fail('gh: Not Found (HTTP 404)') })
+		expect(await applyGithubSettings(gitRepo(), exec)).not.toContain('branch protection on main')
+		expect(
+			calls.some((c) => c.args.includes('--input') && c.args[3]?.endsWith('/protection'))
+		).toBe(false)
 	})
 
 	it('is a no-op on a compliant repo', async () => {

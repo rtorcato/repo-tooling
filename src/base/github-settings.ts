@@ -81,7 +81,10 @@ export const realGhExec = (
 /** The standard doctor checks these settings against. */
 export const GITHUB_STANDARD = {
 	// Required status contexts on the default branch (strict off — see below).
-	requiredContexts: ['lint', 'typecheck', 'build', 'test'],
+	// Only the `ci` gate job, which needs every other job (#816): requiring a
+	// matrix leg such as `test (22)` strands every PR at BLOCKED the day the leg
+	// stops existing, with all checks green (js-common#364).
+	requiredContexts: ['ci'],
 } as const
 
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
@@ -205,7 +208,7 @@ export async function checkGitHubSettings(target: string, exec?: GhExec): Promis
 	if ('skip' in probe) return skipAll(probe.skip)
 	const { info } = probe
 	return [
-		await checkBranchProtection(gh, info.nwo, info.branch),
+		await checkBranchProtection(gh, info.nwo, info.branch, dir),
 		checkMergeSettings(info),
 		await checkWorkflowPermissions(gh, info.nwo),
 		await checkSecurityUpdates(gh, info.nwo),
@@ -223,38 +226,47 @@ function probeFailureReason(probe: GhResult): string {
 async function checkBranchProtection(
 	exec: GhExec,
 	nwo: string,
-	branch: string
+	branch: string,
+	dir: string
 ): Promise<CheckResult> {
 	const check = 'Branch protection'
-	const r = await exec(['api', `repos/${nwo}/branches/${branch}/protection`])
-	if (!r.ok) {
-		if (/404|not found/i.test(r.stderr)) {
-			return {
-				check,
-				status: 'optional-missing',
-				detail: `${branch} is unprotected`,
-				hint: `Protect ${branch}: require checks ${GITHUB_STANDARD.requiredContexts.join(', ')}, no force-push/deletions`,
-			}
-		}
-		if (/403|forbidden/i.test(r.stderr)) return skip(check, 'token lacks admin access')
-		return skip(check, 'could not read branch protection')
+	const unprotected: CheckResult = {
+		check,
+		status: 'optional-missing',
+		detail: `${branch} is unprotected`,
+		hint: `Protect ${branch}: require checks ${GITHUB_STANDARD.requiredContexts.join(', ')}, no force-push/deletions`,
 	}
-
+	const r = await exec(['api', `repos/${nwo}/branches/${branch}/protection`])
 	let p: Record<string, any>
-	try {
-		p = JSON.parse(r.stdout)
-	} catch {
-		return skip(check, 'could not parse protection response')
+	// Only the required checks are visible without admin; the rest goes unchecked.
+	let partial = false
+	if (!r.ok) {
+		if (/403|forbidden/i.test(r.stderr)) return skip(check, 'token lacks admin access')
+		if (!/404|not found/i.test(r.stderr)) return skip(check, 'could not read branch protection')
+		// A non-admin token gets a 404 here even on a protected branch, which read
+		// as "unprotected" and hid js-common#364's stale required check (#816). The
+		// branch endpoint shows any reader whether it is protected, and its checks.
+		const b = await exec(['api', `repos/${nwo}/branches/${branch}`])
+		if (!b.ok) return skip(check, 'could not read branch protection')
+		try {
+			const branchInfo = JSON.parse(b.stdout)
+			if (branchInfo.protected !== true) return unprotected
+			p = branchInfo.protection ?? {}
+			partial = true
+		} catch {
+			return skip(check, 'could not parse branch response')
+		}
+	} else {
+		try {
+			p = JSON.parse(r.stdout)
+		} catch {
+			return skip(check, 'could not parse protection response')
+		}
 	}
 
 	const deltas: string[] = []
 	const contexts: string[] = p.required_status_checks?.contexts ?? []
-	// A matrix job reports each leg as `test (node 22)`, `test (node 24)`, etc.
-	// Treat any `<ctx> (...)` variant as satisfying the bare `<ctx>` requirement,
-	// so matrix CIs aren't falsely flagged as missing the check.
-	const isSatisfied = (c: string) => contexts.some((ctx) => ctx === c || ctx.startsWith(`${c} (`))
-	const missing = GITHUB_STANDARD.requiredContexts.filter((c) => !isSatisfied(c))
-	if (missing.length) deltas.push(`missing required checks: ${missing.join(', ')}`)
+	deltas.push(...(await requiredContextDeltas(contexts, dir)))
 	if (p.required_status_checks?.strict === true)
 		deltas.push('strict status checks on (should be off)')
 	// enforce_admins must stay off so the App/RELEASE_TOKEN can bypass protection
@@ -265,14 +277,80 @@ async function checkBranchProtection(
 	// Required human review deadlocks solo Dependabot auto-merge.
 	if (p.required_pull_request_reviews) deltas.push('required PR reviews on (deadlocks auto-merge)')
 
+	const scope = partial ? ' (required checks only — the rest needs admin to read)' : ''
 	if (deltas.length)
 		return {
 			check,
 			status: 'drift',
-			detail: deltas.join('; '),
-			hint: `Align ${branch} protection with the standard`,
+			detail: `${deltas.join('; ')}${scope}`,
+			hint: `Align ${branch} protection with the standard: require only \`ci\` (\`fix github-settings\`, needs admin)`,
 		}
-	return { check, status: 'ok', detail: `${branch} protected per standard` }
+	return { check, status: 'ok', detail: `${branch} protected per standard${scope}` }
+}
+
+/** `test (22)`, `test (node 24)`: one leg of a matrix job, gone when the matrix changes. */
+const MATRIX_LEG = /^\S.* \(.+\)$/
+
+/**
+ * What's wrong with the required status checks (#816): the standard's own
+ * missing, a matrix leg required by name, or a check no CI job produces. The
+ * last two are the js-common#364 trap: a required context that never reports
+ * leaves every PR BLOCKED while every check is green.
+ */
+export async function requiredContextDeltas(contexts: string[], dir: string): Promise<string[]> {
+	const deltas: string[] = []
+	const missing = GITHUB_STANDARD.requiredContexts.filter((c) => !contexts.includes(c))
+	if (missing.length) deltas.push(`missing required checks: ${missing.join(', ')}`)
+	const legs = contexts.filter((c) => MATRIX_LEG.test(c))
+	if (legs.length)
+		deltas.push(
+			`requires matrix legs by name: ${legs.join(', ')} (require the \`ci\` gate instead)`
+		)
+	const produced = await workflowCheckNames(dir)
+	if (produced) {
+		// A `/` marks a context no local job id makes: a status-API app
+		// (`codecov/patch`, `license/cla`) or a reusable workflow (`caller / inner`).
+		// ponytail: a slash-free external check (`Vercel`) is still flagged; read the
+		// commit's check runs on the default branch if that bites.
+		const orphans = contexts.filter(
+			(c) => !MATRIX_LEG.test(c) && !c.includes('/') && !produced.has(c)
+		)
+		if (orphans.length) deltas.push(`requires checks no CI job produces: ${orphans.join(', ')}`)
+	}
+	return deltas
+}
+
+/**
+ * Every check name the repo's workflows can report: each job's id, and its
+ * `name:` when that is static. Null when there are no workflows to read, so a
+ * repo whose CI we can't see is never told its checks are orphaned.
+ *
+ * ponytail: a templated `name:` (`test (\${{ matrix.node }})`) is skipped, not
+ * expanded; those are matrix legs, which `requiredContextDeltas` flags anyway.
+ */
+async function workflowCheckNames(dir: string): Promise<Set<string> | null> {
+	const workflowsDir = path.join(dir, '.github', 'workflows')
+	let files: string[]
+	try {
+		files = (await fs.readdir(workflowsDir)).filter((f) => /\.ya?ml$/.test(f))
+	} catch {
+		return null
+	}
+	if (files.length === 0) return null
+	const names = new Set<string>()
+	for (const file of files) {
+		const yaml = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
+		for (const [id, body] of workflowJobs(yaml)) {
+			names.add(id)
+			const jobIndent = body.split('\n').find((l) => l.trim() !== '' && !l.trim().startsWith('#'))
+			const indent = jobIndent ? jobIndent.length - jobIndent.trimStart().length : 0
+			const name = new RegExp(`^ {${indent}}name:[ \\t]*(.+?)[ \\t]*(?:[ \\t]#.*)?$`, 'm').exec(
+				body
+			)?.[1]
+			if (name && !name.includes('${{')) names.add(name.replace(/^(['"])(.*)\1$/, '$2'))
+		}
+	}
+	return names
 }
 
 /**
@@ -1404,14 +1482,26 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 
 	// Re-read via the same checks so the delta logic stays single-sourced. A 403
 	// (no admin) reports `ok` → treated as "nothing to apply", never a failed PUT.
-	const bp = await checkBranchProtection(gh, info.nwo, info.branch)
+	const bp = await checkBranchProtection(gh, info.nwo, info.branch, dir)
 	const wp = await checkWorkflowPermissions(gh, info.nwo)
 	const sec = await readSecurityUpdates(gh, info.nwo)
+	let protection = bp.status === 'optional-missing' || bp.status === 'drift'
+	// Requiring a `ci` check that no workflow reports would block every PR (#816).
+	const produced = await workflowCheckNames(dir)
+	const unreported = GITHUB_STANDARD.requiredContexts.filter((c) => !produced?.has(c))
+	if (protection && unreported.length > 0) {
+		console.error(
+			chalk.yellow(
+				`   not changing branch protection — no CI job reports ${unreported.join(', ')} yet, so requiring it would block every PR. Run \`fix github-actions\` (or add the gate job), merge it, then re-run.`
+			)
+		)
+		protection = false
+	}
 	const commands = buildGhApplyCommands({
 		nwo: info.nwo,
 		branch: info.branch,
 		merge: checkMergeSettings(info).status === 'drift',
-		protection: bp.status === 'optional-missing' || bp.status === 'drift',
+		protection,
 		workflow: wp.status === 'drift',
 		alerts: !('skip' in sec) && !sec.alerts,
 		securityFixes: !('skip' in sec) && !sec.fixes,

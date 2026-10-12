@@ -6,6 +6,7 @@ import {
 	githubJobs,
 	hasBin,
 	hasCommitlint,
+	nodeFloorOf,
 	renderReleaseWorkflow,
 	scriptsOf,
 } from '../../languages/js/ci.js'
@@ -69,6 +70,7 @@ import {
 	checkGitDependencies,
 	checkKnip,
 	checkLintStaged,
+	checkNodeTestMatrix,
 	checkNodeVersionConsistency,
 	checkNodeVersionPin,
 	checkPackageJson,
@@ -530,6 +532,7 @@ export async function runDoctor(
 	results.push(await checkVscodeExtensions(targetDir))
 	results.push(await checkNodeVersionPin(targetDir))
 	results.push(await checkNodeVersionConsistency(targetDir, pkg))
+	results.push(await checkNodeTestMatrix(targetDir, pkg))
 	for (const spec of FILE_CHECKS) {
 		// Biome is the one spec that needs the directory as well as the file
 		// contents — it compares the `$schema` version against the installed
@@ -579,6 +582,7 @@ export async function runDoctor(
 					scripts: scriptsOf(pkg),
 					bin: hasBin(pkg),
 					commitlint: hasCommitlint(pkg),
+					nodeFloor: nodeFloorOf(pkg),
 				})
 			),
 			presetRelease: renderReleaseWorkflow(inferProjectConfig(pkg), { scripts: scriptsOf(pkg) }),
