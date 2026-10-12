@@ -18,6 +18,7 @@ import {
 import { generatePackageJson } from './package-json.js'
 import { generateReadme } from './readme.js'
 import { generateSecurityConfigs } from './security.js'
+import { generateStarter, hasSource } from './starter.js'
 import { generateTestingConfigs } from './testing.js'
 import { generateTreeshakeCheck, inferSubpathsFromExports } from './treeshake.js'
 import { generateTSConfig } from './tsconfig.js'
@@ -36,6 +37,10 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 	if (config.language === 'swift') {
 		return generateSwiftProject(config, targetDir)
 	}
+
+	// Decided before anything below writes into src/ (tailwind does), so a repo
+	// that already has source never gets starter files mixed into it (#821).
+	const writeStarter = !(await hasSource(targetDir))
 
 	// Generate package.json (must run before generateMiscBaseline,
 	// which sets engines.node on the resulting file)
@@ -146,6 +151,11 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 	// AI agent files (AGENTS.md, CLAUDE.md, Cursor/Copilot, Claude skill, MCP example)
 	if (config.aiSetup) {
 		await installAiSetup(targetDir)
+	}
+
+	// Entry module + one test, so the scaffold passes its own build and verify.
+	if (writeStarter) {
+		await generateStarter(config, targetDir)
 	}
 
 	// Generate README

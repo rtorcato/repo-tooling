@@ -44,6 +44,40 @@ describe('generateConfigs size-limit budget', () => {
 	})
 })
 
+// #821: a fresh scaffold needs an entry and a test to pass its own build and
+// verify, but a repo that already has source must not get them mixed in.
+describe('generateConfigs starter files', () => {
+	const gen = (preset: Parameters<typeof buildPresetConfig>[0], dir: string) =>
+		generateConfigs(
+			{ ...buildPresetConfig(preset, 'demo'), aiSetup: false, securityAutomation: false },
+			dir
+		)
+
+	it('writes an entry and a test into an empty directory', async () => {
+		const dir = newTmpDir()
+		await gen('library', dir)
+		expect(await fs.pathExists(join(dir, 'src/index.ts'))).toBe(true)
+		expect(await fs.pathExists(join(dir, 'src/index.test.ts'))).toBe(true)
+
+		const react = newTmpDir()
+		await gen('react-app', react)
+		expect(await fs.pathExists(join(react, 'index.html'))).toBe(true)
+		const pkg = await fs.readJson(join(react, 'package.json'))
+		expect(pkg.dependencies.react).toBeDefined()
+		// No release tool, so not published — doctor's semantic-release check agrees.
+		expect(pkg.private).toBe(true)
+		expect((await fs.readJson(join(dir, 'package.json'))).private).toBeUndefined()
+	})
+
+	it('writes nothing when src/ already exists', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, 'src/lib.ts'), 'export {}\n')
+		await gen('library', dir)
+		expect(await fs.pathExists(join(dir, 'src/index.ts'))).toBe(false)
+		expect(await fs.pathExists(join(dir, 'src/index.test.ts'))).toBe(false)
+	})
+})
+
 // #573: under `--preset` the config's projectName is only the directory
 // basename, so a repo whose package.json is already scoped used to get no
 // minimumReleaseAgeExclude — leaving doctor at exit 1 on a tree setup just wrote.

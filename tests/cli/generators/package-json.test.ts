@@ -317,6 +317,14 @@ describe('composeVerifyScript', () => {
 		expect(result).toBe('pnpm typecheck && pnpm check && pnpm test --ci && pnpm attw')
 	})
 
+	// #821: publint and attw lint the packed tarball, which has no dist/ yet.
+	it('builds before publint and attw when there is a bundler', () => {
+		const result = composeVerifyScript(
+			baseConfig({ linting: { tool: 'biome' }, publint: true, bundler: 'tsup' })
+		)
+		expect(result).toBe('pnpm typecheck && pnpm check && pnpm build && pnpm publint && pnpm attw')
+	})
+
 	it('returns null when fewer than two tools are enabled', () => {
 		const result = composeVerifyScript(
 			baseConfig({

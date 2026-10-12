@@ -373,7 +373,7 @@ exports[`generator output snapshots > package.json (library) 1`] = `
     "size-limit": "size-limit",
     "prepare": "husky",
     "release": "semantic-release",
-    "verify": "pnpm typecheck && pnpm check && pnpm exec vitest run && pnpm attw"
+    "verify": "pnpm typecheck && pnpm check && pnpm exec vitest run && pnpm build && pnpm attw"
   },
   "dependencies": {},
   "devDependencies": {
@@ -389,8 +389,8 @@ exports[`generator output snapshots > package.json (library) 1`] = `
     "lint-staged": "^16.0.0",
     "@arethetypeswrong/cli": "^0.18.2",
     "size-limit": "^14.1.0",
-    "@commitlint/cli": "^20.0.0",
-    "@commitlint/config-conventional": "^20.0.0",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
     "semantic-release": "^25.0.0",

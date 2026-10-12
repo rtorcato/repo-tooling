@@ -39,114 +39,22 @@ function fail(msg) {
 	process.exit(1)
 }
 
-const write = (dir, rel, body) => {
-	const file = path.join(dir, rel)
-	fs.mkdirSync(path.dirname(file), { recursive: true })
-	fs.writeFileSync(file, body)
-}
-
-// A plain TS entry + one test. The base tsconfig excludes *.test.ts, so the
-// test is exercised by vitest, not tsc.
-const seedNodeEntry = (dir) => {
-	write(dir, 'src/index.ts', 'export const greet = (name: string): string => `hello ${name}`\n')
-	write(
-		dir,
-		'src/index.test.ts',
-		"import { expect, it } from 'vitest'\nimport { greet } from './index'\n\nit('greets', () => {\n\texpect(greet('world')).toBe('hello world')\n})\n"
-	)
-}
-
-// `vite build` on an app (as opposed to library mode) resolves from index.html,
-// so a bare src/ entry is not enough.
-const seedWebEntry = (dir) => {
-	seedNodeEntry(dir)
-	write(
-		dir,
-		'index.html',
-		'<!doctype html>\n<html lang="en">\n\t<head>\n\t\t<meta charset="utf-8" />\n\t\t<title>probe</title>\n\t</head>\n\t<body>\n\t\t<div id="root"></div>\n\t\t<script type="module" src="/src/main.ts"></script>\n\t</body>\n</html>\n'
-	)
-	write(
-		dir,
-		'src/main.ts',
-		"import { greet } from './index'\n\nconst root = document.querySelector('#root')\nif (root) root.textContent = greet('world')\n"
-	)
-}
-
-// Exercises the jsx transform, .tsx linting and a real react-dom mount, which is
-// what distinguishes react-app from web-app.
-const seedReactEntry = (dir) => {
-	write(
-		dir,
-		'src/App.tsx',
-		'export const App = ({ name }: { name: string }) => <h1>hello {name}</h1>\n'
-	)
-	write(
-		dir,
-		'src/App.test.tsx',
-		"import { expect, it } from 'vitest'\nimport { App } from './App'\n\nit('builds an element', () => {\n\texpect(App({ name: 'world' }).props.children).toContain('hello ')\n})\n"
-	)
-	write(
-		dir,
-		'src/main.tsx',
-		"import { createRoot } from 'react-dom/client'\nimport { App } from './App'\n\ncreateRoot(document.querySelector('#root') as HTMLElement).render(<App name=\"world\" />)\n"
-	)
-	write(
-		dir,
-		'index.html',
-		'<!doctype html>\n<html lang="en">\n\t<head>\n\t\t<meta charset="utf-8" />\n\t\t<title>probe</title>\n\t</head>\n\t<body>\n\t\t<div id="root"></div>\n\t\t<script type="module" src="/src/main.tsx"></script>\n\t</body>\n</html>\n'
-	)
-}
-
-// The next tsconfig includes app/ and next-env.d.ts; the eslint preset's
-// @next/next rules only fire on a real page/component tree.
-const seedNextEntry = (dir) => {
-	write(dir, 'next-env.d.ts', '/// <reference types="next" />\n')
-	write(dir, 'app/page.tsx', 'export default function Page() {\n\treturn <h1>hello world</h1>\n}\n')
-	write(
-		dir,
-		'app/layout.tsx',
-		'export default function Layout({ children }: { children: React.ReactNode }) {\n\treturn (\n\t\t<html lang="en">\n\t\t\t<body>{children}</body>\n\t\t</html>\n\t)\n}\n'
-	)
-	write(
-		dir,
-		'src/page.test.tsx',
-		"import { expect, it } from 'vitest'\nimport Page from '../app/page'\n\nit('renders a heading', () => {\n\texpect(Page().type).toBe('h1')\n})\n"
-	)
-}
-
 /**
- * Per-preset lifecycle. `seed` writes the source a real consumer would bring
- * (the presets are tooling-only — they scaffold no app code). `appDeps` are that
- * same consumer's runtime deps: anything the *tooling* needs belongs in the
- * generator's dependency list, not here, so a gap there fails this test rather
- * than being papered over. `swift: true` opts out of the JS lifecycle entirely.
+ * Per-preset lifecycle. Nothing is seeded: `setup` writes its own entry module,
+ * test and runtime deps (#821), so this tests exactly what a user gets — a gap
+ * there fails here rather than being papered over. `swift: true` opts out of the
+ * JS lifecycle entirely.
  */
 const PRESETS = {
-	library: { seed: seedNodeEntry, build: true },
-	'node-api': { seed: seedNodeEntry, build: true },
-	'web-app': { seed: seedWebEntry, build: true },
-	'react-app': {
-		seed: seedReactEntry,
-		build: true,
-		appDeps: {
-			react: '^19.0.0',
-			'react-dom': '^19.0.0',
-			'@types/react': '^19.0.0',
-			'@types/react-dom': '^19.0.0',
-		},
-	},
+	// bundler: 'none' — no build script to run.
+	minimal: { build: false },
+	library: { build: true },
+	'node-api': { build: true },
+	'web-app': { build: true },
+	'react-app': { build: true },
 	// bundler: 'none' — the preset emits no build script, so there is nothing to
 	// run here. Wiring up `next build` would be testing Next.js, not the scaffold.
-	'nextjs-app': {
-		seed: seedNextEntry,
-		build: false,
-		appDeps: {
-			next: '^16.0.0',
-			react: '^19.0.0',
-			'react-dom': '^19.0.0',
-			'@types/react': '^19.0.0',
-		},
-	},
+	'nextjs-app': { build: false },
 	// The whole JS lifecycle is inapplicable: no package.json to repoint, no
 	// pnpm, no biome, no `pnpm verify`. See swiftLifecycle below (#312).
 	'swift-library': { swift: true },
@@ -173,8 +81,8 @@ const onPath = (bin) => {
 
 /**
  * Swift diverges from every JS preset: the scaffold writes its own source and
- * test target (SwiftPM refuses to build an empty one), so there is nothing to
- * seed, no `@rtorcato/repo-tooling` dep to repoint and nothing to install. The
+ * test target (SwiftPM refuses to build an empty one), but there is no
+ * `@rtorcato/repo-tooling` dep to repoint and nothing to install. The
  * lifecycle is the gate the scaffold's own CI and pre-push hook run.
  */
 function swiftLifecycle() {
@@ -194,26 +102,21 @@ function jsLifecycle() {
 	if (!tgz) fail('pnpm pack produced no tarball')
 	const tarball = path.join(packDir, tgz)
 
-	// 3. Repoint @rtorcato/repo-tooling at the local tarball, and add the app deps
-	//    a real consumer of this preset would already have.
+	// 3. Repoint @rtorcato/repo-tooling at the local tarball.
 	const pkgPath = path.join(projectDir, 'package.json')
 	const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 	if (!pkg.devDependencies?.['@rtorcato/repo-tooling'])
 		fail('scaffold has no @rtorcato/repo-tooling devDependency')
 	pkg.devDependencies['@rtorcato/repo-tooling'] = `file:${tarball}`
-	if (spec.appDeps) pkg.dependencies = { ...pkg.dependencies, ...spec.appDeps }
 	fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
 
-	// 4. Seed what a real consumer writes: an entry module + one test.
-	spec.seed(projectDir)
-
-	// 5. git init so husky's `prepare` hook has a repo to attach to.
+	// 4. git init so husky's `prepare` hook has a repo to attach to.
 	run('git', ['init', '-q'], projectDir)
 
-	// 6. Install (fresh scaffold has no lockfile, so not --frozen).
+	// 5. Install (fresh scaffold has no lockfile, so not --frozen).
 	run('pnpm', ['install'], projectDir)
 
-	// 6b. Run the CLI *from the installed tarball*. Up to here the tarball is
+	// 5b. Run the CLI *from the installed tarball*. Up to here the tarball is
 	//     only ever a dependency — never executed — so #345 shipped: dist/base/
 	//     was missing from the `files` allowlist and every command died at load
 	//     with ERR_MODULE_NOT_FOUND, with all five preset lifecycles still green.
@@ -224,8 +127,8 @@ function jsLifecycle() {
 	//     command here if that ever bites.
 	run('pnpm', ['exec', 'repo-tooling', '--version'], projectDir)
 
-	// 7. Format generated files — mirrors what `setup` does post-install (the
-	//    scaffold's biome/prettier config; templates are hand-written).
+	// 6. Format generated files — mirrors what `setup` does post-install, and
+	//    what its --skip-install warning tells the user to run.
 	//    Both config names are accepted: the scaffold settled on biome.json (#365),
 	//    and a repo predating that still has biome.jsonc. Testing only one name
 	//    silently falls through to prettier, which the biome presets don't install.
@@ -237,11 +140,11 @@ function jsLifecycle() {
 		: ['exec', 'prettier', '--write', '.']
 	run('pnpm', formatter, projectDir)
 
-	// 8. Build.
+	// 7. Build.
 	if (spec.build) run('pnpm', ['build'], projectDir)
 	else console.log(`\nℹ️  ${PRESET} has no build script (bundler: none) — skipping build`)
 
-	// 9. Every path the package advertises (main/module/types/exports) must exist
+	// 8. Every path the package advertises (main/module/types/exports) must exist
 	//    on disk after the build — the #92 exports/output mismatch class.
 	const built = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 	const advertised = new Set()
@@ -267,7 +170,7 @@ function jsLifecycle() {
 			: `\nℹ️  ${PRESET} advertises no entry paths (not a published package) — nothing to check`
 	)
 
-	// 10. Full verify chain (typecheck + lint + test, plus publint/attw on library).
+	// 9. Full verify chain (typecheck + lint + test, plus publint/attw on library).
 	run('pnpm', ['verify'], projectDir)
 }
 
