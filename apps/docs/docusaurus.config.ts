@@ -13,7 +13,7 @@ const config: Config = {
 	title: 'repo-tooling',
 	tagline:
 		"One CLI to scaffold, audit and fix your repo's whole toolchain — linting, tests, commits, releases & CI.",
-	favicon: 'img/favicon.ico',
+	favicon: 'img/favicon.svg',
 
 	url: 'https://docs.torcato.dev',
 	baseUrl: '/repo-tooling/',
@@ -82,6 +82,7 @@ const config: Config = {
 	],
 
 	themeConfig: {
+		image: 'img/social-card.png',
 		colorMode: {
 			defaultMode: 'dark',
 			respectPrefersColorScheme: true,
