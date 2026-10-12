@@ -51,7 +51,8 @@ export function evaluateNodeVersion(version: string): CheckResult {
 		if (!meets) {
 			return {
 				check: 'Node',
-				status: 'drift',
+				// A supported Node below the recommended LTS is advice, not drift: drift fails `doctor` (exit 1).
+				status: 'optional-missing',
 				detail: `${display} — npm may emit EBADENGINE warnings from transitive deps`,
 				hint: `Upgrade to Node ${major}.${lts.minor}.${lts.patch}+ (or 26+) to silence transitive engine warnings`,
 			}
