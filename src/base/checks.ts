@@ -454,16 +454,29 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
 		blockFile ??= rel
 		if (hasStaleAgentBlock(content)) stale.push(rel)
 	}
-	const hasSkill =
-		(await fs.pathExists(path.join(dir, '.claude', 'skills', 'repo-tooling.md'))) ||
-		// Pre-rename name — still counts as present until `fix` migrates it.
-		(await fs.pathExists(path.join(dir, '.claude', 'skills', 'js-tooling.md')))
+	const hasSkill = await fs.pathExists(
+		path.join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md')
+	)
+	// Flat files from older releases, which Claude Code doesn't load (#823).
+	const flatSkill = hasSkill
+		? undefined
+		: ['repo-tooling.md', 'js-tooling.md'].find((f) =>
+				fs.pathExistsSync(path.join(dir, '.claude', 'skills', f))
+			)
 	if (stale.length > 0) {
 		return {
 			check: 'AI setup',
 			status: 'drift',
 			detail: `${stale.join(', ')} still point agents at the dead \`js-tooling\` package/bin`,
 			hint: 'Run `npx @rtorcato/repo-tooling fix ai` to refresh the agent instructions in place',
+		}
+	}
+	if (flatSkill) {
+		return {
+			check: 'AI setup',
+			status: 'optional-missing',
+			detail: `.claude/skills/${flatSkill} is a flat file, which Claude Code doesn't load as a skill`,
+			hint: 'Run `npx @rtorcato/repo-tooling fix claude-skill` to move it to .claude/skills/repo-tooling/SKILL.md',
 		}
 	}
 	if (blockFile || hasSkill) {

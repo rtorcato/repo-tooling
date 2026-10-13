@@ -1,6 +1,6 @@
 ---
 name: repo-tooling
-description: Use when auditing or fixing TypeScript/JavaScript project tooling in a repo that depends on @rtorcato/repo-tooling, or scaffolding a new project with it. Triggers on "audit my tooling", "fix tooling drift", "is my tsconfig/biome/vitest config right", "set up CI/semantic-release/dependabot", "scaffold a TS library/web-app/node-api", "run doctor", "run fix", or "/repo-tooling". Drives the `@rtorcato/repo-tooling` CLI non-interactively (--json --yes). NOT for hand-editing configs the CLI owns — let the CLI scaffold them so they stay in sync with the presets.
+description: Use when adopting, auditing, or fixing TypeScript/JavaScript project tooling with @rtorcato/repo-tooling, or scaffolding a new project with it. Triggers on "audit my tooling", "fix tooling drift", "is my tsconfig/biome/vitest config right", "set up CI/semantic-release/dependabot", "scaffold a TS library/web-app/node-api", "run doctor", "run fix", or "/repo-tooling". Drives the `@rtorcato/repo-tooling` CLI non-interactively (--json --yes). NOT for hand-editing configs the CLI owns — let the CLI scaffold them so they stay in sync with the presets.
 ---
 
 # repo-tooling
@@ -34,6 +34,8 @@ Status is one of:
   prompt to **No**; `--yes` is required to overwrite.
 - `missing` — required and absent → fix it.
 - `optional-missing` — opt-in tool not configured. Only fix if the user wants that tool.
+- `declared` — a real deviation the repo's `.repo-tooling.json` `rules.exceptions` records on
+  purpose, with its reason. Leave it alone; it doesn't fail the run.
 
 `fix` returns `FixActionRecord[]` with `status: applied | dry-run | skipped | already-ok | unsupported`.
 
@@ -75,6 +77,7 @@ npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-instal
 - Use `--json` whenever you'll parse the result; use `--dry-run`/`--diff` before any
   destructive overwrite.
 - After a `fix`, re-run `doctor` to confirm the finding cleared.
+- Releasing? Never hand-cut a version or tag; the plugin's **npm-publish** skill covers the flow.
 
 ## Issue-driven AI tasks (security)
 

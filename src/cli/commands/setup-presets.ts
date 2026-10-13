@@ -370,7 +370,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 			'CLAUDE.md',
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
-			'.claude/skills/repo-tooling.md',
+			'.claude/skills/repo-tooling/SKILL.md',
 			'.mcp.json.example',
 			'.claude/settings.json'
 		)

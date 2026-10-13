@@ -153,7 +153,7 @@ npx @rtorcato/repo-tooling copy biome        # → biome.json
 npx @rtorcato/repo-tooling copy tsconfig     # → tsconfig.json
 npx @rtorcato/repo-tooling copy changesets   # → .changeset/config.json
 npx @rtorcato/repo-tooling copy oxlint       # → .oxlintrc.json
-npx @rtorcato/repo-tooling copy claude-skill # → .claude/skills/repo-tooling.md
+npx @rtorcato/repo-tooling copy claude-skill # → .claude/skills/repo-tooling/SKILL.md
 ```
 
 `copy` drops the raw preset as-is. For configs you might later customise (`biome`, `tsconfig`, `vitest`, …) prefer `fix <target>` — it won't clobber an existing file without `--yes`, and `doctor` verifies it afterwards.

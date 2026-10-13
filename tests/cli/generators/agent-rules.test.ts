@@ -15,9 +15,16 @@ const AI_FILES = [
 	'CLAUDE.md',
 	'.cursor/rules/repo-tooling.mdc',
 	'.github/copilot-instructions.md',
-	'.claude/skills/repo-tooling.md',
+	'.claude/skills/repo-tooling/SKILL.md',
 	'.mcp.json.example',
 ]
+
+// #823: the plugin's skill and the one `fix ai` installs are one source.
+it('skills/repo-tooling/SKILL.md matches tooling/claude/repo-tooling.md (run `pnpm sync:skill`)', async () => {
+	expect(await fs.readFile('skills/repo-tooling/SKILL.md', 'utf8')).toBe(
+		await fs.readFile('tooling/claude/repo-tooling.md', 'utf8')
+	)
+})
 
 describe('installAiSetup', () => {
 	it('writes every AI agent file and returns their paths', async () => {

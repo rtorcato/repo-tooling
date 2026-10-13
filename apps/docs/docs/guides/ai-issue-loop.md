@@ -22,7 +22,7 @@ agents working your issue queue. Leave it out otherwise.
 | **Purpose** | Scaffold and audit a repo's tooling: TypeScript, lint, tests, git hooks, CI, releases, GitHub settings | Run agents against `ai-ready` issues and carry their PRs to review |
 | **Needed by the other?** | No | Builds on the repo standard below |
 | **CLI** | `repo-tooling setup / doctor / fix` | `repo-ai loop … / doctor / fix` |
-| **Claude Code skills** | `repo-tooling`, `npm-publish`, `dogfood` | `ai-workflow`, `ai-issue-loop`, `ai-issue`, `ai-loop-status` |
+| **Claude Code skills** | `repo-tooling`, `npm-publish` | `ai-workflow`, `ai-issue-loop`, `ai-issue`, `ai-loop-status` |
 | **Config** | `.repo-tooling.json` | `.repo-ai.json` |
 
 ## What repo-ai relies on from repo-tooling

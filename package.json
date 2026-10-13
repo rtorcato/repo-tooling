@@ -21,7 +21,8 @@
 		"url": "https://github.com/rtorcato/repo-tooling/issues"
 	},
 	"scripts": {
-		"build": "pnpm build-cli",
+		"build": "pnpm sync:skill && pnpm build-cli",
+		"sync:skill": "node -e \"require('fs').copyFileSync('tooling/claude/repo-tooling.md', 'skills/repo-tooling/SKILL.md')\"",
 		"build-cli": "rimraf ./dist && tsc --project src/cli/tsconfig.json",
 		"prepublishOnly": "./scripts/fix-bins.sh",
 		"dev": "pnpm --filter @rtorcato/docs dev",

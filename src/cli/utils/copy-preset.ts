@@ -27,8 +27,8 @@ export interface PresetDefinition {
 	source: string
 	target: string
 	desc: string
-	/** Pre-rename path removed after a successful copy, so consumers migrate cleanly. */
-	legacyTarget?: string
+	/** Pre-rename paths removed after a successful copy, so consumers migrate cleanly. */
+	legacyTargets?: string[]
 }
 
 export const PRESETS: Record<PresetName, PresetDefinition> = {
@@ -111,9 +111,10 @@ export const PRESETS: Record<PresetName, PresetDefinition> = {
 	},
 	'claude-skill': {
 		source: 'tooling/claude/repo-tooling.md',
-		target: '.claude/skills/repo-tooling.md',
+		// Claude Code loads skills from `<name>/SKILL.md`, not flat files (#823).
+		target: '.claude/skills/repo-tooling/SKILL.md',
 		desc: 'Claude Code skill for driving the repo-tooling CLI',
-		legacyTarget: '.claude/skills/js-tooling.md',
+		legacyTargets: ['.claude/skills/repo-tooling.md', '.claude/skills/js-tooling.md'],
 	},
 	'claude-sync-agents': {
 		source: 'tooling/claude/sync-agents.mjs',
@@ -162,8 +163,8 @@ export async function copyPreset(
 	await fs.copy(sourcePath, targetPath)
 
 	// Remove the pre-rename artifact so a re-run migrates it instead of leaving both.
-	if (preset.legacyTarget) {
-		const legacyPath = path.join(targetDir, preset.legacyTarget)
+	for (const legacy of preset.legacyTargets ?? []) {
+		const legacyPath = path.join(targetDir, legacy)
 		if (legacyPath !== targetPath) await fs.remove(legacyPath)
 	}
 
