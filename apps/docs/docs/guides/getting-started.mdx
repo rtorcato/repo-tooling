@@ -120,6 +120,9 @@ Skip the prompts entirely by scaffolding from a named preset:
 
 ```bash
 npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+
+# The same, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes --no-ai-setup
 ```
 
 Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.

@@ -19,6 +19,9 @@ npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --y
 npx @rtorcato/repo-tooling setup --preset react-app -d ./my-app --skip-install --yes
 npx @rtorcato/repo-tooling setup --preset nextjs-app -d ./my-site --skip-install --yes
 
+# Any preset, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes --no-ai-setup
+
 # Full control via a JSON config file
 npx @rtorcato/repo-tooling setup --config ./project.json --skip-install
 
