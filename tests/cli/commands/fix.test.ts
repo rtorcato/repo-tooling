@@ -525,7 +525,7 @@ describe('fix targeted', () => {
 			'CLAUDE.md',
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
-			'.claude/skills/repo-tooling.md',
+			'.claude/skills/repo-tooling/SKILL.md',
 			'.mcp.json.example',
 		]) {
 			expect(await fs.pathExists(join(dir, rel))).toBe(true)
@@ -848,7 +848,7 @@ describe('fix targeted', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fixCommand('claude-skill', { directory: dir, yes: true })
-		const skillPath = join(dir, '.claude', 'skills', 'repo-tooling.md')
+		const skillPath = join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md')
 		expect(await fs.pathExists(skillPath)).toBe(true)
 		const body = await fs.readFile(skillPath, 'utf8')
 		expect(body).toContain('name: repo-tooling')
@@ -858,6 +858,8 @@ describe('fix targeted', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fs.outputFile(join(dir, '.claude', 'skills', 'js-tooling.md'), '# stale\n')
+		// Flat path from before #823, which Claude Code never loaded.
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling.md'), '# stale\n')
 		await fs.outputFile(join(dir, '.cursor', 'rules', 'js-tooling.mdc'), '# stale\n')
 
 		await fixCommand('claude-skill', { directory: dir, yes: true })
@@ -865,7 +867,10 @@ describe('fix targeted', () => {
 
 		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'js-tooling.md'))).toBe(false)
 		expect(await fs.pathExists(join(dir, '.cursor', 'rules', 'js-tooling.mdc'))).toBe(false)
-		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'repo-tooling.md'))).toBe(true)
+		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'repo-tooling.md'))).toBe(false)
+		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md'))).toBe(
+			true
+		)
 		expect(await fs.pathExists(join(dir, '.cursor', 'rules', 'repo-tooling.mdc'))).toBe(true)
 	})
 

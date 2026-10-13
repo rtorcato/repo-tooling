@@ -345,7 +345,7 @@ export const BASE_FIXERS: Fixer[] = [
 			'CLAUDE.md',
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
-			'.claude/skills/repo-tooling.md',
+			'.claude/skills/repo-tooling/SKILL.md',
 			'.mcp.json.example',
 			// Only written for a repo with a package.json — nothing to symlink otherwise.
 			'.claude/settings.json',
@@ -365,7 +365,7 @@ export const BASE_FIXERS: Fixer[] = [
 		target: 'claude-skill',
 		description: 'Install the repo-tooling Claude Code skill into .claude/skills/',
 		appliesTo: ['Claude skill'],
-		outputs: ['.claude/skills/repo-tooling.md'],
+		outputs: ['.claude/skills/repo-tooling/SKILL.md'],
 		riskLevel: 'safe-add',
 		canFixDrift: true,
 		async run({ targetDir }) {

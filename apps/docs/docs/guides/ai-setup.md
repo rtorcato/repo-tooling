@@ -18,7 +18,7 @@ All of it derives from **one source of truth** — the shipped Claude skill
 | `CLAUDE.md` | Claude Code | Pointer: `@AGENTS.md` (no duplication) |
 | `.cursor/rules/repo-tooling.mdc` | Cursor | Generated rule file |
 | `.github/copilot-instructions.md` | GitHub Copilot | Merge-safe delimited block |
-| `.claude/skills/repo-tooling.md` | Claude Code skill | Copied verbatim |
+| `.claude/skills/repo-tooling/SKILL.md` | Claude Code skill | Copied verbatim |
 | `.mcp.json.example` | Model Context Protocol | Commented template (see below) |
 | `.claude/settings.json` | Claude Code worktrees | Merge-safe key upsert (see below), JS repos only |
 | `README.md` | Your repo's own skills | Merge-safe block, only if this repo ships `skills/<name>/SKILL.md` |

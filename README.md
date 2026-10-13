@@ -57,7 +57,7 @@ npx @rtorcato/repo-tooling copy biome        # → biome.json
 npx @rtorcato/repo-tooling copy tsconfig     # → tsconfig.json
 npx @rtorcato/repo-tooling copy changesets   # → .changeset/config.json
 npx @rtorcato/repo-tooling copy oxlint       # → .oxlintrc.json
-npx @rtorcato/repo-tooling copy claude-skill # → .claude/skills/repo-tooling.md
+npx @rtorcato/repo-tooling copy claude-skill # → .claude/skills/repo-tooling/SKILL.md
 ```
 
 The Biome preset honours your `.gitignore`, so build output stays unlinted. One
@@ -162,7 +162,7 @@ The package ships rules that teach AI coding agents to drive the CLI
 generated from one source, so guidance never drifts between them:
 
 ```bash
-npx @rtorcato/repo-tooling fix claude-skill --yes           # → .claude/skills/repo-tooling.md
+npx @rtorcato/repo-tooling fix claude-skill --yes           # → .claude/skills/repo-tooling/SKILL.md
 npx @rtorcato/repo-tooling fix cursor-rules --yes           # → .cursor/rules/repo-tooling.mdc
 npx @rtorcato/repo-tooling fix copilot-instructions --yes   # → .github/copilot-instructions.md
 npx @rtorcato/repo-tooling fix agents-md --yes              # → AGENTS.md
@@ -175,17 +175,16 @@ in place on upgrade.
 Prefer a symlink that auto-syncs the Claude skill on every upgrade?
 
 ```bash
-mkdir -p .claude/skills
-ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md \
-  .claude/skills/repo-tooling.md
+mkdir -p .claude/skills/repo-tooling
+ln -sf ../../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md \
+  .claude/skills/repo-tooling/SKILL.md
 ```
 
 ### Use with Claude Code (plugin)
 
 This repo is also a self-hosted Claude Code marketplace. Install the plugin to
-get its skills — `repo-tooling` (adopt/audit the presets via the CLI),
-`npm-publish` (never hand-cut a release) and `dogfood` (run the tooling against
-throwaway fixtures) — in any session:
+get its skills — `repo-tooling` (adopt/audit the presets via the CLI) and
+`npm-publish` (never hand-cut a release) — in any session:
 
 ```
 /plugin marketplace add rtorcato/repo-tooling
@@ -244,7 +243,6 @@ MIT — see [LICENSE](LICENSE).
 Any agent that supports the [`skills`](https://www.npmjs.com/package/skills) CLI can install this repo's skills straight from GitHub — no clone, no package install:
 
 ```bash
-npx skills add https://github.com/rtorcato/repo-tooling --skill 'dogfood'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'npm-publish'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'repo-tooling'
 ```

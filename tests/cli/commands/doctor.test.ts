@@ -565,7 +565,7 @@ describe('doctor extended checks', () => {
 	it('AI setup: drift when a managed block still names the dead js-tooling bin (#393)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling.md'), '# skill\n')
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md'), '# skill\n')
 		await fs.writeFile(
 			join(dir, 'CLAUDE.md'),
 			'<!-- js-tooling:start -->\nSee @AGENTS.md (kept in sync by `js-tooling fix ai`).\n<!-- js-tooling:end -->\n'
@@ -578,9 +578,21 @@ describe('doctor extended checks', () => {
 	it('AI setup: ok when the Claude skill is present without AGENTS.md', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fs.outputFile(join(dir, '.claude', 'skills', 'js-tooling.md'), '# skill\n')
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md'), '# skill\n')
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'AI setup')?.status).toBe('ok')
+	})
+
+	it('AI setup: flags a flat .claude/skills/*.md skill Claude Code does not load (#823)', async () => {
+		for (const flat of ['repo-tooling.md', 'js-tooling.md']) {
+			const dir = newTmpDir()
+			await seedPackageJson(dir)
+			await fs.outputFile(join(dir, '.claude', 'skills', flat), '# skill\n')
+			const result = (await runDoctor(dir)).find((r) => r.check === 'AI setup')
+			expect(result?.status).toBe('optional-missing')
+			expect(result?.detail).toContain(`.claude/skills/${flat}`)
+			expect(result?.hint).toContain('fix claude-skill')
+		}
 	})
 
 	const worktreeCheck = async (dir: string) =>

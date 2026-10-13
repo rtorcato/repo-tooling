@@ -269,7 +269,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | Target | Scaffolds |
 |---|---|
 | `ai` | all AI agent files at once (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill, MCP example) |
-| `claude-skill` | the Claude Code skill at `.claude/skills/repo-tooling.md` |
+| `claude-skill` | the Claude Code skill at `.claude/skills/repo-tooling/SKILL.md` |
 | `cursor-rules` | the rules for Cursor at `.cursor/rules/repo-tooling.mdc` |
 | `copilot-instructions` | the rules block in `.github/copilot-instructions.md` |
 | `agents-md` | the rules block in `AGENTS.md` (universal) |
