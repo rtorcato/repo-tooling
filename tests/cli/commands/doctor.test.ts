@@ -604,6 +604,12 @@ describe('doctor extended checks', () => {
 		expect((await worktreeCheck(dir))?.status).toBe('optional-missing')
 	})
 
+	it('Claude worktree settings: n/a without a package.json, which fix ai skips (#830)', async () => {
+		const result = await worktreeCheck(newTmpDir())
+		expect(result?.status).toBe('ok')
+		expect(result?.detail).toBe('not applicable (no package.json)')
+	})
+
 	it('Claude worktree settings: optional-missing when the file lacks the entry', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
