@@ -393,6 +393,8 @@ describe('dependabotAutomergeWorkflowFor', () => {
 
 	it('defaults to the auto-merge workflow', async () => {
 		expect(await workflowFor()).toBe(DEPENDABOT_AUTOMERGE_WORKFLOW)
+		// gh pr merge --auto needs contents: write.
+		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).toMatch(/^ {2}contents: write$/m)
 		expect(await workflowFor({ dependabot: { onPr: 'automerge' } })).toBe(
 			DEPENDABOT_AUTOMERGE_WORKFLOW
 		)
@@ -403,6 +405,10 @@ describe('dependabotAutomergeWorkflowFor', () => {
 		expect(wf).not.toMatch(/gh pr merge/)
 		expect(wf).toMatch(/gh pr edit "\$PR_URL" --add-label "\$LABEL"/)
 		expect(wf).toMatch(/LABEL: "ai-review"/)
+		// Nothing in label mode writes repo contents (#819).
+		expect(wf).toMatch(/^ {2}contents: read$/m)
+		expect(wf).not.toMatch(/contents: write/)
+		expect(wf).toMatch(/^ {2}pull-requests: write$/m)
 		// The hand-to-a-human step and its gates are untouched.
 		expect(wf).toMatch(/if: steps\.merge\.outcome == 'skipped'/)
 		expect(wf).toMatch(/steps\.gate\.outputs\.safe == 'true'/)

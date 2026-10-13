@@ -203,12 +203,15 @@ function renderAutomergeWorkflow(onPr: DependabotOnPr, label: string): string {
 		? 'gh pr edit "$PR_URL" --add-label "$LABEL"'
 		: 'gh pr merge --auto --squash "$PR_URL"'
 	const labelEnv = labelMode ? `\n          LABEL: ${JSON.stringify(label)}` : ''
+	// Only `gh pr merge` needs contents: write. Labelling, commenting and
+	// assigning are all pull-requests: write, so label mode drops it (#819).
+	const contents = labelMode ? 'read' : 'write'
 	return `name: Dependabot auto-merge
 
 on: pull_request
 
 permissions:
-  contents: write
+  contents: ${contents}
   pull-requests: write
 
 jobs:

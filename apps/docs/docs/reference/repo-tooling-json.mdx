@@ -173,7 +173,8 @@ otherwise auto-merge. Absent means `automerge`, so a repo that never sets it see
 
 - `onPr: "automerge"` (default) merges on green.
 - `onPr: "label"` adds `label` (default `needs-review`) and never merges, so a reviewer or a
-  review bot can pick the PR up by label.
+  review bot can pick the PR up by label. Its workflow token gets `contents: read`, since
+  only merging needs `contents: write`.
 
 Majors and consumer-facing bumps go to a human in both modes. `doctor` reports a workflow that
 does not match the configured mode and `fix dependabot` regenerates it from the config.
