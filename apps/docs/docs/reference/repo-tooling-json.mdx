@@ -42,7 +42,7 @@ The file is **two documents sharing one name**, split by who writes them:
 - **`record`** — the tool-written half. `setup` creates it, `fix` keeps it current, and its
   `writtenBy`/`writtenAt` stamps are provenance claims about exactly this subtree.
 - **`rules`** — the human-written half: the repo's stated intent (`mcp`,
-  `exceptions`, `dependabot`), edited by hand and reviewed in PRs. The tool carries it forward
+  `exceptions`, `dependabot`, `github`), edited by hand and reviewed in PRs. The tool carries it forward
   verbatim on every write and never stamps it.
 
 `doctor` reads both. Commit the file — it is the repo's memory of its own tooling choices
@@ -179,6 +179,43 @@ otherwise auto-merge. Absent means `automerge`, so a repo that never sets it see
 Majors and consumer-facing bumps go to a human in both modes. `doctor` reports a workflow that
 does not match the configured mode and `fix dependabot` regenerates it from the config.
 
+### `rules.github` — the GitHub settings this repo should have
+
+Without it, `doctor` compares live branch protection, merge and security settings against the
+standard built into the tool. With it, the file records what the repo is *supposed* to have, so
+a change made in the GitHub dashboard or with `gh api` shows up as drift until someone commits
+it here.
+
+```json
+"rules": {
+  "github": {
+    "requiredChecks": ["ci"],
+    "strict": false,
+    "autoMerge": true,
+    "deleteOnMerge": true,
+    "vulnerabilityAlerts": true,
+    "automatedSecurityFixes": true,
+    "releaseReviewers": ["octocat"]
+  }
+}
+```
+
+<Fields schema={lockfileSchema.properties.rules.properties.github} />
+
+Every field is optional, and an absent one falls back to the standard, so `{}` means "the
+standard". A declared field differs from the standard in three ways:
+
+- **Drift names the field.** For example, `auto-merge enabled (rules.github.autoMerge: false)`.
+- **`requiredChecks` is exhaustive.** The standard list is a floor and extra live checks pass.
+  A declared list is the whole set, so a required check added in the dashboard is drift too.
+  A bare name still covers matrix legs: `test` matches `test (node 22)`.
+- **`false` is applied as off.** `fix github-settings` turns a feature off when the rules say
+  `false`, and does not only turn missing ones on.
+
+`fix github-settings` applies everything except `releaseReviewers`, which
+`fix release-environment` applies and which replaces any existing reviewer rule. Both need an
+admin token on the repo. GitHub answers a write it won't allow with a 404, and the fixer says so.
+
 ### `rules.exceptions` — declared deviations
 
 A map from a `doctor` check name (the `check` string in `doctor --json` output) to the reason
@@ -212,7 +249,7 @@ since naming the fixer is an explicit override.
 `rules.brand` and `rules.docs` (the docs-site and brand scaffolds) moved to
 [`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs) (#718). `rules.aiLoop` and
 `rules.requiredSkills` moved to `.repo-ai.json`, owned by the optional
-[`@infrazero/repo-ai`](https://docs.infrazero.dev/repo-ai/) (see
+`@infrazero/repo-ai` (see
 [Using with repo-ai](../guides/ai-issue-loop.md)). They still validate, so existing files keep
 working, and are removed in the next major. Move them with `npx @infrazero/repo-ai fix config`.
 

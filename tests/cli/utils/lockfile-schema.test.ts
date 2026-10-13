@@ -68,6 +68,16 @@ describe("this repo's own lockfile", () => {
 		expect(dependabot({ lable: 'typo' })).not.toEqual([])
 	})
 
+	it('accepts rules.github and rejects an empty releaseReviewers (#817)', () => {
+		const github = (g: unknown) => validate(withRules({ github: g }), schema)
+		expect(
+			github({ requiredChecks: ['ci'], strict: false, releaseReviewers: ['octocat'] })
+		).toEqual([])
+		expect(github({ releaseReviewers: [] })).not.toEqual([])
+		expect(github({ autoMerge: 'yes' })).not.toEqual([])
+		expect(github({ requireChecks: ['ci'] })).not.toEqual([])
+	})
+
 	// #689: deprecated, not removed — existing files must keep validating.
 	it('still accepts the deprecated loop keys', () => {
 		const rules = { aiLoop: { agentUser: 'some-bot' }, requiredSkills: ['ai-loop'] }

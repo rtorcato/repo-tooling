@@ -1,8 +1,9 @@
 // 'declared': the finding is real but the repo's lockfile records it as a
 // deliberate deviation with a reason (#558). Shown, never hidden — and never
 // counted toward the failing exit code.
-// 'skipped': the check was not run — today only `doctor --offline` skipping a
-// check that reads live GitHub state (#755). Never a finding.
+// 'skipped': the check was not run — e.g. `doctor --offline` skipping a check
+// that reads live GitHub state (#755). Never a finding, and an exception never
+// relabels it as `declared`.
 export type CheckStatus = 'ok' | 'drift' | 'missing' | 'optional-missing' | 'declared' | 'skipped'
 
 export interface CheckResult {

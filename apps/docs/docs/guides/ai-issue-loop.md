@@ -9,7 +9,7 @@ description: repo-tooling works on its own. @infrazero/repo-ai is an optional ad
 Nothing in repo-tooling installs repo-ai, prompts for it, or fails a check
 because it's missing.
 
-**[`@infrazero/repo-ai`](https://docs.infrazero.dev/repo-ai/) is optional.** It
+**`@infrazero/repo-ai` is optional.** It
 adds an **ai-issue-loop**: a label-driven pipeline that takes a GitHub issue
 marked `ai-ready`, implements it in its own git worktree, opens a PR, has two
 agents review it, and hands it to you to merge. Adopt it on a repo when you want
@@ -57,10 +57,8 @@ npx @infrazero/repo-ai setup         # skills, labels, agent identity, statuslin
 `repo-ai setup` asks before each step, and `--yes` runs them all.
 
 After that, label an issue `ai-ready` and run `/ai-workflow` in Claude Code.
-repo-ai's [guide to the loop](https://docs.infrazero.dev/repo-ai/docs/ai-loop)
-covers the label state machine, the safety gates and the limits. Its
-[command reference](https://docs.infrazero.dev/repo-ai/docs/commands) covers
-every `repo-ai` command.
+repo-ai covers the label state machine, the safety gates and the limits, and
+provides a command reference for every `repo-ai` command.
 
 ## Moving over from repo-tooling 3.x
 

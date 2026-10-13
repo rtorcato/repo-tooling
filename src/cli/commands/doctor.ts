@@ -28,6 +28,7 @@ import { type DetectedLanguage, detectAuditLanguage, isFreshDir } from '../utils
 import {
 	checkGitHubSettings,
 	GITHUB_SETTINGS_CHECKS,
+	gitRoot,
 	isPrivatePackage,
 } from '../../base/github-settings.js'
 import { checkRepositorySecrets, SECRETS_CHECK } from '../../base/secrets.js'
@@ -122,21 +123,27 @@ interface RemoteCheck {
 	remote: true
 	/** The check names it reports, so an offline run can still list them. */
 	names: readonly string[]
-	run: (dir: string) => Promise<CheckResult | CheckResult[]>
+	run: (dir: string, lock: Lockfile | null) => Promise<CheckResult | CheckResult[]>
 }
 
 const REMOTE_CHECKS = {
 	// GitHub repo-settings drift (branch protection, merge settings, workflow
 	// permissions). Read-only; self-skips as `ok` outside a live GitHub repo.
-	githubSettings: { remote: true, names: GITHUB_SETTINGS_CHECKS, run: checkGitHubSettings },
-	secrets: { remote: true, names: [SECRETS_CHECK], run: checkRepositorySecrets },
+	githubSettings: {
+		remote: true,
+		names: GITHUB_SETTINGS_CHECKS,
+		// rules.github (#817): the settings the repo declares, else the standard.
+		run: (dir, lock) => checkGitHubSettings(dir, undefined, lock?.rules?.github),
+	},
+	secrets: { remote: true, names: [SECRETS_CHECK], run: (dir) => checkRepositorySecrets(dir) },
 	// Milestone hygiene (#397) — same seam, same self-skip.
-	milestones: { remote: true, names: [MILESTONES_CHECK], run: checkMilestones },
+	milestones: { remote: true, names: [MILESTONES_CHECK], run: (dir) => checkMilestones(dir) },
 } satisfies Record<string, RemoteCheck>
 
 async function runRemote(
 	spec: RemoteCheck,
 	dir: string,
+	lock: Lockfile | null,
 	offline: boolean | undefined
 ): Promise<CheckResult[]> {
 	if (offline) {
@@ -146,7 +153,7 @@ async function runRemote(
 			detail: 'offline — reads live GitHub state via gh',
 		}))
 	}
-	return [await spec.run(dir)].flat()
+	return [await spec.run(dir, lock)].flat()
 }
 
 const PACKAGE = '@rtorcato/repo-tooling'
@@ -155,8 +162,9 @@ const PACKAGE = '@rtorcato/repo-tooling'
 // semantic-release but only hands it GITHUB_TOKEN, which can't push the version
 // commit + tag past branch protection. The fix is an admin PAT (RELEASE_TOKEN)
 // with a GITHUB_TOKEN fallback.
-async function checkReleaseToken(dir: string): Promise<CheckResult> {
-	const workflowsDir = path.join(dir, '.github', 'workflows')
+async function checkReleaseToken(target: string): Promise<CheckResult> {
+	// `-d packages/x` keeps its workflows at the repo root (#814).
+	const workflowsDir = path.join((await gitRoot(target)) ?? target, '.github', 'workflows')
 	if (!(await fs.pathExists(workflowsDir))) {
 		return { check: 'Release token', status: 'optional-missing', detail: 'no .github/workflows/' }
 	}
@@ -308,7 +316,8 @@ function applyExceptions(results: CheckResult[], lock: Lockfile | null): CheckRe
 	const known = new Set(results.map((r) => r.check))
 	const overlaid: CheckResult[] = results.map((r) => {
 		const reason = exceptions[r.check]
-		if (!reason || r.status === 'ok') return r
+		// A skipped check never ran, so there is no deviation to declare (#853).
+		if (!reason || r.status === 'ok' || r.status === 'skipped') return r
 		// Hint deliberately dropped: the deviation is declared, so "how to fix it"
 		// is exactly the noise the exception exists to retire.
 		return {
@@ -364,25 +373,27 @@ async function runBaseChecks(
 	opts: BaseCheckOptions
 ): Promise<CheckResult[]> {
 	const results: CheckResult[] = []
+	// Git state and workflows live at the repo root, not in a `-d packages/x` dir (#814).
+	const root = (await gitRoot(dir)) ?? dir
 	results.push(checkLockfile(lock, opts.language))
 	// Any language can have copied presets (swiftlint, ruff, perlcriticrc), so
 	// this rides with the base suite rather than a module's (#428).
 	results.push(await checkCopiedAssets(dir))
 	results.push(await checkNestedLanguages(dir, opts.language))
-	results.push(await checkGitIdentity(dir))
+	results.push(await checkGitIdentity(root))
 	// The retrospective half (#557): commits already made with a bad identity.
-	results.push(await checkGitIdentityHistory(dir))
+	results.push(await checkGitIdentityHistory(root))
 	results.push(await checkEditorConfig(dir))
 	results.push(await checkFile(dir, COMMITLINT_FILE_CHECK))
 	if (opts.hooks) {
 		results.push(await checkGitHooks(dir, opts.hooks))
 		results.push(await checkPrePushHook(dir, opts.hooks))
 	}
-	results.push(await checkGitHubActions(dir, opts.presetWorkflow, opts.presetRelease ?? null))
+	results.push(await checkGitHubActions(root, opts.presetWorkflow, opts.presetRelease ?? null))
 	results.push(await checkDependabot(dir))
-	results.push(await checkCodeQL(dir, opts.codeqlLanguages))
+	results.push(await checkCodeQL(root, opts.codeqlLanguages))
 	for (const spec of Object.values(REMOTE_CHECKS)) {
-		results.push(...(await runRemote(spec, dir, opts.offline)))
+		results.push(...(await runRemote(spec, root, lock, opts.offline)))
 	}
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))

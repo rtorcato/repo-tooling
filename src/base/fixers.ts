@@ -261,8 +261,8 @@ export const BASE_FIXERS: Fixer[] = [
 		// `gh api` PUTs during a mere preview).
 		riskLevel: 'safe-add',
 		canFixDrift: true,
-		async run({ targetDir }) {
-			return { filesWritten: await applyGithubSettings(targetDir) }
+		async run({ targetDir, lock }) {
+			return { filesWritten: await applyGithubSettings(targetDir, undefined, lock?.rules?.github) }
 		},
 	},
 	{
@@ -282,8 +282,10 @@ export const BASE_FIXERS: Fixer[] = [
 		riskLevel: 'safe-add',
 		explicitOnly: true,
 		canFixDrift: true,
-		async run({ targetDir }) {
-			return { filesWritten: await applyReleaseEnvironment(targetDir) }
+		async run({ targetDir, lock }) {
+			return {
+				filesWritten: await applyReleaseEnvironment(targetDir, undefined, lock?.rules?.github),
+			}
 		},
 	},
 	{
