@@ -1270,7 +1270,7 @@ describe('doctor + lockfile', () => {
 			commitLint: true,
 			semanticRelease: true,
 			securityAutomation: true,
-			bundler: 'tsup',
+			bundler: 'none',
 			...configPatch,
 		}
 		await fs.writeJson(join(dir, '.repo-tooling.json'), {
@@ -1317,7 +1317,7 @@ describe('doctor + lockfile', () => {
 				commitLint: true,
 				semanticRelease: true,
 				securityAutomation: true,
-				bundler: 'tsup',
+				bundler: 'none',
 				language: 'js',
 			},
 			writtenBy: '@rtorcato/repo-tooling@test',
@@ -1468,6 +1468,32 @@ describe('doctor + lockfile', () => {
 		// counts doctorCommand derives its exit code from.
 		expect(summarize(results).declared).toBe(1)
 		expect(results.filter((r) => r.check === 'Declared exceptions')).toEqual([])
+	})
+
+	it('flags a record the repo contradicts: Changesets, no tsup (#818)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.ensureDir(join(dir, '.changeset'))
+		await writeLock(dir, { bundler: 'tsup' })
+		const lock = (await runDoctor(dir)).find((r) => r.check === 'lockfile')
+		expect(lock?.status).toBe('drift')
+		expect(lock?.detail).toContain('semanticRelease: true (repo: false)')
+		expect(lock?.detail).toContain('changesets: undefined (repo: true)')
+		expect(lock?.detail).toContain('bundler: "tsup" (repo: "none")')
+		expect(lock?.hint).toMatch(/fix lockfile/)
+	})
+
+	it('leaves the release tool alone when disk has both, and a `none` bundler with a bundler dep (#818)', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			version: '0.0.0',
+			devDependencies: { tsup: '^8.0.0' },
+		})
+		await fs.ensureDir(join(dir, '.changeset'))
+		await fs.writeFile(join(dir, 'release.config.mjs'), 'export default {}\n')
+		await writeLock(dir)
+		expect((await runDoctor(dir)).find((r) => r.check === 'lockfile')?.status).toBe('ok')
 	})
 
 	it('leaves a passing check ok even when an exception names it', async () => {
