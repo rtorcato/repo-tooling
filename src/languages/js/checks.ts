@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import type { BadgeAudience, FileCheck, GitHooksProfile } from '../../base/checks.js'
 import { checkFile, hookHasUncommented } from '../../base/checks.js'
 import { type GitExec, realGitExec } from '../../base/git-identity.js'
+import { gitRoot } from '../../base/github-settings.js'
 import {
 	CLAUDE_SETTINGS_FILE,
 	readClaudeSettings,
@@ -1209,7 +1210,9 @@ export async function checkExportsBuildable(
 	if (declared.length === 0) {
 		return { check, status: 'ok', detail: 'no JS entry points named in main/module/types/exports' }
 	}
-	if (!(await fs.pathExists(path.join(dir, '.git')))) {
+	// git runs from `dir`, so its pathspecs stay package-relative; only the
+	// "is this a repo" gate walks up (#814).
+	if (!(await gitRoot(dir))) {
 		return {
 			check,
 			status: 'ok',
