@@ -1,5 +1,4 @@
 {
-  "$schema": "https://docs.infrazero.dev/repo-ai/repo-ai.json",
   "agentUser": "rtorcato-bot",
   "maxInFlight": 6,
   "maxFixRounds": 2,
