@@ -99,7 +99,7 @@ describe('checkGitIdentity', () => {
 			return 'a@example.com'
 		}
 		const r = await checkGitIdentity(newTmpDir(), spy)
-		expect(r.status).toBe('ok')
+		expect(r.status).toBe('skipped')
 		expect(called).toBe(false)
 	})
 
@@ -169,6 +169,17 @@ describe('checkGitIdentityHistory', () => {
 			return null
 		}
 		const r = await checkGitIdentityHistory(gitRepo(), spy)
+		expect(r.status).toBe('skipped')
+		expect(called).toBe(false)
+	})
+
+	it('skips a non-git directory without consulting git', async () => {
+		let called = false
+		const spy: GitExec = async () => {
+			called = true
+			return null
+		}
+		const r = await checkGitIdentityHistory(newTmpDir(), spy)
 		expect(r.status).toBe('skipped')
 		expect(called).toBe(false)
 	})

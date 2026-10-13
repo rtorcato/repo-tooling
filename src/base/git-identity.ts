@@ -166,7 +166,7 @@ export const realGitExec = (
 export async function checkGitIdentity(dir: string, exec?: GitExec): Promise<CheckResult> {
 	// Cheap gate: no .git → no commits to mis-attribute, and no spawn.
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
-		return { check: CHECK, status: 'ok', detail: 'not a git repository' }
+		return { check: CHECK, status: 'skipped', detail: 'not a git repository' }
 	}
 	// On a runner the identity is the bot's, so there is nothing to warn about
 	// and the warning would be permanent.
@@ -215,7 +215,7 @@ const HISTORY_HINT =
  */
 export async function checkGitIdentityHistory(dir: string, exec?: GitExec): Promise<CheckResult> {
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
-		return { check: HISTORY_CHECK, status: 'ok', detail: 'not a git repository' }
+		return { check: HISTORY_CHECK, status: 'skipped', detail: 'not a git repository' }
 	}
 	if (process.env.CI) {
 		return { check: HISTORY_CHECK, status: 'skipped', detail: 'skipped on CI' }
