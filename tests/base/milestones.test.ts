@@ -53,10 +53,32 @@ function ghMethod(args: string[]): string {
 	return args.includes('-f') || args.includes('-F') ? 'POST' : 'GET'
 }
 
-/** Serves the milestone and issue lists; PATCHes and POSTs succeed unless overridden. */
-function fakeGh(milestones: unknown[], patch?: GhResult, issues: unknown[] = []): GhExec {
+const notFound: GhResult = { ok: false, stdout: '', stderr: 'gh: Not Found (HTTP 404)', code: 1 }
+const WORKFLOWS = 'repos/{owner}/{repo}/contents/.github/workflows'
+
+/**
+ * Serves the milestone and issue lists, and the default branch's workflows:
+ * none (a 404) by default, a name → YAML map, or a failing read. PATCHes and
+ * POSTs succeed unless overridden.
+ */
+function fakeGh(
+	milestones: unknown[],
+	patch?: GhResult,
+	issues: unknown[] = [],
+	workflows: Record<string, string> | GhResult | null = null
+): GhExec {
 	return vi.fn(async (args: string[]) => {
 		const method = ghMethod(args)
+		const wf = args.find((a) => a.startsWith(WORKFLOWS))
+		if (method === 'GET' && wf) {
+			if (!workflows) return notFound
+			if ('ok' in workflows) return workflows as GhResult
+			const files = workflows as Record<string, string>
+			if (wf === WORKFLOWS)
+				return ok(JSON.stringify(Object.keys(files).map((name) => ({ name, type: 'file' }))))
+			const yaml = files[decodeURIComponent(wf.slice(WORKFLOWS.length + 1))]
+			return yaml === undefined ? notFound : ok(yaml)
+		}
 		if (method === 'GET')
 			return ok(JSON.stringify(args.some((a) => a.endsWith('/issues')) ? issues : milestones))
 		if (method === 'PATCH') return patch ?? ok('{}')
@@ -271,6 +293,51 @@ describe('closeCompletedMilestones', () => {
 		expect((err as FixerAbort).code).toBe('milestone-close-publishes')
 		expect((err as FixerAbort).message).toContain('closing publishes a release')
 		expect(vi.mocked(exec).mock.calls.every((c) => !c[0].includes('PATCH'))).toBe(true)
+	})
+
+	it('refuses when only the default branch runs on milestone close (#838)', async () => {
+		const exec = fakeGh(
+			[milestone({ title: 'v2.1', open_issues: 0, closed_issues: 4 })],
+			undefined,
+			[],
+			{
+				'ci.yml': 'on: [push]\n',
+				'release.yml': 'on:\n  milestone:\n    types: [closed]\n',
+			}
+		)
+		const err = await closeCompletedMilestones(gitRepo(), exec).catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(FixerAbort)
+		expect((err as FixerAbort).code).toBe('milestone-close-publishes')
+		expect((err as FixerAbort).message).toContain('release.yml on the default branch')
+		expect(vi.mocked(exec).mock.calls.every((c) => !c[0].includes('PATCH'))).toBe(true)
+	})
+
+	it('fails closed when the default branch workflows cannot be read (#838)', async () => {
+		const exec = fakeGh(
+			[milestone({ title: 'v2.1', open_issues: 0, closed_issues: 4 })],
+			undefined,
+			[],
+			{ ok: false, stdout: '', stderr: 'gh: Bad credentials (HTTP 401)', code: 1 }
+		)
+		const err = await closeCompletedMilestones(gitRepo(), exec).catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(FixerAbort)
+		expect((err as FixerAbort).code).toBe('milestone-close-unverified')
+		expect(vi.mocked(exec).mock.calls.every((c) => !c[0].includes('PATCH'))).toBe(true)
+	})
+
+	it('reads the default branch, not a ref, and only when something would close', async () => {
+		const exec = fakeGh([milestone()])
+		await closeCompletedMilestones(gitRepo(), exec)
+		expect(vi.mocked(exec).mock.calls.some((c) => c[0].some((a) => a.startsWith(WORKFLOWS)))).toBe(
+			false
+		)
+		const done = fakeGh([milestone({ open_issues: 0, closed_issues: 4 })], undefined, [], {
+			'ci.yml': 'on: [push]\n',
+		})
+		expect(await closeCompletedMilestones(gitRepo(), done)).toContain(
+			'closed milestone "v1.0 — Stable API"'
+		)
+		expect(done).toHaveBeenCalledWith(['api', WORKFLOWS])
 	})
 
 	it('still opens "next" on a batched repo when nothing needs closing', async () => {
