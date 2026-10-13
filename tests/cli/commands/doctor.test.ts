@@ -1478,6 +1478,16 @@ describe('doctor + lockfile', () => {
 		expect(results.find((r) => r.check === 'lockfile')?.status).toBe('ok')
 	})
 
+	it('leaves a skipped check skipped even when an exception names it', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir, {}, { exceptions: { Milestones: 'not actually needed' } })
+		const results = await runDoctor(dir, { offline: true })
+		const milestones = results.find((r) => r.check === 'Milestones')
+		expect(milestones?.status).toBe('skipped')
+		expect(milestones?.detail).not.toMatch(/declared exception/)
+	})
+
 	it('reports an exception naming an unknown check as drift', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
