@@ -27,7 +27,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `fix --json --yes` | ✅ | ✅ | Walk every doctor finding, apply fixers. Returns `FixActionRecord[]` with `status: applied | dry-run | skipped | already-ok | unsupported`. |
 | `fix <target> --json --yes` | ✅ | ✅ | Apply one fixer. Targets from `list --json`. |
 | `fix --dry-run` | ✅ | ✅ | Print what each fixer would write without writing. Combine with `--json`. |
-| `list --json` | ✅ | ✅ | Enumerate the library's surface area. Each entry has `{ name, description, exports, fixTarget }`. |
+| `list --json` | ✅ | ✅ | Enumerate every fix target, from the same registry as `fix --list --json`: `targets[]`, each `{ target, description, appliesTo, outputs, riskLevel, canFixDrift }`. The old `tools[]` shape is still emitted, derived from the registry, until the next major. |
 | `copy <name>` | ✅ | text only | Copy a single preset (`biome`, `tsconfig`) into the current directory. |
 
 ## Recommended workflows

@@ -312,19 +312,19 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				// human for no benefit — they reach no consumer. Drift in the
 				// convenience direction, not the safety one, but still drift.
 				if (!automerge.includes("package-ecosystem == 'github-actions'")) {
-					deltas.push('auto-merge workflow leaves CI action bumps to a human (#452)')
+					deltas.push('auto-merge workflow leaves CI action bumps to a human')
 				}
 				// #694: a declined PR used to get only a log notice — no assignee, no
 				// comment — and could sit green and ownerless indefinitely.
 				if (!automerge.includes("steps.merge.outcome == 'skipped'")) {
-					deltas.push('auto-merge workflow leaves declined PRs with no owner (#694)')
+					deltas.push('auto-merge workflow leaves declined PRs with no owner')
 				}
 				// #746: the configured mode (`rules.dependabot.onPr`) decides what the
 				// safe tier does. Compare that one step, not the whole file, so a
 				// repo's own edits elsewhere are not drift.
 				const expected = await dependabotAutomergeWorkflowFor(dir)
 				if (mergeStep(automerge) !== mergeStep(expected)) {
-					deltas.push('auto-merge workflow does not match rules.dependabot.onPr (#746)')
+					deltas.push('auto-merge workflow does not match rules.dependabot.onPr')
 				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')

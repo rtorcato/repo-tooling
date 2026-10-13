@@ -420,7 +420,7 @@ export async function runDoctor(
 				check: 'language',
 				status: 'ok',
 				detail: languageModule
-					? `detected ${languageModule.label} — running language-agnostic checks; ${languageModule.label}-specific checks land with its module (#139)`
+					? `detected ${languageModule.label} — running language-agnostic checks; ${languageModule.label}-specific checks land with its module`
 					: 'no language marker (package.json, Package.swift, pyproject.toml, cpanfile, …) — running language-agnostic checks only',
 			},
 			// hooks: null — guessing a hook convention would nag every repo with a

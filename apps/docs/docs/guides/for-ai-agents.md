@@ -116,7 +116,7 @@ Action statuses: `applied` (fixer ran, files written), `dry-run` (would have wri
 
 **Drift policy:** without `--yes`, drift cases default to "No" in the confirm prompt — your customisations are preserved. With `--yes`, drift IS overwritten. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite even with `--yes` — they only add/merge.
 
-### `list` — enumerate the library's surface area
+### `list` — enumerate the fix targets
 
 ```bash
 npx @rtorcato/repo-tooling list --json
@@ -126,28 +126,23 @@ npx @rtorcato/repo-tooling list --json
 
 ```json
 {
-  "tools": [
+  "targets": [
     {
-      "name": "TypeScript",
-      "description": "Base, React, Next.js, Node.js, Express tsconfig presets",
-      "exports": [
-        "@rtorcato/repo-tooling/typescript/base",
-        "@rtorcato/repo-tooling/typescript/react",
-        "..."
-      ],
-      "fixTarget": "tsconfig"
-    },
-    {
-      "name": "Biome",
-      "description": "Fast formatter and linter configuration",
-      "exports": ["@rtorcato/repo-tooling/biome"],
-      "fixTarget": "biome"
+      "target": "biome",
+      "description": "Point biome.json at the @rtorcato/repo-tooling preset (merged into any existing config), plus the scripts that run it",
+      "appliesTo": ["Biome"],
+      "outputs": ["biome.json", "package.json (scripts)"],
+      "riskLevel": "safe-merge",
+      "canFixDrift": true
     }
+  ],
+  "tools": [
+    { "name": "biome", "description": "…", "exports": [], "fixTarget": "biome" }
   ]
 }
 ```
 
-Use this to discover what's available and to map between named tools and the `fix <target>` command that scaffolds each.
+`targets` is read from the fix registry, the same list `fix --list --json` prints. `appliesTo` holds the `doctor` check names each target fixes. `tools` is deprecated: it keeps the pre-#828 keys for existing readers, but `name` is now the fix target, `exports` is always `[]`, and it will be removed in the next major. Read `targets` instead.
 
 ## Recommended workflows
 

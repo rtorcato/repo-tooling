@@ -261,6 +261,10 @@ describe('fix --list', () => {
 		}
 	})
 
+	it('keeps issue numbers out of every fixer description (#828)', () => {
+		expect(listFixers().filter((f) => /#\d+/.test(f.description))).toEqual([])
+	})
+
 	it('--list does not run doctor or read package.json', async () => {
 		// Pass a directory that does not exist — --list should not care.
 		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})

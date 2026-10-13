@@ -89,7 +89,7 @@ See the [Getting Started guide](https://docs.torcato.dev/repo-tooling/docs/guide
 | Command | What it does | Example |
 | --- | --- | --- |
 | `setup` | Interactive wizard that scaffolds a whole new project (add `--preset` to run non-interactively). | `npx @rtorcato/repo-tooling setup` |
-| `list` | List every tooling configuration this package can scaffold (`--json` for machine output). | `npx @rtorcato/repo-tooling list` |
+| `list` | List every `fix` target, from the same registry as `fix --list` (`--json` for machine output). | `npx @rtorcato/repo-tooling list` |
 | `copy <config>` | Copy a single config file into the current project. | `npx @rtorcato/repo-tooling copy biome` |
 | `doctor` | Diagnose an existing project for missing or drifted tooling. | `npx @rtorcato/repo-tooling doctor` |
 | `fix [target]` | Apply scaffolders for what `doctor` flagged (`--yes`, `--dry-run`, `--diff`). | `npx @rtorcato/repo-tooling fix` |

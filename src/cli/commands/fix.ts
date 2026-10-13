@@ -99,6 +99,32 @@ export function listFixers(): FixerSummary[] {
 	}))
 }
 
+/** `fix --list` and `list` (#828): both read the registry, never a hand-kept copy. */
+export function printFixTargets(json: boolean, { legacyTools = false } = {}): void {
+	const summary = listFixers()
+	if (json) {
+		// ponytail: `tools` is the shape `list --json` emitted before #828, kept so
+		// existing readers don't break; drop it in the next major.
+		const tools = summary.map((f) => ({
+			name: f.target,
+			description: f.description,
+			exports: [],
+			fixTarget: f.target,
+		}))
+		console.log(JSON.stringify({ targets: summary, ...(legacyTools && { tools }) }, null, 2))
+		return
+	}
+	console.log(chalk.cyan('\n🔧 Registered fix targets:\n'))
+	for (const f of summary) {
+		console.log(`  ${chalk.green('●')} ${chalk.bold(f.target)}`)
+		console.log(`     ${chalk.gray(f.description)}`)
+		console.log(
+			`     ${chalk.dim(`risk=${f.riskLevel}, drift=${f.canFixDrift ? 'yes' : 'no'}, outputs=${f.outputs.join(', ')}`)}`
+		)
+	}
+	console.log()
+}
+
 // Fixer outputs sometimes carry annotations like
 // "package.json (lint-staged field)" — strip them to get a usable filesystem path.
 function outputToRelativePath(output: string): string {
@@ -374,20 +400,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 	const showDiff = options.diff === true && !json
 
 	if (options.list) {
-		const summary = listFixers()
-		if (json) {
-			console.log(JSON.stringify({ targets: summary }, null, 2))
-			return
-		}
-		console.log(chalk.cyan('\n🔧 Registered fix targets:\n'))
-		for (const f of summary) {
-			console.log(`  ${chalk.green('●')} ${chalk.bold(f.target)}`)
-			console.log(`     ${chalk.gray(f.description)}`)
-			console.log(
-				`     ${chalk.dim(`risk=${f.riskLevel}, drift=${f.canFixDrift ? 'yes' : 'no'}, outputs=${f.outputs.join(', ')}`)}`
-			)
-		}
-		console.log()
+		printFixTargets(json)
 		return
 	}
 

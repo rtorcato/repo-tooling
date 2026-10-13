@@ -268,7 +268,7 @@ export const BASE_FIXERS: Fixer[] = [
 	{
 		target: 'release-environment',
 		description:
-			'Create the `release` environment (authenticated user as required reviewer) and wire `environment: release` into the publishing job — the gate between merging and publishing (#429)',
+			'Create the `release` environment (authenticated user as required reviewer) and wire `environment: release` into the publishing job — the gate between merging and publishing',
 		appliesTo: [RELEASE_GATE_CHECK, RELEASE_ENV_CHECK],
 		outputs: [
 			'GitHub `release` environment (remote, via gh api)',
@@ -289,7 +289,7 @@ export const BASE_FIXERS: Fixer[] = [
 	{
 		target: 'milestones',
 		description:
-			'Close 100%-complete open milestones on GitHub via gh api, then open a rolling "next" one if none is left (mutates the remote repo, not files). Never deletes one, and refuses to close any when a workflow runs on milestone close (#833)',
+			'Close 100%-complete open milestones on GitHub via gh api, then open a rolling "next" one if none is left (mutates the remote repo, not files). Never deletes one, and refuses to close any when a workflow runs on milestone close',
 		appliesTo: ['Milestones'],
 		outputs: ['GitHub milestones (remote, via gh api)'],
 		// safe-add for the same reason github-settings is: it exempts this fixer
