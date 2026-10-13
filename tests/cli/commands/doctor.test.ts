@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'fs-extra'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -1504,6 +1505,16 @@ describe('doctor + lockfile', () => {
 		expect(results.find((r) => r.check === 'lockfile')?.status).toBe('ok')
 	})
 
+	it('leaves a skipped check skipped even when an exception names it', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir, {}, { exceptions: { Milestones: 'not actually needed' } })
+		const results = await runDoctor(dir, { offline: true })
+		const milestones = results.find((r) => r.check === 'Milestones')
+		expect(milestones?.status).toBe('skipped')
+		expect(milestones?.detail).not.toMatch(/declared exception/)
+	})
+
 	it('reports an exception naming an unknown check as drift', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
@@ -1716,6 +1727,89 @@ describe('doctor npm OIDC check on a Changesets monorepo (#811)', () => {
 		)
 		const rows = (await runDoctor(dir)).filter((c) => c.check === 'npm trusted publisher')
 		expect(rows.map((r) => r.detail.split(':')[0])).toEqual(['packages/lib'])
+	})
+})
+
+describe('doctor -d <package> inside a monorepo resolves git state from the root (#814)', () => {
+	/** A real git repo whose only workflows live at the root; the package has none. */
+	async function monorepo() {
+		const dir = newTmpDir()
+		execFileSync('git', ['init', '-q', dir])
+		await fs.writeJson(join(dir, 'package.json'), { name: 'root', private: true })
+		await fs.outputFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n")
+		await fs.outputJson(join(dir, 'packages/lib/package.json'), {
+			name: '@acme/lib',
+			version: '1.0.0',
+			main: './dist/index.js',
+			scripts: { build: 'tsc' },
+		})
+		await fs.outputFile(
+			join(dir, '.github/workflows/ci.yml'),
+			'jobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.SOME_TOKEN }}\n'
+		)
+		await fs.outputFile(
+			join(dir, '.github/workflows/codeql.yml'),
+			'jobs:\n  a:\n    steps:\n      - uses: github/codeql-action/init@v3\n'
+		)
+		await fs.outputFile(
+			join(dir, '.github/workflows/release.yml'),
+			'jobs:\n  r:\n    steps:\n      - run: npx semantic-release\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n'
+		)
+		return join(dir, 'packages/lib')
+	}
+
+	it('does not report the root repo as "not a git repository" or "no .github/workflows/"', async () => {
+		const results = await runDoctor(await monorepo())
+		const gitBased = [
+			'Git identity',
+			'Git author history',
+			'Repository secrets',
+			'Milestones',
+			'Exports buildable',
+		]
+		for (const check of gitBased) {
+			const r = results.find((c) => c.check === check)
+			expect(r, check).toBeDefined()
+			expect(r?.detail, check).not.toContain('not a git repository')
+		}
+		for (const check of ['GitHub Actions', 'CodeQL', 'Release token']) {
+			expect(results.find((c) => c.check === check)?.detail, check).not.toBe(
+				'no .github/workflows/'
+			)
+		}
+	})
+
+	it('reads the root workflows for GitHub Actions, CodeQL and the release token', async () => {
+		const results = await runDoctor(await monorepo())
+		const by = (check: string) => results.find((c) => c.check === check)
+		// It compared the root release.yml against the preset, so it found the file.
+		expect(by('GitHub Actions')?.detail).toContain('release.yml')
+		expect(by('CodeQL')?.status).toBe('ok')
+		expect(by('Release token')?.status).toBe('drift')
+	})
+
+	it('runs the Exports buildable git check from the package dir', async () => {
+		const results = await runDoctor(await monorepo())
+		expect(results.find((c) => c.check === 'Exports buildable')?.detail).toContain('emitted by')
+	})
+
+	it('still skips every one of them outside a git repository', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			version: '1.0.0',
+			main: './dist/index.js',
+			scripts: { build: 'tsc' },
+		})
+		const results = await runDoctor(dir)
+		expect(results.find((c) => c.check === 'Git identity')?.detail).toContain(
+			'not a git repository'
+		)
+		expect(results.find((c) => c.check === 'Milestones')?.detail).toContain('not a git repository')
+		expect(results.find((c) => c.check === 'GitHub Actions')?.detail).toBe('no .github/workflows/')
+		expect(results.find((c) => c.check === 'Exports buildable')?.detail).toContain(
+			'not a git repository'
+		)
 	})
 })
 
