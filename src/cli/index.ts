@@ -409,9 +409,10 @@ program.on('command:*', () => {
 	process.exit(1)
 })
 
-// Show help if no arguments
+// Show help if no arguments. help() exits 0; outputHelp() fell through to
+// parse(), which printed it a second time and exited 1 (#825).
 if (!process.argv.slice(2).length) {
-	program.outputHelp()
+	program.help()
 }
 
 program.parse()

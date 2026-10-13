@@ -23,6 +23,13 @@ describe.skipIf(!fs.existsSync(CLI))('CLI smoke tests (requires pnpm build)', ()
 		expect(stdout.trim()).toBe(await getToolVersion())
 	})
 
+	// #825: outputHelp() then parse() printed the help twice and exited 1.
+	it('bare command prints help once and exits 0', () => {
+		const { status, stdout } = cli([])
+		expect(status).toBe(0)
+		expect(stdout.match(/^Usage:/gm)).toHaveLength(1)
+	})
+
 	it('list prints known configs', () => {
 		const { status, stdout } = cli(['list'])
 		expect(status).toBe(0)
