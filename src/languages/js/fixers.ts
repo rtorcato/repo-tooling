@@ -190,6 +190,61 @@ export function inferProjectConfig(pkg: Pkg, dir?: string): ProjectConfig {
 	}
 }
 
+// Where semantic-release can be configured besides a `release` key in package.json.
+const SEMANTIC_RELEASE_CONFIGS = [
+	'release.config.mjs',
+	'release.config.js',
+	'release.config.cjs',
+	'release.config.ts',
+	'.releaserc',
+	'.releaserc.json',
+	'.releaserc.yaml',
+	'.releaserc.yml',
+	'.releaserc.js',
+	'.releaserc.cjs',
+	'.releaserc.mjs',
+]
+
+/**
+ * The recorded release tool and bundler where the repo on disk says otherwise
+ * (#818), as the corrections to apply; `{}` when they agree. A v1 lockfile
+ * migrates with its config untouched, so a stale `semanticRelease: true` or
+ * `bundler: 'tsup'` used to survive into v4 and steer every later `setup`.
+ * The release tool is only corrected when disk is unambiguous: one of
+ * `.changeset/` or a semantic-release config, not both or neither. The bundler
+ * only when the recorded one is neither a dependency nor configured.
+ */
+export function staleRecordFields(
+	config: ProjectConfig,
+	pkg: Pkg,
+	dir: string
+): Partial<ProjectConfig> {
+	const deps = {
+		...((pkg?.dependencies as Record<string, string> | undefined) ?? {}),
+		...((pkg?.devDependencies as Record<string, string> | undefined) ?? {}),
+	}
+	const stale: Partial<ProjectConfig> = {}
+	const changesets = fs.existsSync(path.join(dir, '.changeset'))
+	const semanticRelease =
+		'semantic-release' in deps ||
+		pkg?.release !== undefined ||
+		SEMANTIC_RELEASE_CONFIGS.some((f) => fs.existsSync(path.join(dir, f)))
+	if (changesets && !semanticRelease && (config.semanticRelease || !config.changesets)) {
+		Object.assign(stale, { semanticRelease: false, changesets: true })
+	} else if (semanticRelease && !changesets && (!config.semanticRelease || config.changesets)) {
+		Object.assign(stale, { semanticRelease: true, changesets: false })
+	}
+	// Only a recorded bundler that's gone: a `none` record stays, since a repo can
+	// carry a bundler dep it doesn't build with (this one ships tsup's preset).
+	// A hand-written record may lack `bundler`, so only a known one is checked.
+	const recorded = config.bundler
+	const configs = recorded === 'none' ? undefined : BUNDLER_CONFIGS[recorded]
+	if (configs && !(recorded in deps) && !configs.some((f) => fs.existsSync(path.join(dir, f)))) {
+		stale.bundler = detectBundler(deps, dir)
+	}
+	return stale
+}
+
 export async function readPackageJson(dir: string): Promise<Pkg> {
 	const filepath = path.join(dir, 'package.json')
 	if (!(await fs.pathExists(filepath))) return null
@@ -968,16 +1023,17 @@ export const FIXERS: Fixer[] = [
 		appliesTo: ['lockfile'],
 		outputs: [LOCKFILE_NAME],
 		riskLevel: 'safe-add',
-		canFixDrift: false,
+		canFixDrift: true,
 		async run({ targetDir, pkg, lock }) {
 			// An existing lockfile keeps its recorded config — this path migrates the
 			// file to the current version on disk (#531), it never re-infers over
-			// choices the repo already made.
+			// choices the repo already made. The exception is a release tool or
+			// bundler the repo plainly no longer uses (#818): those follow the disk.
 			if (!lock && !pkg) {
 				throw noPackageJson()
 			}
 			const config = lock
-				? lock.record.config
+				? { ...lock.record.config, ...staleRecordFields(lock.record.config, pkg, targetDir) }
 				: inferProjectConfig(pkg as Record<string, unknown>, targetDir)
 			// Recorded hashes win: they capture the pristine content at copy time,
 			// which a byte-match against today's shipped asset can only approximate.

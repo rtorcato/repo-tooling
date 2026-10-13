@@ -1451,6 +1451,22 @@ describe('fix + lockfile', () => {
 		expect(lock.record.assets.biome).toMatch(/^[0-9a-f]{64}$/)
 	})
 
+	it('fix lockfile re-detects a release tool and bundler the repo contradicts (#818)', async () => {
+		// react-common's shape: a v1 record of semantic-release + tsup on a repo
+		// that releases with Changesets and builds with esbuild.
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { devDependencies: { esbuild: '^0.25.0' } })
+		await fs.ensureDir(join(dir, '.changeset'))
+		await writeLock(dir, { testing: { framework: 'jest', environment: 'node' } })
+
+		await fixCommand('lockfile', { directory: dir, yes: true })
+
+		const { config } = (await fs.readJson(join(dir, '.repo-tooling.json'))).record
+		expect(config).toMatchObject({ semanticRelease: false, changesets: true, bundler: 'esbuild' })
+		// Everything else is still the recorded choice.
+		expect(config.testing.framework).toBe('jest')
+	})
+
 	it('fix vitest --yes regenerates the config but keeps an existing vitest.setup.ts', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

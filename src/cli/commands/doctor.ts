@@ -10,7 +10,7 @@ import {
 	renderReleaseWorkflow,
 	scriptsOf,
 } from '../../languages/js/ci.js'
-import { inferProjectConfig } from '../../languages/js/fixers.js'
+import { inferProjectConfig, staleRecordFields } from '../../languages/js/fixers.js'
 import {
 	checkNpmTrustedPublishers,
 	checkPublishJob,
@@ -40,6 +40,7 @@ import { compareRulesWithReference, type RulesComparison } from '../utils/refere
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import { fixersForLanguage } from './fixers-by-language.js'
 import { PRESET_NAMES } from './setup-presets.js'
+import type { ProjectConfig } from './setup.js'
 import {
 	type BadgeAudience,
 	checkAiSetup,
@@ -236,7 +237,11 @@ function registeredFixTarget(check: string, language: string): string | null {
 	return target && fixersForLanguage(language).some((f) => f.target === target) ? target : null
 }
 
-function checkLockfile(lock: Lockfile | null, language: string): CheckResult {
+function checkLockfile(
+	lock: Lockfile | null,
+	language: string,
+	stale: Partial<ProjectConfig> = {}
+): CheckResult {
 	const target = registeredFixTarget('lockfile', language)
 	const run = (why: string) =>
 		target ? { hint: `Run \`npx @rtorcato/repo-tooling fix ${target}\` to ${why}` } : {}
@@ -254,6 +259,20 @@ function checkLockfile(lock: Lockfile | null, language: string): CheckResult {
 			status: 'drift',
 			detail: `.repo-tooling.json version ${lock.version} is newer than this CLI supports (v${LOCKFILE_VERSION})`,
 			hint: 'Upgrade @rtorcato/repo-tooling to a release that supports this lockfile version',
+		}
+	}
+	// The record steers later `setup` runs, so a value the repo contradicts would
+	// re-scaffold the wrong release tool or bundler (#818).
+	const recorded = lock.record.config as unknown as Record<string, unknown>
+	const wrong = Object.entries(stale).map(
+		([key, value]) => `${key}: ${JSON.stringify(recorded[key])} (repo: ${JSON.stringify(value)})`
+	)
+	if (wrong.length > 0) {
+		return {
+			check: 'lockfile',
+			status: 'drift',
+			detail: `.repo-tooling.json records what the repo no longer uses — ${wrong.join(', ')}`,
+			...run('re-detect them'),
 		}
 	}
 	// Not drift: nothing is wrong, a newer capability (e.g. v3 asset-drift
@@ -361,6 +380,8 @@ interface BaseCheckOptions {
 	codeqlLanguages: readonly string[]
 	/** Skip the `remote: true` checks (#755). */
 	offline?: boolean
+	/** Recorded config the repo on disk contradicts (#818); JS only. */
+	staleRecord?: Partial<ProjectConfig>
 }
 
 // The language-agnostic checks (src/base): repo hygiene, git hooks, CI,
@@ -375,7 +396,7 @@ async function runBaseChecks(
 	const results: CheckResult[] = []
 	// Git state and workflows live at the repo root, not in a `-d packages/x` dir (#814).
 	const root = (await gitRoot(dir)) ?? dir
-	results.push(checkLockfile(lock, opts.language))
+	results.push(checkLockfile(lock, opts.language, opts.staleRecord))
 	// Any language can have copied presets (swiftlint, ruff, perlcriticrc), so
 	// this rides with the base suite rather than a module's (#428).
 	results.push(await checkCopiedAssets(dir))
@@ -600,6 +621,7 @@ export async function runDoctor(
 			language,
 			offline,
 			codeqlLanguages: languageModule.codeqlLanguages,
+			staleRecord: lock ? staleRecordFields(lock.record.config, pkg, targetDir) : undefined,
 		}))
 	)
 
