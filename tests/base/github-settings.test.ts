@@ -1145,3 +1145,324 @@ ${needs}
 		expect(removeWorkflowJob('jobs:\n  a:\n    x: 1\n', 'release')).toBe('jobs:\n  a:\n    x: 1\n')
 	})
 })
+
+describe('rules.github (#817)', () => {
+	const RELEASE_JOB = `name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - run: npx semantic-release
+`
+
+	function releaseRepo(): string {
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows/release.yml'), RELEASE_JOB)
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		return dir
+	}
+
+	/** A gated `release` environment whose required reviewers are `logins`. */
+	const releaseEnv = (...logins: string[]) =>
+		ok(
+			JSON.stringify({
+				total_count: 1,
+				environments: [
+					{
+						name: 'release',
+						protection_rules: [
+							{
+								type: 'required_reviewers',
+								reviewers: logins.map((login) => ({ type: 'User', reviewer: { login } })),
+							},
+						],
+					},
+				],
+			})
+		)
+
+	const protection = (contexts: string[], strict = false) =>
+		ok(
+			JSON.stringify({
+				...JSON.parse(COMPLIANT_PROTECTION),
+				required_status_checks: { strict, contexts },
+			})
+		)
+
+	it('accepts declared required checks that replace the standard ones', async () => {
+		const bp = byName(
+			await checkGitHubSettings(gitRepo(), fakeGh({ protection: protection(['ci (node 22)']) }), {
+				requiredChecks: ['ci'],
+			}),
+			'Branch protection'
+		)
+		expect(bp?.status).toBe('ok')
+	})
+
+	it('flags missing and undeclared checks against the declared list', async () => {
+		const bp = byName(
+			await checkGitHubSettings(gitRepo(), fakeGh(), { requiredChecks: ['ci', 'lint'] }),
+			'Branch protection'
+		)
+		expect(bp?.status).toBe('drift')
+		expect(bp?.detail).toContain('missing required checks: ci')
+		expect(bp?.detail).toContain('undeclared required checks: typecheck, build, test')
+		expect(bp?.detail).toContain('rules.github.requiredChecks')
+		expect(bp?.hint).toContain('rules.github')
+	})
+
+	it('keeps the standard a floor: extra live checks pass without a declared list', async () => {
+		const bp = byName(
+			await checkGitHubSettings(
+				gitRepo(),
+				fakeGh({ protection: protection(['lint', 'typecheck', 'build', 'test', 'e2e']) })
+			),
+			'Branch protection'
+		)
+		expect(bp?.status).toBe('ok')
+	})
+
+	it('diffs strict against the declared value', async () => {
+		const results = await checkGitHubSettings(gitRepo(), fakeGh(), { strict: true })
+		expect(byName(results, 'Branch protection')?.detail).toBe(
+			'strict status checks off (rules.github.strict: true)'
+		)
+	})
+
+	it('accepts merge settings the rules turn off, and names the field when live differs', async () => {
+		const off = ok(JSON.stringify({ ...JSON.parse(COMPLIANT_REPO), allow_auto_merge: false }))
+		const ok1 = byName(
+			await checkGitHubSettings(gitRepo(), fakeGh({ repo: off }), { autoMerge: false }),
+			'Merge settings'
+		)
+		expect(ok1?.status).toBe('ok')
+		expect(ok1?.detail).toContain('auto-merge off')
+
+		const drift = byName(
+			await checkGitHubSettings(gitRepo(), fakeGh(), { autoMerge: false }),
+			'Merge settings'
+		)
+		expect(drift?.status).toBe('drift')
+		expect(drift?.detail).toBe('auto-merge enabled (rules.github.autoMerge: false)')
+	})
+
+	it('reports a declared security setting the repo does not match as drift', async () => {
+		const results = await checkGitHubSettings(gitRepo(), fakeGh(), { vulnerabilityAlerts: false })
+		const s = byName(results, 'Security updates')
+		expect(s?.status).toBe('drift')
+		expect(s?.detail).toContain(
+			'vulnerability alerts enabled (rules.github.vulnerabilityAlerts: false)'
+		)
+	})
+
+	it('accepts declared release reviewers case-insensitively, in any order', async () => {
+		const g = byName(
+			await checkGitHubSettings(
+				releaseRepo(),
+				fakeGh({ environments: releaseEnv('bob', 'Alice') }),
+				{
+					releaseReviewers: ['alice', 'BOB'],
+				}
+			),
+			'Release gate'
+		)
+		expect(g?.status).toBe('ok')
+	})
+
+	it('drifts when the release environment has other reviewers than declared', async () => {
+		const g = byName(
+			await checkGitHubSettings(releaseRepo(), fakeGh({ environments: releaseEnv('alice') }), {
+				releaseReviewers: ['bob'],
+			}),
+			'Release gate'
+		)
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('reviewers are alice (rules.github.releaseReviewers: ["bob"])')
+		expect(g?.hint).toContain('fix release-environment')
+	})
+
+	it('builds commands from the declared values', () => {
+		const cmds = buildGhApplyCommands({
+			nwo: 'owner/repo',
+			branch: 'main',
+			merge: true,
+			protection: true,
+			workflow: false,
+			alerts: true,
+			securityFixes: true,
+			rules: {
+				requiredChecks: ['ci'],
+				strict: true,
+				deleteOnMerge: false,
+				vulnerabilityAlerts: false,
+				automatedSecurityFixes: false,
+			},
+		})
+		expect(cmds[0]?.args).toContain('delete_branch_on_merge=false')
+		expect(cmds[0]?.args).toContain('allow_auto_merge=true')
+		expect(JSON.parse(cmds[1]?.stdin ?? '{}').required_status_checks).toEqual({
+			strict: true,
+			contexts: ['ci'],
+		})
+		// Disabling runs fixes first: GitHub refuses fixes on a repo with alerts off.
+		expect(cmds.slice(2).map((c) => c.args)).toEqual([
+			['api', '-X', 'DELETE', 'repos/owner/repo/automated-security-fixes'],
+			['api', '-X', 'DELETE', 'repos/owner/repo/vulnerability-alerts'],
+		])
+	})
+
+	it('applies only the fields that deviate from the rules', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const calls: string[][] = []
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+			const fallback = fakeGh()
+			if (args.includes('-X')) {
+				calls.push(args)
+				return ok('')
+			}
+			return fallback(args, stdin)
+		})
+		const applied = await applyGithubSettings(gitRepo(), exec, {
+			requiredChecks: ['lint', 'typecheck', 'build', 'test'],
+			automatedSecurityFixes: false,
+		})
+		expect(applied).toEqual(['automated security fixes off (rules.github)'])
+		expect(calls).toEqual([['api', '-X', 'DELETE', 'repos/owner/repo/automated-security-fixes']])
+	})
+
+	it('says a 404 on a write means the token lacks admin rights', async () => {
+		const errors: string[] = []
+		vi.spyOn(console, 'error').mockImplementation((m: string) => {
+			errors.push(m)
+		})
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) =>
+			args.includes('-X') ? fail('gh: Not Found (HTTP 404)') : fakeGh()(args, stdin)
+		)
+		expect(await applyGithubSettings(gitRepo(), exec, { strict: true })).toEqual([])
+		expect(errors.join('\n')).toContain('admin')
+	})
+
+	it('re-applies declared release reviewers over an existing rule', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const puts: Array<{ args: string[]; stdin?: string }> = []
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+			if (args.includes('PUT')) {
+				puts.push({ args, stdin })
+				return ok('{}')
+			}
+			if (args[1] === 'users/bob') return ok('42\n')
+			if (args[1] === 'repos/{owner}/{repo}') return ok(COMPLIANT_REPO)
+			if (args[1]?.endsWith('/environments')) return releaseEnv('alice')
+			return fail('unexpected call')
+		})
+		const applied = await applyReleaseEnvironment(releaseRepo(), exec, {
+			releaseReviewers: ['bob'],
+		})
+		expect(puts).toHaveLength(1)
+		expect(JSON.parse(puts[0]?.stdin ?? '')).toEqual({ reviewers: [{ type: 'User', id: 42 }] })
+		expect(applied[0]).toContain('rules.github.releaseReviewers (bob)')
+	})
+})
+
+describe('rules.github.releaseReviewers validation (#817)', () => {
+	it('refuses a reviewer that is not a GitHub login before calling gh', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const dir = gitRepo()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/release.yml'),
+			'jobs:\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx semantic-release\n'
+		)
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		const calls: string[][] = []
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+			calls.push(args)
+			return fakeGh()(args, stdin)
+		})
+		expect(await applyReleaseEnvironment(dir, exec, { releaseReviewers: ['../orgs/x'] })).toEqual(
+			[]
+		)
+		expect(calls.some((a) => a.some((x) => x.includes('orgs/x')))).toBe(false)
+	})
+})
+
+describe('rules.github review fixes (#817)', () => {
+	const RELEASE_JOB =
+		'jobs:\n  release:\n    runs-on: ubuntu-latest\n    environment: release\n    steps:\n      - run: npx semantic-release\n'
+	const gatedBy = (login: string) =>
+		ok(
+			JSON.stringify({
+				environments: [
+					{
+						name: 'release',
+						protection_rules: [
+							{ type: 'required_reviewers', reviewers: [{ reviewer: { login } }] },
+						],
+					},
+				],
+			})
+		)
+	function releaseRepo(): string {
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows/release.yml'), RELEASE_JOB)
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		return dir
+	}
+
+	it('reports an empty releaseReviewers as drift', async () => {
+		const g = byName(
+			await checkGitHubSettings(releaseRepo(), fakeGh({ environments: gatedBy('alice') }), {
+				releaseReviewers: [],
+			}),
+			'Release gate'
+		)
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('releaseReviewers is empty')
+	})
+
+	it('never PUTs an empty reviewer list', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const puts: string[][] = []
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+			if (args.includes('PUT')) puts.push(args)
+			if (args[1]?.endsWith('/environments')) return gatedBy('alice')
+			return fakeGh()(args, stdin)
+		})
+		expect(await applyReleaseEnvironment(releaseRepo(), exec, { releaseReviewers: [] })).toEqual([])
+		expect(puts).toEqual([])
+	})
+
+	it('turns fixes off with alerts when only vulnerabilityAlerts: false is declared', () => {
+		const cmds = buildGhApplyCommands({
+			nwo: 'owner/repo',
+			branch: 'main',
+			merge: false,
+			protection: false,
+			workflow: false,
+			alerts: true,
+			securityFixes: true,
+			rules: { vulnerabilityAlerts: false },
+		})
+		expect(cmds.map((c) => c.args)).toEqual([
+			['api', '-X', 'DELETE', 'repos/owner/repo/automated-security-fixes'],
+			['api', '-X', 'DELETE', 'repos/owner/repo/vulnerability-alerts'],
+		])
+	})
+
+	it('does not ask for fixes on a repo whose alerts are declared off', async () => {
+		const results = await checkGitHubSettings(
+			gitRepo(),
+			fakeGh({
+				alerts: fail('gh: Not Found (HTTP 404)'),
+				securityFixes: ok(JSON.stringify({ enabled: false, paused: false })),
+			}),
+			{ vulnerabilityAlerts: false }
+		)
+		expect(byName(results, 'Security updates')?.status).toBe('ok')
+	})
+})
