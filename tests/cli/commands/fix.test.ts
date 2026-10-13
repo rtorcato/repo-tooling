@@ -1094,18 +1094,63 @@ describe('fix targeted', () => {
 		}
 	})
 
-	it('fix --json without a package.json still emits JSON, husky skipped', async () => {
+	// #827: the bulk walk on an empty dir wrote tsconfig.json and
+	// release.config.mjs around a package.json nothing created.
+	it('fix --json on an empty dir refuses, points at setup, and writes nothing', async () => {
 		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
 		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await expect(fixCommand(undefined, { directory: dir, json: true })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(parsed).toMatchObject({ error: 'no-project' })
+			expect(parsed.hint).toMatch(/setup --preset/)
+			expect(fs.readdirSync(dir)).toEqual(['.git'])
+		} finally {
+			exitSpy.mockRestore()
+			logSpy.mockRestore()
+		}
+	})
+
+	it('fix --yes on an empty dir refuses and writes nothing', async () => {
+		const dir = newTmpDir()
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 		try {
-			await fixCommand(undefined, { directory: dir, json: true })
-			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
-			const husky = parsed.actions.find((a: { target: string | null }) => a.target === 'husky')
-			expect(husky).toMatchObject({ status: 'skipped', filesWritten: [] })
+			await expect(fixCommand(undefined, { directory: dir, yes: true })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			expect(errSpy.mock.calls.flat().join('\n')).toMatch(/setup --preset/)
+			expect(fs.readdirSync(dir)).toEqual([])
 		} finally {
-			logSpy.mockRestore()
+			exitSpy.mockRestore()
 			errSpy.mockRestore()
+		}
+	})
+
+	// #827: it printed "skipping" and exited 0, which read as success.
+	it('fix package-json on an empty dir exits 1 with a setup hint', async () => {
+		const dir = newTmpDir()
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await expect(
+				fixCommand('package-json', { directory: dir, yes: true, json: true })
+			).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(parsed).toMatchObject({ target: 'package-json', error: 'no-package-json' })
+			expect(parsed.hint).toMatch(/setup --preset/)
+		} finally {
+			exitSpy.mockRestore()
+			logSpy.mockRestore()
 		}
 	})
 

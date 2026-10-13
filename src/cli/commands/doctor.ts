@@ -23,7 +23,7 @@ import { readPyproject, renderPythonWorkflow } from '../../languages/python/ci.j
 import { resolveLanguageModule } from '../../languages/registry.js'
 import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../languages/swift/checks.js'
 import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.js'
-import { type DetectedLanguage, detectAuditLanguage } from '../utils/detect-language.js'
+import { type DetectedLanguage, detectAuditLanguage, isFreshDir } from '../utils/detect-language.js'
 import {
 	checkGitHubSettings,
 	GITHUB_SETTINGS_CHECKS,
@@ -36,6 +36,8 @@ import { checkCopiedAssets } from '../utils/copied-assets.js'
 import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
 import { compareRulesWithReference, type RulesComparison } from '../utils/reference-rules.js'
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
+import { fixersForLanguage } from './fixers-by-language.js'
+import { PRESET_NAMES } from './setup-presets.js'
 import {
 	type BadgeAudience,
 	checkAiSetup,
@@ -214,13 +216,26 @@ async function checkNpmOidcPublish(dir: string, pkg: Pkg | null): Promise<CheckR
 	}
 }
 
-function checkLockfile(lock: Lockfile | null): CheckResult {
+/**
+ * The fix target for a check, but only when `fix` registers it for this language.
+ * The shared map falls back to JS-named targets, so without the filter a Python
+ * or no-marker repo was told to run `fix lockfile` and got "Unknown fix target" (#827).
+ */
+function registeredFixTarget(check: string, language: string): string | null {
+	const target = getFixTargetForCheck(check, language)
+	return target && fixersForLanguage(language).some((f) => f.target === target) ? target : null
+}
+
+function checkLockfile(lock: Lockfile | null, language: string): CheckResult {
+	const target = registeredFixTarget('lockfile', language)
+	const run = (why: string) =>
+		target ? { hint: `Run \`npx @rtorcato/repo-tooling fix ${target}\` to ${why}` } : {}
 	if (!lock) {
 		return {
 			check: 'lockfile',
 			status: 'optional-missing',
 			detail: 'no .repo-tooling.json — doctor cannot tell intentional opt-outs from drift',
-			hint: 'Run `npx @rtorcato/repo-tooling fix lockfile` to record current choices',
+			...run('record current choices'),
 		}
 	}
 	if (lock.version > LOCKFILE_VERSION) {
@@ -238,7 +253,7 @@ function checkLockfile(lock: Lockfile | null): CheckResult {
 			check: 'lockfile',
 			status: 'optional-missing',
 			detail: `.repo-tooling.json is v${lock.version}; this CLI writes v${LOCKFILE_VERSION} — newer doctor capabilities stay dormant until it's migrated`,
-			hint: 'Run `npx @rtorcato/repo-tooling fix lockfile` to migrate it in place',
+			...run('migrate it in place'),
 		}
 	}
 	return {
@@ -347,7 +362,7 @@ async function runBaseChecks(
 	opts: BaseCheckOptions
 ): Promise<CheckResult[]> {
 	const results: CheckResult[] = []
-	results.push(checkLockfile(lock))
+	results.push(checkLockfile(lock, opts.language))
 	// Any language can have copied presets (swiftlint, ruff, perlcriticrc), so
 	// this rides with the base suite rather than a module's (#428).
 	results.push(await checkCopiedAssets(dir))
@@ -604,14 +619,25 @@ function statusLabel(status: CheckStatus): string {
 
 const MAX_NEXT_STEP_SUGGESTIONS = 8
 
-export function nextStepSuggestions(results: CheckResult[], language?: string): string[] {
+export function nextStepSuggestions(
+	results: CheckResult[],
+	language?: string,
+	{ fresh = false }: { fresh?: boolean } = {}
+): string[] {
+	// `fix` refuses an empty dir, so the per-check list would only lead into that
+	// refusal — the one command that builds the project is `setup` (#827).
+	if (fresh) {
+		return [
+			`Run \`npx @rtorcato/repo-tooling setup --preset <${PRESET_NAMES.join('|')}>\` to scaffold the project`,
+		]
+	}
 	const fixable = results.filter(
 		(r) => r.status === 'drift' || r.status === 'missing' || r.status === 'optional-missing'
 	)
 	const lines: string[] = []
 	let overflow = 0
 	for (const r of fixable) {
-		const target = getFixTargetForCheck(r.check, language)
+		const target = language ? registeredFixTarget(r.check, language) : getFixTargetForCheck(r.check)
 		if (!target) continue
 		if (lines.length >= MAX_NEXT_STEP_SUGGESTIONS) {
 			overflow++
@@ -710,7 +736,9 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 		console.log(
 			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}, ${chalk.blue(`${summary.declared} declared`)}${summary.skipped ? `, ${chalk.gray(`${summary.skipped} skipped`)}` : ''}\n`
 		)
-		const suggestions = nextStepSuggestions(results, await detectAuditLanguage(dir))
+		const suggestions = nextStepSuggestions(results, await detectAuditLanguage(dir), {
+			fresh: await isFreshDir(dir),
+		})
 		if (suggestions.length > 0) {
 			console.log(chalk.bold('  Next steps:'))
 			for (const s of suggestions) {

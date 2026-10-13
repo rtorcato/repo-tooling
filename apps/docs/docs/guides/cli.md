@@ -127,6 +127,8 @@ Exits non-zero on `drift` or `missing` — useful as a CI gate.
 
 Applies scaffolders for items `doctor` flagged. Without a target it walks every non-ok result, prompting per item; with a target it applies just that one.
 
+`fix` aligns an existing project; it doesn't create one. In an empty directory (nothing but dotfiles such as `.git`) the walk refuses and exits 1 with a pointer to `setup --preset <name>`, and `doctor`'s next steps say the same.
+
 ```bash
 npx @rtorcato/repo-tooling fix                    # walk all findings interactively
 npx @rtorcato/repo-tooling fix dependabot         # scaffold dependabot.yml + auto-merge workflow

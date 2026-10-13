@@ -1499,6 +1499,32 @@ describe('nextStepSuggestions', () => {
 		expect(suggestions.at(-1)).toMatch(/and \d+ more/)
 	})
 
+	it('points a fresh dir at setup instead of a list of fixers (#827)', () => {
+		const suggestions = nextStepSuggestions(
+			[{ check: 'package.json', status: 'missing', detail: '' }],
+			'js',
+			{ fresh: true }
+		)
+		expect(suggestions).toHaveLength(1)
+		expect(suggestions[0]).toMatch(/setup --preset <minimal\|library/)
+	})
+
+	it('drops a target that fix does not register for the language (#827)', () => {
+		const lockfile = [{ check: 'lockfile', status: 'optional-missing' as const, detail: '' }]
+		expect(nextStepSuggestions(lockfile, 'js')[0]).toMatch(/fix lockfile/)
+		expect(nextStepSuggestions(lockfile, 'swift')[0]).toMatch(/fix swift-lockfile/)
+		expect(nextStepSuggestions(lockfile, 'python')).toEqual([])
+		expect(nextStepSuggestions(lockfile, 'unknown')).toEqual([])
+	})
+
+	it('gives no lockfile hint where fix cannot record one (#827)', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'README.md'), '# x\n')
+		const lockfile = (await runDoctor(dir, { offline: true })).find((r) => r.check === 'lockfile')
+		expect(lockfile?.status).toBe('optional-missing')
+		expect(lockfile?.hint).toBeUndefined()
+	})
+
 	it('skips checks with no registered fix target', () => {
 		const suggestions = nextStepSuggestions([{ check: 'Node', status: 'drift', detail: '' }])
 		expect(suggestions).toEqual([])
