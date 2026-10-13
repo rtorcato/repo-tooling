@@ -10,7 +10,7 @@ audit without hand-writing the step:
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1
 ```
 
 That fails the job when `doctor` finds drift or missing config — the same exit
@@ -27,7 +27,7 @@ Every finding becomes a job annotation regardless of `fail-on`, so `none` is the
 report-only mode for a repo adopting the audit before it's clean:
 
 ```yaml
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1
   with:
     directory: packages/app
     fail-on: none
@@ -40,7 +40,7 @@ report-only mode for a repo adopting the audit before it's clean:
 | `json` | The full `doctor --json` payload — feed it to a PR comment or a report. |
 
 ```yaml
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1
   id: doctor
   with:
     fail-on: none

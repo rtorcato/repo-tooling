@@ -97,7 +97,7 @@ See the [Getting Started guide](https://docs.torcato.dev/repo-tooling/docs/guide
 Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
 
 ```yaml
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1  # pin the latest release tag
 ```
 
 See the [GitHub Actions reference](https://docs.torcato.dev/repo-tooling/docs/reference/github-actions/#run-doctor-as-a-github-action) for its inputs and outputs.
@@ -199,7 +199,7 @@ GitHub issues, the optional companion
 loop: an `ai-ready` issue becomes a worktree, a PR and two agent reviews, then
 waits for you to merge. It builds on the repo standard repo-tooling sets up
 (branch protection, the release gate, worktree config) and keeps its settings in
-the same `.repo-tooling.json`:
+its own `.repo-ai.json`:
 
 ```bash
 npx @infrazero/repo-ai setup

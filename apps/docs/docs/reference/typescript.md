@@ -48,8 +48,11 @@ merges, so all four entries have to be listed:
 
 ## ts-reset
 
-The wizard copies a `reset.d.ts` that imports `@total-typescript/ts-reset`, giving you stricter array and JSON types out of the box. Available at:
+The wizard copies a `reset.d.ts` that imports `@total-typescript/ts-reset`, giving you stricter array and JSON types out of the box. `copy` has no target for it, so in an existing project add it by hand:
 
 ```bash
-npx @rtorcato/repo-tooling copy reset
+pnpm add -D @total-typescript/ts-reset
+echo "import '@total-typescript/ts-reset'" > reset.d.ts
 ```
+
+Then add `reset.d.ts` to `include` in your `tsconfig.json`.
