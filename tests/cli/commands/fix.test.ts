@@ -14,6 +14,7 @@ import {
 } from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
+import { getToolRange } from '../../../src/cli/utils/version.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 vi.mock('inquirer', () => ({
@@ -258,6 +259,10 @@ describe('fix --list', () => {
 		} finally {
 			logSpy.mockRestore()
 		}
+	})
+
+	it('keeps issue numbers out of every fixer description (#828)', () => {
+		expect(listFixers().filter((f) => /#\d+/.test(f.description))).toEqual([])
 	})
 
 	it('--list does not run doctor or read package.json', async () => {
@@ -524,7 +529,7 @@ describe('fix targeted', () => {
 			'CLAUDE.md',
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
-			'.claude/skills/repo-tooling.md',
+			'.claude/skills/repo-tooling/SKILL.md',
 			'.mcp.json.example',
 		]) {
 			expect(await fs.pathExists(join(dir, rel))).toBe(true)
@@ -638,7 +643,7 @@ describe('fix targeted', () => {
 		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', version: '0.0.0' })
 		await fixCommand('package-json', { directory: dir, yes: true })
 		const pkg = await fs.readJson(join(dir, 'package.json'))
-		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe('latest')
+		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe(await getToolRange())
 	})
 
 	it('fix biome on existing biome.json respects "no" on overwrite prompt', async () => {
@@ -847,7 +852,7 @@ describe('fix targeted', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fixCommand('claude-skill', { directory: dir, yes: true })
-		const skillPath = join(dir, '.claude', 'skills', 'repo-tooling.md')
+		const skillPath = join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md')
 		expect(await fs.pathExists(skillPath)).toBe(true)
 		const body = await fs.readFile(skillPath, 'utf8')
 		expect(body).toContain('name: repo-tooling')
@@ -857,6 +862,8 @@ describe('fix targeted', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fs.outputFile(join(dir, '.claude', 'skills', 'js-tooling.md'), '# stale\n')
+		// Flat path from before #823, which Claude Code never loaded.
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling.md'), '# stale\n')
 		await fs.outputFile(join(dir, '.cursor', 'rules', 'js-tooling.mdc'), '# stale\n')
 
 		await fixCommand('claude-skill', { directory: dir, yes: true })
@@ -864,7 +871,10 @@ describe('fix targeted', () => {
 
 		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'js-tooling.md'))).toBe(false)
 		expect(await fs.pathExists(join(dir, '.cursor', 'rules', 'js-tooling.mdc'))).toBe(false)
-		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'repo-tooling.md'))).toBe(true)
+		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'repo-tooling.md'))).toBe(false)
+		expect(await fs.pathExists(join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md'))).toBe(
+			true
+		)
 		expect(await fs.pathExists(join(dir, '.cursor', 'rules', 'repo-tooling.mdc'))).toBe(true)
 	})
 
@@ -1094,18 +1104,63 @@ describe('fix targeted', () => {
 		}
 	})
 
-	it('fix --json without a package.json still emits JSON, husky skipped', async () => {
+	// #827: the bulk walk on an empty dir wrote tsconfig.json and
+	// release.config.mjs around a package.json nothing created.
+	it('fix --json on an empty dir refuses, points at setup, and writes nothing', async () => {
 		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
 		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await expect(fixCommand(undefined, { directory: dir, json: true })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(parsed).toMatchObject({ error: 'no-project' })
+			expect(parsed.hint).toMatch(/setup --preset/)
+			expect(fs.readdirSync(dir)).toEqual(['.git'])
+		} finally {
+			exitSpy.mockRestore()
+			logSpy.mockRestore()
+		}
+	})
+
+	it('fix --yes on an empty dir refuses and writes nothing', async () => {
+		const dir = newTmpDir()
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 		try {
-			await fixCommand(undefined, { directory: dir, json: true })
-			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
-			const husky = parsed.actions.find((a: { target: string | null }) => a.target === 'husky')
-			expect(husky).toMatchObject({ status: 'skipped', filesWritten: [] })
+			await expect(fixCommand(undefined, { directory: dir, yes: true })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			expect(errSpy.mock.calls.flat().join('\n')).toMatch(/setup --preset/)
+			expect(fs.readdirSync(dir)).toEqual([])
 		} finally {
-			logSpy.mockRestore()
+			exitSpy.mockRestore()
 			errSpy.mockRestore()
+		}
+	})
+
+	// #827: it printed "skipping" and exited 0, which read as success.
+	it('fix package-json on an empty dir exits 1 with a setup hint', async () => {
+		const dir = newTmpDir()
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await expect(
+				fixCommand('package-json', { directory: dir, yes: true, json: true })
+			).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			const parsed = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(parsed).toMatchObject({ target: 'package-json', error: 'no-package-json' })
+			expect(parsed.hint).toMatch(/setup --preset/)
+		} finally {
+			exitSpy.mockRestore()
+			logSpy.mockRestore()
 		}
 	})
 

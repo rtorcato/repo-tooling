@@ -27,193 +27,73 @@ Most tooling libraries give you one piece — just TypeScript configs, or just a
 
 ## Start a new project
 
-Interactive wizard — answers every prompt, scaffolds the whole project:
-
 ```bash
 npx @rtorcato/repo-tooling setup
 ```
 
-Non-interactive — scaffold from a named preset in one shot (CI-friendly):
+The wizard asks about each piece and scaffolds the project. To skip the
+questions, start from a preset:
 
 ```bash
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --yes
 # presets: minimal | library | web-app | node-api | nextjs-app | react-app | swift-library
+
+# The same, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
+npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --yes --no-ai-setup
 ```
 
-Run without `--yes` in a terminal and the preset first prints every file it would
-write and lets you uncheck the parts you don't want (git hooks, commitlint,
-releases, Dependabot/CodeQL, badges, AI agent rules). Piped or redirected — CI —
-it writes everything in one shot, exactly as before. `minimal` is tsconfig +
-Biome + Vitest and nothing else.
+`minimal` is tsconfig + Biome + Vitest and nothing else. `swift-library`
+scaffolds a SwiftPM package instead of an npm one. Without `--yes` in a terminal,
+a preset first lists every file it would write and lets you uncheck parts.
 
-`swift-library` scaffolds a SwiftPM package (manifest, sources, tests, SwiftLint,
-Periphery, macOS CI) instead of an npm one — see the
-[Swift guide](https://docs.torcato.dev/repo-tooling/docs/guides/swift).
+## Already have a project?
 
-Just one config file? Use `copy`:
-
-```bash
-npx @rtorcato/repo-tooling copy biome        # → biome.json
-npx @rtorcato/repo-tooling copy tsconfig     # → tsconfig.json
-npx @rtorcato/repo-tooling copy changesets   # → .changeset/config.json
-npx @rtorcato/repo-tooling copy oxlint       # → .oxlintrc.json
-npx @rtorcato/repo-tooling copy claude-skill # → .claude/skills/repo-tooling.md
-```
-
-The Biome preset honours your `.gitignore`, so build output stays unlinted. One
-known gap: Biome cannot parse Tailwind CSS v4 stylesheets (`@theme`, `@source`,
-`@custom-variant`, `@apply`) and reports a parse error on them. If you use
-Tailwind v4, exclude your stylesheet in `biome.json`:
-
-```jsonc
-{
-  "extends": ["@rtorcato/repo-tooling/biome"],
-  // List only the extra negations — Biome merges them into the preset's
-  // `includes`. Do NOT repeat the leading `"**"`: that is a lint error,
-  // `lint/suspicious/noBiomeFirstException`.
-  "files": { "includes": ["!**/*.css"] }
-}
-```
-
-**Already have a project?** Don't rerun `setup` — use `doctor` + `fix`:
+Don't rerun `setup`. Use `doctor` and `fix`:
 
 ```bash
 npx @rtorcato/repo-tooling doctor   # find what's missing or drifted
-npx @rtorcato/repo-tooling fix      # apply scaffolders, prompting per item
+npx @rtorcato/repo-tooling fix      # apply fixes, asking before each one
 ```
 
-See the [Getting Started guide](https://docs.torcato.dev/repo-tooling/docs/guides/getting-started/) for the full walkthrough.
+Just want one config file? `npx @rtorcato/repo-tooling copy biome` (or
+`tsconfig`, `oxlint`, `changesets`, …).
 
 ## Commands
 
 | Command | What it does | Example |
 | --- | --- | --- |
 | `setup` | Interactive wizard that scaffolds a whole new project (add `--preset` to run non-interactively). | `npx @rtorcato/repo-tooling setup` |
-| `list` | List every tooling configuration this package can scaffold (`--json` for machine output). | `npx @rtorcato/repo-tooling list` |
+| `list` | List every `fix` target, from the same registry as `fix --list` (`--json` for machine output). | `npx @rtorcato/repo-tooling list` |
 | `copy <config>` | Copy a single config file into the current project. | `npx @rtorcato/repo-tooling copy biome` |
 | `doctor` | Diagnose an existing project for missing or drifted tooling. | `npx @rtorcato/repo-tooling doctor` |
 | `fix [target]` | Apply scaffolders for what `doctor` flagged (`--yes`, `--dry-run`, `--diff`). | `npx @rtorcato/repo-tooling fix` |
 
-Prefer to run the audit in CI? `doctor` also ships as a GitHub Action:
+Every command takes `-d, --directory <path>`; run any with `--help` for its full flags.
+
+`doctor` also ships as a GitHub Action, so CI can fail on drift:
 
 ```yaml
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1  # pin the latest release tag
 ```
 
-See the [GitHub Actions reference](https://docs.torcato.dev/repo-tooling/docs/reference/github-actions/#run-doctor-as-a-github-action) for its inputs and outputs.
+## Use with AI agents
 
-Every command takes `-d, --directory <path>`; run any with `--help` for its full flags. Run `list` (or `list --json`) for the full set of `fix` targets — it's the source of truth. Notable ones include `fix bun` (Bun runtime config). Docs sites are scaffolded by [`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs); this package keeps the [reusable deploy workflows](https://docs.torcato.dev/repo-tooling/docs/guides/docs-site/).
+| You use | Install |
+| --- | --- |
+| **Claude Code** | The plugin: `/plugin marketplace add rtorcato/repo-tooling`, then `/plugin install repo-tooling@repo-tooling` |
+| **Any other agent** (Cursor, Copilot, Codex, …) | `npx @rtorcato/repo-tooling fix agents-md --yes` |
 
-## The `.repo-tooling.json` lockfile
+The [AI setup guide](https://docs.torcato.dev/repo-tooling/docs/guides/ai-setup/)
+covers the other routes and what each file is for.
 
-An **optional** manifest that records the tooling choices you adopted. Nothing
-reads it at build/lint/test time — it exists only so `doctor` can tell an
-*intentional opt-out* from *drift*. repo-tooling works fine without it, which is
-why `doctor` reports a missing one as `not configured`, not an error.
+## Learn more
 
-Generate or refresh it from what's currently on disk:
-
-```bash
-npx @rtorcato/repo-tooling fix lockfile
-```
-
-**It's the only config file you need.** Don't keep a separate hand-authored
-`.repo-tooling.config.json` next to it — the lockfile already embeds the full
-`ProjectConfig` under `config`, and `setup --config` accepts the lockfile
-directly, so you can re-run a non-interactive setup from it:
-
-```bash
-npx @rtorcato/repo-tooling setup --config .repo-tooling.json
-```
-
-Each `config.*` key mirrors a setup answer — see the
-[schema](https://docs.torcato.dev/repo-tooling/schemas/lockfile.json) for the
-full field reference. The keys `doctor` acts on:
-
-- `typescript.enabled` / `typescript.config` — `base` \| `react` \| `next` \| `node` \| `express`
-- `linting.tool` — `biome` \| `eslint` \| `both` \| `none`
-- `formatting.tool` — `biome` \| `prettier` \| `none`
-- `testing.framework` — `vitest` \| `jest` \| `playwright` \| `none`
-- `gitHooks`, `commitLint`, `semanticRelease` — booleans
-- `securityAutomation` — boolean (Dependabot + CodeQL)
-- `bundler` — `tsup` \| `esbuild` \| `vite` \| `none`
-- `aiSetup` — boolean (AGENTS.md, CLAUDE.md, Cursor/Copilot rules)
-- `brand` — boolean (`brand/` banner + social-card SVG sources and `render.sh`)
-
-**How opt-outs actually work.** When the lockfile records that you declined an
-*optional* tool (e.g. `securityAutomation: false`), `doctor` demotes that check
-from `not configured` to `ok — intentionally declined` instead of nagging you to
-add it. This applies only to optional checks — it does **not** silence *drift*:
-if a config you adopted diverges from the shared base (say your `tsconfig.json`
-extends a different preset), `doctor` still flags it, because drift is a mismatch
-in a tool you're using, not an opt-out. There's no field to suppress drift today.
-
-**Adoption vs. standalone.** `fix lockfile` infers adoption from what's on disk,
-so on a repo that deliberately runs standalone configs (no
-`@rtorcato/repo-tooling` dependency) it can record `typescript.config: "base"` and
-friends — asserting you extend the shared bases when you don't. If you're not
-adopting repo-tooling's configs, skip the lockfile; it won't stop the `extends`
-drift warnings.
-
-## AI agent rules
-
-The package ships rules that teach AI coding agents to drive the CLI
-(`doctor` / `fix` / `setup`) non-interactively. Install for your agent — all
-generated from one source, so guidance never drifts between them:
-
-```bash
-npx @rtorcato/repo-tooling fix claude-skill --yes           # → .claude/skills/repo-tooling.md
-npx @rtorcato/repo-tooling fix cursor-rules --yes           # → .cursor/rules/repo-tooling.mdc
-npx @rtorcato/repo-tooling fix copilot-instructions --yes   # → .github/copilot-instructions.md
-npx @rtorcato/repo-tooling fix agents-md --yes              # → AGENTS.md
-```
-
-`copilot-instructions` and `agents-md` upsert a delimited block, so your own
-content in those shared files is never clobbered. Re-running updates the block
-in place on upgrade.
-
-Prefer a symlink that auto-syncs the Claude skill on every upgrade?
-
-```bash
-mkdir -p .claude/skills
-ln -sf ../../node_modules/@rtorcato/repo-tooling/tooling/claude/repo-tooling.md \
-  .claude/skills/repo-tooling.md
-```
-
-### Use with Claude Code (plugin)
-
-This repo is also a self-hosted Claude Code marketplace. Install the plugin to
-get its skills — `repo-tooling` (adopt/audit the presets via the CLI),
-`npm-publish` (never hand-cut a release) and `dogfood` (run the tooling against
-throwaway fixtures) — in any session:
-
-```
-/plugin marketplace add rtorcato/repo-tooling
-/plugin install repo-tooling@repo-tooling
-```
-
-### Optional: agents on your issue queue (repo-ai)
-
-repo-tooling works entirely on its own. If you also want agents working your
-GitHub issues, the optional companion
-`@infrazero/repo-ai` runs a label-driven
-loop: an `ai-ready` issue becomes a worktree, a PR and two agent reviews, then
-waits for you to merge. It builds on the repo standard repo-tooling sets up
-(branch protection, the release gate, worktree config) and keeps its settings in
-the same `.repo-tooling.json`:
-
-```bash
-npx @infrazero/repo-ai setup
-```
-
-See [Using with repo-ai](https://docs.torcato.dev/repo-tooling/docs/guides/ai-issue-loop/)
-for how the two fit together. The loop shipped inside repo-tooling until 4.0.0.
-
-### Use with other AI tools (Cursor / Copilot / Codex)
-
-[`AGENTS.md`](AGENTS.md) at the repo root carries the same guidance in the
-cross-tool convention many agents read, and ships in the npm tarball so tools
-scanning `node_modules/@rtorcato/repo-tooling` can find it.
+- [Getting started](https://docs.torcato.dev/repo-tooling/docs/guides/getting-started/): the full walkthrough
+- [`.repo-tooling.json`](https://docs.torcato.dev/repo-tooling/docs/reference/repo-tooling-json/): the optional lockfile that lets `doctor` tell an opt-out from drift
+- [GitHub Actions](https://docs.torcato.dev/repo-tooling/docs/reference/github-actions/#run-doctor-as-a-github-action): the `doctor` action's inputs and outputs
+- [Biome](https://docs.torcato.dev/repo-tooling/docs/reference/biome/): extending the preset, and the Tailwind CSS v4 workaround
+- [Using with repo-ai](https://docs.torcato.dev/repo-tooling/docs/guides/ai-issue-loop/): the optional companion that puts agents on your issue queue
+- [Docs site](https://docs.torcato.dev/repo-tooling/docs/guides/docs-site/): the reusable deploy workflows (sites themselves come from [`@rtorcato/shared-docs`](https://github.com/rtorcato/shared-docs))
 
 ## What's new
 
@@ -244,7 +124,6 @@ MIT — see [LICENSE](LICENSE).
 Any agent that supports the [`skills`](https://www.npmjs.com/package/skills) CLI can install this repo's skills straight from GitHub — no clone, no package install:
 
 ```bash
-npx skills add https://github.com/rtorcato/repo-tooling --skill 'dogfood'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'npm-publish'
 npx skills add https://github.com/rtorcato/repo-tooling --skill 'repo-tooling'
 ```

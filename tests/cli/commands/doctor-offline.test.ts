@@ -53,7 +53,8 @@ describe('doctor --offline (#755)', () => {
 		expect(skipped).toEqual(
 			expect.arrayContaining(['Milestones', 'Repository secrets', 'Branch protection'])
 		)
-		for (const r of results.filter((r) => r.status === 'skipped')) {
+		// The git-identity rows skip on CI for their own reason (#839); only the gh-backed rows are offline.
+		for (const r of results.filter((r) => r.status === 'skipped' && !r.check.startsWith('Git '))) {
 			expect(r.detail).toMatch(/^offline/)
 		}
 	})

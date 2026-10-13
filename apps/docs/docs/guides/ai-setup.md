@@ -10,6 +10,18 @@ every agent (Claude Code, Cursor, GitHub Copilot, or anything that reads
 All of it derives from **one source of truth** — the shipped Claude skill
 (`tooling/claude/repo-tooling.md`) — so the rules never drift between tools.
 
+## Which agent integration?
+
+| You use | Install | You get |
+| --- | --- | --- |
+| **Claude Code** | The plugin: `/plugin marketplace add rtorcato/repo-tooling`, then `/plugin install repo-tooling@repo-tooling` | The `repo-tooling` and `npm-publish` skills in every session, updated with the plugin |
+| **Any other agent** (Cursor, Copilot, Codex, …) | `npx @rtorcato/repo-tooling fix agents-md --yes` | A block in `AGENTS.md`, the cross-tool file most agents read |
+
+That's the whole recommendation. The rest of this page covers the other routes:
+`setup` and `fix ai` write every rule file at once, `fix cursor-rules` /
+`fix copilot-instructions` / `fix claude-skill` write one each, and
+[`npx skills add`](#install-a-skill-in-one-command) installs a skill on its own.
+
 ## What gets written
 
 | File | For | How it's written |
@@ -18,14 +30,14 @@ All of it derives from **one source of truth** — the shipped Claude skill
 | `CLAUDE.md` | Claude Code | Pointer: `@AGENTS.md` (no duplication) |
 | `.cursor/rules/repo-tooling.mdc` | Cursor | Generated rule file |
 | `.github/copilot-instructions.md` | GitHub Copilot | Merge-safe delimited block |
-| `.claude/skills/repo-tooling.md` | Claude Code skill | Copied verbatim |
+| `.claude/skills/repo-tooling/SKILL.md` | Claude Code skill | Copied verbatim |
 | `.mcp.json.example` | Model Context Protocol | Commented template (see below) |
 | `.claude/settings.json` | Claude Code worktrees | Merge-safe key upsert (see below), JS repos only |
 | `README.md` | Your repo's own skills | Merge-safe block, only if this repo ships `skills/<name>/SKILL.md` |
 
-Every file is either a merge-safe **delimited block** (`<!-- js-tooling:start -->`
-… `<!-- js-tooling:end -->`) or a `.example`, so re-running never clobbers your
-own content and is fully idempotent.
+Every file is either a merge-safe **delimited block** (see
+[the `js-tooling` markers](#the-js-tooling-markers)) or a `.example`, so
+re-running never clobbers your own content and is fully idempotent.
 
 ## Install it
 
@@ -33,6 +45,12 @@ During scaffolding, `setup` asks:
 
 ```
 🤖 Add AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill)?
+```
+
+`--preset` runs answer yes. To scaffold without them, add `--no-ai-setup`:
+
+```bash
+npx @rtorcato/repo-tooling setup --preset library --no-ai-setup
 ```
 
 Or install / repair them any time on an existing repo:
@@ -70,6 +88,27 @@ auto-writes this same install section into your `README.md` — one
 `npx skills add` command per skill, with the GitHub URL derived from
 `package.json`'s `repository`. It's a merge-safe delimited block, so your own
 README content is never touched, and repos without a `skills/` dir get nothing.
+
+## The `js-tooling` markers
+
+Wherever repo-tooling writes into a file you also edit, it fences its part with
+HTML comments. They render as nothing on GitHub and on most docs sites:
+
+| Markers | Where | What's inside |
+| --- | --- | --- |
+| `<!-- js-tooling:start -->` … `<!-- js-tooling:end -->` | `AGENTS.md`, `.github/copilot-instructions.md` | The agent rules |
+| `<!-- js-tooling:skills:start -->` … `<!-- js-tooling:skills:end -->` | `README.md` | The `npx skills add` section, if the repo ships skills |
+| `<!-- js-tooling:badges:start -->` … `<!-- js-tooling:badges:end -->` | `README.md` | The status badges |
+
+On every run, `fix` and `setup` replace what's between a pair and leave
+everything outside it alone. So:
+
+- **Write your own content outside the markers.** Anything between them is
+  overwritten on the next run.
+- **Leave the markers in place.** Delete a pair and the next run adds a fresh
+  block instead of updating the old one.
+- **`js-tooling` is the package's old name.** The markers kept it so blocks
+  written before the rename still update in place.
 
 ## Loop settings live in `.repo-ai.json`
 

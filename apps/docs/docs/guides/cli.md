@@ -127,6 +127,8 @@ Exits non-zero on `drift` or `missing` — useful as a CI gate.
 
 Applies scaffolders for items `doctor` flagged. Without a target it walks every non-ok result, prompting per item; with a target it applies just that one.
 
+`fix` aligns an existing project; it doesn't create one. In an empty directory (nothing but dotfiles such as `.git`) the walk refuses and exits 1 with a pointer to `setup --preset <name>`, and `doctor`'s next steps say the same.
+
 ```bash
 npx @rtorcato/repo-tooling fix                    # walk all findings interactively
 npx @rtorcato/repo-tooling fix dependabot         # scaffold dependabot.yml + auto-merge workflow
@@ -236,7 +238,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `renovate` | `renovate.json` (alternative to Dependabot) |
 | `codeql` | `.github/workflows/codeql.yml` (security scanning) |
 | `github-settings` | branch protection + auto-merge + workflow permissions + a code-scanning branch ruleset (when CodeQL is on) via `gh api` (mutates the remote repo) |
-| `milestones` | closes 100%-complete open milestones, then opens a rolling `next` one if none is left, via `gh api` (mutates the remote repo). Never deletes one — see [milestone hygiene](./git-flow.md#milestones) |
+| `milestones` | closes 100%-complete open milestones, then opens a rolling `next` one if none is left, via `gh api` (mutates the remote repo). Never deletes one. Explicit-only, and refuses to close anything when a workflow, in the working tree or on the default branch, runs on milestone close, since that publishes — see [milestone hygiene](./git-flow.md#milestones) |
 | `codeowners` | `.github/CODEOWNERS` with commented examples |
 | `community-health` | `CONTRIBUTING.md`, `SECURITY.md`, PR + issue templates |
 | `lockfile` | records current tool choices in the repo-tooling lockfile |
@@ -267,7 +269,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | Target | Scaffolds |
 |---|---|
 | `ai` | all AI agent files at once (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill, MCP example) |
-| `claude-skill` | the Claude Code skill at `.claude/skills/repo-tooling.md` |
+| `claude-skill` | the Claude Code skill at `.claude/skills/repo-tooling/SKILL.md` |
 | `cursor-rules` | the rules for Cursor at `.cursor/rules/repo-tooling.mdc` |
 | `copilot-instructions` | the rules block in `.github/copilot-instructions.md` |
 | `agents-md` | the rules block in `AGENTS.md` (universal) |

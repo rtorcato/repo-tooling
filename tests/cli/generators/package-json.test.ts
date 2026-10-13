@@ -1,8 +1,14 @@
 import fs from 'fs-extra'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildPresetConfig } from '../../../src/cli/commands/setup-presets.js'
-import { declaredEntryPoints } from '../../../src/languages/js/checks.js'
+import packageJson from '../../../package.json' with { type: 'json' }
+import { PRESET_NAMES, buildPresetConfig } from '../../../src/cli/commands/setup-presets.js'
+import {
+	compareVersion,
+	declaredEntryPoints,
+	rangeFloor,
+} from '../../../src/languages/js/checks.js'
+import { getToolRange } from '../../../src/cli/utils/version.js'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
 import {
 	SIZE_LIMIT_VERSION,
@@ -31,6 +37,18 @@ function baseConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 }
 
 describe('generatePackageJson', () => {
+	// #821: an app is private only when no release tool would publish it.
+	it.each([
+		[{}, true],
+		[{ semanticRelease: true }, undefined],
+		[{ changesets: true }, undefined],
+		[{ releasePlease: true }, undefined],
+	] as const)('marks an app with release config %o private: %s', async (release, expected) => {
+		const dir = newTmpDir()
+		await generatePackageJson(baseConfig({ projectType: 'react-app', ...release }), dir)
+		expect((await fs.readJson(join(dir, 'package.json'))).private).toBe(expected)
+	})
+
 	it('creates a new package.json with the project name', async () => {
 		const dir = newTmpDir()
 		await generatePackageJson(baseConfig({ projectName: 'cool-lib' }), dir)
@@ -39,10 +57,38 @@ describe('generatePackageJson', () => {
 		expect(pkg.name).toBe('cool-lib')
 		expect(pkg.version).toBe('0.1.0')
 		expect(pkg.type).toBe('module')
-		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe('latest')
+		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe(await getToolRange())
 		// packageManager is the single source of truth for pnpm/action-setup
 		expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/)
 	})
+
+	// #822: `latest` let the CLI that got installed sit on another major than the
+	// presets this run had just written.
+	it('pins @rtorcato/repo-tooling to a caret on the running version', async () => {
+		const dir = newTmpDir()
+		await generatePackageJson(baseConfig(), dir)
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toMatch(/^\^\d+\.\d+\.\d+/)
+	})
+
+	// #822: a scaffolded range below our own declared peer floor fails doctor's
+	// "Peer versions" check on the very project setup just wrote.
+	it.each(PRESET_NAMES)(
+		'%s scaffold ranges sit at or above the declared peer floors',
+		async (name) => {
+			const dir = newTmpDir()
+			await generatePackageJson(buildPresetConfig(name, 'my-app'), dir)
+			const pkg = await fs.readJson(join(dir, 'package.json'))
+			const peers: Record<string, string> = packageJson.peerDependencies
+			const written = { ...pkg.dependencies, ...pkg.devDependencies } as Record<string, string>
+			const below = Object.entries(written).filter(([dep, range]) => {
+				const floor = peers[dep] ? rangeFloor(peers[dep]) : null
+				const ours = rangeFloor(range)
+				return floor && ours ? compareVersion(ours, floor) < 0 : false
+			})
+			expect(below).toEqual([])
+		}
+	)
 
 	it('merges into an existing package.json, preserving existing name and version', async () => {
 		const dir = newTmpDir()
@@ -62,7 +108,7 @@ describe('generatePackageJson', () => {
 		expect(pkg.description).toBe('keep me')
 		expect(pkg.packageManager).toBe('pnpm@10.0.0')
 		// new devDependencies are still injected
-		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe('latest')
+		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe(await getToolRange())
 	})
 
 	it('wires commitizen alongside commitlint when commitLint is on', async () => {
@@ -315,6 +361,14 @@ describe('composeVerifyScript', () => {
 			})
 		)
 		expect(result).toBe('pnpm typecheck && pnpm check && pnpm test --ci && pnpm attw')
+	})
+
+	// #821: publint and attw lint the packed tarball, which has no dist/ yet.
+	it('builds before publint and attw when there is a bundler', () => {
+		const result = composeVerifyScript(
+			baseConfig({ linting: { tool: 'biome' }, publint: true, bundler: 'tsup' })
+		)
+		expect(result).toBe('pnpm typecheck && pnpm check && pnpm build && pnpm publint && pnpm attw')
 	})
 
 	it('returns null when fewer than two tools are enabled', () => {

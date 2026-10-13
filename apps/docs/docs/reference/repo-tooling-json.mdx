@@ -48,6 +48,36 @@ The file is **two documents sharing one name**, split by who writes them:
 `doctor` reads both. Commit the file — it is the repo's memory of its own tooling choices
 *and* its standing rules.
 
+## Do you need it?
+
+No. Nothing reads it at build, lint or test time. It exists only so `doctor` can tell an
+*intentional opt-out* from *drift*, which is why `doctor` reports a missing one as
+`not configured`, not an error. `setup` writes it; on an existing repo, generate or refresh it
+from what's on disk:
+
+```bash
+npx @rtorcato/repo-tooling fix lockfile
+```
+
+**It's the only config file you need.** `record.config` already holds the full `ProjectConfig`,
+and `setup --config` accepts the lockfile directly, so you can re-run a non-interactive setup
+from it:
+
+```bash
+npx @rtorcato/repo-tooling setup --config .repo-tooling.json
+```
+
+**How opt-outs work.** When the lockfile records that you declined an *optional* tool (say
+`securityAutomation: false`), `doctor` reports that check as `ok — intentionally declined`
+instead of `not configured`. It does **not** silence *drift*: if a config you adopted diverges
+from the shared base (your `tsconfig.json` extends a different preset, for example), `doctor`
+still flags it. To declare a deliberate deviation, use [`rules.exceptions`](#rulesexceptions--declared-deviations).
+
+**Adoption vs. standalone.** `fix lockfile` infers adoption from what's on disk, so on a repo
+that deliberately runs standalone configs (no `@rtorcato/repo-tooling` dependency) it can record
+`typescript.config: "base"` and friends, claiming you extend the shared bases when you don't.
+If you're not adopting repo-tooling's configs, skip the lockfile.
+
 ## Editor validation
 
 Every written file carries a `$schema` pointer, so editors that understand JSON Schema
@@ -143,7 +173,8 @@ otherwise auto-merge. Absent means `automerge`, so a repo that never sets it see
 
 - `onPr: "automerge"` (default) merges on green.
 - `onPr: "label"` adds `label` (default `needs-review`) and never merges, so a reviewer or a
-  review bot can pick the PR up by label.
+  review bot can pick the PR up by label. Its workflow token gets `contents: read`, since
+  only merging needs `contents: write`.
 
 Majors and consumer-facing bumps go to a human in both modes. `doctor` reports a workflow that
 does not match the configured mode and `fix dependabot` regenerates it from the config.

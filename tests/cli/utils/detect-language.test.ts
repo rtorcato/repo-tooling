@@ -5,6 +5,7 @@ import {
 	detectAuditLanguage,
 	detectLanguage,
 	detectNestedLanguages,
+	isFreshDir,
 } from '../../../src/cli/utils/detect-language.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -71,6 +72,24 @@ describe('detectAuditLanguage (#632)', () => {
 		const dir = newTmpDir()
 		await fs.writeFile(join(dir, 'Package.swift'), '')
 		expect(await detectAuditLanguage(dir)).toBe('swift')
+	})
+})
+
+describe('isFreshDir (#827)', () => {
+	it('is true for a dir with only dotfiles', async () => {
+		const dir = newTmpDir()
+		await fs.ensureDir(join(dir, '.git'))
+		await fs.writeFile(join(dir, '.repo-tooling.json'), '{}')
+		expect(await isFreshDir(dir)).toBe(true)
+	})
+
+	it('is false once there is a marker or any content', async () => {
+		const withPkg = newTmpDir()
+		await fs.writeFile(join(withPkg, 'package.json'), '{}')
+		const withReadme = newTmpDir()
+		await fs.writeFile(join(withReadme, 'README.md'), '# x\n')
+		expect(await isFreshDir(withPkg)).toBe(false)
+		expect(await isFreshDir(withReadme)).toBe(false)
 	})
 })
 

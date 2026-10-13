@@ -136,6 +136,32 @@ describe('Changesets monorepos (#811)', () => {
 		expect(rows[0]?.hint).toContain('fix npm-trusted-publisher -d packages/a')
 	})
 
+	it('`fix -d packages/a` borrows the root `repository` too (#813)', async () => {
+		const dir = await monorepo()
+		const pkgDir = join(dir, 'packages/a')
+		const npm = fakeNpm()
+		await applyNpmTrustedPublisher(
+			pkgDir,
+			await fs.readJson(join(pkgDir, 'package.json')),
+			true,
+			npm
+		)
+		expect(npm).toHaveBeenCalledWith([
+			'trust',
+			'github',
+			'--file',
+			'ci.yml',
+			'--repo',
+			'acme/lib',
+			'--env',
+			'release',
+			'--allow-publish',
+			'--yes',
+			'--',
+			'@acme/a',
+		])
+	})
+
 	it('the fixer points at each package instead of registering the root', async () => {
 		const dir = await monorepo()
 		const pkg = await fs.readJson(join(dir, 'package.json'))

@@ -1,5 +1,6 @@
 import { swiftFileList } from '../../languages/swift/scaffold.js'
 import { BIOME_CONFIG } from '../generators/linting.js'
+import { starterFiles } from '../generators/starter.js'
 import type { ProjectConfig } from './setup.js'
 
 export type PresetName =
@@ -369,7 +370,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 			'CLAUDE.md',
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
-			'.claude/skills/repo-tooling.md',
+			'.claude/skills/repo-tooling/SKILL.md',
 			'.mcp.json.example',
 			'.claude/settings.json'
 		)
@@ -378,6 +379,10 @@ export function computeFileList(config: ProjectConfig): string[] {
 	if (config.nx) files.push('nx.json')
 	if (config.tailwind) files.push('postcss.config.mjs', 'src/styles/globals.css')
 	if (config.bun) files.push('bunfig.toml')
+	// Only written into a directory with no src/ or app/ yet (#821).
+	for (const rel of Object.keys(starterFiles(config))) {
+		if (!files.includes(rel)) files.push(rel)
+	}
 	files.push('README.md')
 	return files
 }

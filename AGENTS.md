@@ -8,7 +8,7 @@ A one-package JavaScript / TypeScript tooling distribution. Ships every preset (
 
 **Swift** repos (detected via `Package.swift`) are covered end to end: `setup --preset swift-library` scaffolds a SwiftPM package, and `doctor`/`fix` run the language-agnostic checks plus SwiftLint / Periphery / `.gitignore` / `Package.swift`. **Python** repos (detected via `pyproject.toml` / `setup.py`) get `doctor`/`fix` — Ruff / mypy / pytest / `.gitignore` / CI / git hooks — but no `setup` preset yet. **Perl** distributions (detected via `cpanfile` / `Makefile.PL` / `dist.ini`) get the same deal: Perl::Critic / perltidy / `.gitignore` / CI / git hooks, no `setup` preset. See `src/languages/` — one directory per language module, `src/base/` for what's shared.
 
-repo-tooling stands alone. The **ai-issue-loop** pipeline (the `loop` commands, its skills, and the label / agent-user / skills checks) is an optional companion package, `@infrazero/repo-ai`, since #658. Nothing here requires it or checks for it; `repo-tooling loop` only prints a pointer there. Its settings sit in this package's `.repo-tooling.json` under `rules.aiLoop` and `rules.requiredSkills`, which repo-tooling carries forward without reading. See `apps/docs/docs/guides/ai-issue-loop.md` for how the two fit together.
+repo-tooling stands alone. The **ai-issue-loop** pipeline (the `loop` commands, its skills, and the label / agent-user / skills checks) is an optional companion package, `@infrazero/repo-ai`, since #658. Nothing here requires it or checks for it; `repo-tooling loop` only prints a pointer there. Its settings live in repo-ai's own `.repo-ai.json`. The old `rules.aiLoop` and `rules.requiredSkills` keys in `.repo-tooling.json` are deprecated: they still validate, repo-tooling carries them forward without reading them; `apps/docs/docs/guides/ai-setup.md` says how to move them. See `apps/docs/docs/guides/ai-issue-loop.md` for how the two fit together.
 
 ## CLI surface (agent-friendly)
 
@@ -16,7 +16,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 
 | Command | Non-interactive | JSON output | Use case |
 |---|---|---|---|
-| `setup --preset <name>` | ✅ (non-TTY, or with `--yes`) | `--dry-run` only | Scaffold a new project. Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`. In an interactive terminal it first prints the file list and lets you deselect; pass `--yes` for the one-shot behaviour. |
+| `setup --preset <name>` | ✅ (non-TTY, or with `--yes`) | `--dry-run` only | Scaffold a new project. Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`. In an interactive terminal it first prints the file list and lets you deselect; pass `--yes` for the one-shot behaviour. Add `--no-ai-setup` to skip the AI agent files (also works with `--config` and the wizard). |
 | `setup --config <path>` | ✅ | `--dry-run` only | Scaffold with a full `ProjectConfig` JSON file. See `setup --config-schema`. |
 | `setup --config-schema` | ✅ | ✅ (JSON Schema) | Print the JSON Schema for `ProjectConfig`. Use to validate configs before scaffolding. |
 | `setup --dry-run` | ✅ | ✅ | Print resolved config + file list without writing. Pair with `--preset` or `--config`. |
@@ -27,7 +27,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 | `fix --json --yes` | ✅ | ✅ | Walk every doctor finding, apply fixers. Returns `FixActionRecord[]` with `status: applied | dry-run | skipped | already-ok | unsupported`. |
 | `fix <target> --json --yes` | ✅ | ✅ | Apply one fixer. Targets from `list --json`. |
 | `fix --dry-run` | ✅ | ✅ | Print what each fixer would write without writing. Combine with `--json`. |
-| `list --json` | ✅ | ✅ | Enumerate the library's surface area. Each entry has `{ name, description, exports, fixTarget }`. |
+| `list --json` | ✅ | ✅ | Enumerate every fix target, from the same registry as `fix --list --json`: `targets[]`, each `{ target, description, appliesTo, outputs, riskLevel, canFixDrift }`. The old `tools[]` shape is still emitted, derived from the registry, until the next major. |
 | `copy <name>` | ✅ | text only | Copy a single preset (`biome`, `tsconfig`) into the current directory. |
 
 ## Recommended workflows
@@ -92,11 +92,11 @@ npx @rtorcato/repo-tooling fix bun --yes --json         # Bun runtime/test confi
 
 `fix` defaults the confirm prompt to **No** for drift cases (existing file that doesn't extend our preset). The `--yes` flag is required to overwrite drift. Safe-merge fixers (`biome`, `engines`, `husky`, `package-json`) never overwrite — they add/merge — and use friendlier prompt wording. `fix --json` implies `--yes` (prompts would corrupt JSON output).
 
-Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `release-environment` (changes what a merge does) and `npm-trusted-publisher` (registers an OIDC trusted publisher on npm via `npm trust github`; refuses when the package isn't on npm yet, local npm < 11.15.0, or not logged in).
+Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` — they only run when named as the target. Today that is `release-environment` (changes what a merge does), `milestones` (closing one fires `release.yml`, #833) and `npm-trusted-publisher` (registers an OIDC trusted publisher on npm via `npm trust github`; refuses when the package isn't on npm yet, local npm < 11.15.0, or not logged in).
 
 The same goes for every `optional-missing` finding: a bulk `fix` records it `skipped`, because optional tools are often mutually exclusive (Biome / ESLint / Prettier / Oxlint, semantic-release / Changesets / Release Please) and installing them all is never the intent (#630). Name the one you want — `fix editorconfig --yes`.
 
-A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422), and `biome` against a `biome.json` that does not parse, whose settings cannot be merged (#587). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
+A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422), `biome` against a `biome.json` that does not parse, whose settings cannot be merged (#587), and `milestones` when a workflow, in the working tree or on the default branch, runs on milestone close, since closing would publish (#833, #838). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
 
 ## Source-of-truth files in the repo
 

@@ -268,7 +268,7 @@ export const BASE_FIXERS: Fixer[] = [
 	{
 		target: 'release-environment',
 		description:
-			'Create the `release` environment (authenticated user as required reviewer) and wire `environment: release` into the publishing job — the gate between merging and publishing (#429)',
+			'Create the `release` environment (authenticated user as required reviewer) and wire `environment: release` into the publishing job — the gate between merging and publishing',
 		appliesTo: [RELEASE_GATE_CHECK, RELEASE_ENV_CHECK],
 		outputs: [
 			'GitHub `release` environment (remote, via gh api)',
@@ -289,12 +289,15 @@ export const BASE_FIXERS: Fixer[] = [
 	{
 		target: 'milestones',
 		description:
-			'Close 100%-complete open milestones on GitHub via gh api, then open a rolling "next" one if none is left (mutates the remote repo, not files). Never deletes one',
+			'Close 100%-complete open milestones on GitHub via gh api, then open a rolling "next" one if none is left (mutates the remote repo, not files). Never deletes one, and refuses to close any when a workflow, locally or on the default branch, runs on milestone close',
 		appliesTo: ['Milestones'],
 		outputs: ['GitHub milestones (remote, via gh api)'],
 		// safe-add for the same reason github-settings is: it exempts this fixer
 		// from the `--diff` shadow-run, which executes run() for a mere preview.
+		// explicitOnly because closing a milestone fires release.yml (#833), so a
+		// bulk `fix --yes` must never do it.
 		riskLevel: 'safe-add',
+		explicitOnly: true,
 		canFixDrift: true,
 		async run({ targetDir }) {
 			return { filesWritten: await closeCompletedMilestones(targetDir) }
@@ -342,7 +345,7 @@ export const BASE_FIXERS: Fixer[] = [
 			'CLAUDE.md',
 			'.cursor/rules/repo-tooling.mdc',
 			'.github/copilot-instructions.md',
-			'.claude/skills/repo-tooling.md',
+			'.claude/skills/repo-tooling/SKILL.md',
 			'.mcp.json.example',
 			// Only written for a repo with a package.json — nothing to symlink otherwise.
 			'.claude/settings.json',
@@ -362,7 +365,7 @@ export const BASE_FIXERS: Fixer[] = [
 		target: 'claude-skill',
 		description: 'Install the repo-tooling Claude Code skill into .claude/skills/',
 		appliesTo: ['Claude skill'],
-		outputs: ['.claude/skills/repo-tooling.md'],
+		outputs: ['.claude/skills/repo-tooling/SKILL.md'],
 		riskLevel: 'safe-add',
 		canFixDrift: true,
 		async run({ targetDir }) {

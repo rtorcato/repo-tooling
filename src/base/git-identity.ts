@@ -66,7 +66,7 @@ const DETAIL: Record<Exclude<GitIdentityVerdict, 'ok'>, (email: string) => strin
 }
 
 const HINT =
-	'Commits made with this identity will not link to your forge account, and the address cannot be added as a verified secondary email to fix them retroactively (#327). Set a real one: `git config --global user.email you@yourdomain.com` — or per-repo, drop `--global`.'
+	'Commits made with this identity will not link to your forge account, and the address cannot be added as a verified secondary email to fix them retroactively. Set a real one: `git config --global user.email you@yourdomain.com` — or per-repo, drop `--global`.'
 
 const CHECK = 'Git identity'
 
@@ -166,12 +166,12 @@ export const realGitExec = (
 export async function checkGitIdentity(dir: string, exec?: GitExec): Promise<CheckResult> {
 	// Cheap gate: no .git → no commits to mis-attribute, and no spawn.
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
-		return { check: CHECK, status: 'ok', detail: 'not a git repository' }
+		return { check: CHECK, status: 'skipped', detail: 'not a git repository' }
 	}
 	// On a runner the identity is the bot's, so there is nothing to warn about
 	// and the warning would be permanent.
 	if (process.env.CI) {
-		return { check: CHECK, status: 'ok', detail: 'skipped on CI (identity is the runner’s)' }
+		return { check: CHECK, status: 'skipped', detail: 'skipped on CI (identity is the runner’s)' }
 	}
 
 	const git: GitExec = exec ?? ((args) => realGitExec(args, dir))
@@ -201,7 +201,7 @@ export const HISTORY_SCAN_LIMIT = 200
 const HISTORY_SAMPLE = 3
 
 const HISTORY_HINT =
-	'These commits are already made: the address can never be verified as a secondary email, so they cannot be re-linked to a forge account without a history rewrite (#327). Fix the identity going forward (see the Git identity check) and treat the history as recorded loss.'
+	'These commits are already made: the address can never be verified as a secondary email, so they cannot be re-linked to a forge account without a history rewrite. Fix the identity going forward (see the Git identity check) and treat the history as recorded loss.'
 
 /**
  * The retrospective half of `checkGitIdentity` (#557): that check reads the
@@ -215,10 +215,10 @@ const HISTORY_HINT =
  */
 export async function checkGitIdentityHistory(dir: string, exec?: GitExec): Promise<CheckResult> {
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
-		return { check: HISTORY_CHECK, status: 'ok', detail: 'not a git repository' }
+		return { check: HISTORY_CHECK, status: 'skipped', detail: 'not a git repository' }
 	}
 	if (process.env.CI) {
-		return { check: HISTORY_CHECK, status: 'ok', detail: 'skipped on CI' }
+		return { check: HISTORY_CHECK, status: 'skipped', detail: 'skipped on CI' }
 	}
 
 	const git: GitExec = exec ?? ((args) => realGitExec(args, dir))
@@ -227,7 +227,7 @@ export async function checkGitIdentityHistory(dir: string, exec?: GitExec): Prom
 	if ((await git(['rev-parse', '--is-shallow-repository'])) === 'true') {
 		return {
 			check: HISTORY_CHECK,
-			status: 'ok',
+			status: 'skipped',
 			detail: 'shallow clone — commit history is not available to scan',
 		}
 	}

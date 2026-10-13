@@ -51,7 +51,8 @@ export function evaluateNodeVersion(version: string): CheckResult {
 		if (!meets) {
 			return {
 				check: 'Node',
-				status: 'drift',
+				// A supported Node below the recommended LTS is advice, not drift: drift fails `doctor` (exit 1).
+				status: 'optional-missing',
 				detail: `${display} — npm may emit EBADENGINE warnings from transitive deps`,
 				hint: `Upgrade to Node ${major}.${lts.minor}.${lts.patch}+ (or 26+) to silence transitive engine warnings`,
 			}
@@ -1310,8 +1311,13 @@ export async function checkTreeshakeSetup(dir: string, pkg: Pkg | null): Promise
  * makes the symlinks itself. That is why the check is worth passing on a repo
  * running the loop, where the setting alone would govern nothing.
  */
-export async function checkClaudeWorktreeSettings(dir: string): Promise<CheckResult> {
+export async function checkClaudeWorktreeSettings(
+	dir: string,
+	pkg: Pkg | null
+): Promise<CheckResult> {
 	const check = 'Claude worktree settings'
+	// Same gate as `fix ai`, which writes no settings without a package.json.
+	if (!pkg) return { check, status: 'ok', detail: 'not applicable (no package.json)' }
 	const hint = `Run \`npx ${PACKAGE} fix ai\` to merge worktree.symlinkDirectories into ${CLAUDE_SETTINGS_FILE}`
 	if (!(await fs.pathExists(path.join(dir, CLAUDE_SETTINGS_FILE)))) {
 		return {
@@ -1613,7 +1619,7 @@ function compareFloor(a: [number, number, number], b: [number, number, number]):
 }
 
 /** Full major.minor.patch ordering, for comparing an installed version. */
-function compareVersion(a: [number, number, number], b: [number, number, number]): number {
+export function compareVersion(a: [number, number, number], b: [number, number, number]): number {
 	return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
 }
 

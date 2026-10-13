@@ -99,10 +99,13 @@ async function ensureHookRuns(hookPath: string, runs: RegExp, fresh: string, lin
 	await fs.chmod(hookPath, 0o755)
 }
 
-/** Package versions the commit-msg hook needs on disk to run at all. */
+/**
+ * Package versions the commit-msg hook needs on disk to run at all. Kept inside
+ * this package's own peer ranges, or doctor flags a fresh scaffold (#821).
+ */
 export const COMMITLINT_DEPS: Record<string, string> = {
-	'@commitlint/cli': '^20.0.0',
-	'@commitlint/config-conventional': '^20.0.0',
+	'@commitlint/cli': '^21.2.3',
+	'@commitlint/config-conventional': '^21.2.3',
 }
 
 /** True when husky owns this repo's hooks — the only case where .husky/commit-msg runs. */

@@ -48,6 +48,20 @@ biome.json:6:7 lint/suspicious/noBiomeFirstException
 The negation-only list merges into the preset's `includes`, so its exclusions
 (`node_modules`, `dist`, `coverage`, …) still apply — yours are added to them.
 
+### Tailwind CSS v4 stylesheets
+
+The preset honours your `.gitignore`, so build output stays unlinted. One known
+gap: Biome cannot parse Tailwind CSS v4 stylesheets (`@theme`, `@source`,
+`@custom-variant`, `@apply`) and reports a parse error on them. If you use
+Tailwind v4, exclude your stylesheets the same negation-only way:
+
+```jsonc
+{
+  "extends": ["@rtorcato/repo-tooling/biome"],
+  "files": { "includes": ["!**/*.css"] }
+}
+```
+
 ## Customisation
 
 After copying, edit `biome.json` directly:

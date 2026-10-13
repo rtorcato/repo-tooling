@@ -34,7 +34,10 @@ describe('generator output snapshots', () => {
 		const dir = newTmpDir()
 		await generatePackageJson(libConfig(), dir)
 		const content = await fs.readFile(join(dir, 'package.json'), 'utf-8')
-		expect(content).toMatchSnapshot()
+		// The pin tracks the running version (#822), which moves with every tag.
+		expect(
+			content.replace(/("@rtorcato\/repo-tooling": )"\^[^"]+"/, '$1"^<running version>"')
+		).toMatchSnapshot()
 	})
 
 	it('.github/workflows/ci.yml (library)', async () => {

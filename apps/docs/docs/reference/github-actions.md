@@ -10,7 +10,7 @@ audit without hand-writing the step:
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1
 ```
 
 That fails the job when `doctor` finds drift or missing config — the same exit
@@ -27,7 +27,7 @@ Every finding becomes a job annotation regardless of `fail-on`, so `none` is the
 report-only mode for a repo adopting the audit before it's clean:
 
 ```yaml
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1
   with:
     directory: packages/app
     fail-on: none
@@ -40,7 +40,7 @@ report-only mode for a repo adopting the audit before it's clean:
 | `json` | The full `doctor --json` payload — feed it to a PR comment or a report. |
 
 ```yaml
-- uses: rtorcato/repo-tooling@v5.4.1
+- uses: rtorcato/repo-tooling@v6.0.1
   id: doctor
   with:
     fail-on: none
@@ -73,6 +73,76 @@ skipped and never fail the step.
   already published as an npm CLI, so a container would only add an image to
   build, publish and pull.
 - `doctor` never executes the audited project's code — it reads config files.
+
+### Weekly drift issue
+
+The PR gate only runs when a PR does. Drift that arrives with no PR, such as a
+new upstream preset, goes unseen until the next change. This workflow runs
+`doctor` weekly and keeps one `chore: repo-tooling drift` issue in step with the
+result: it opens the issue when drift appears, rewrites its body while drift
+persists, and closes it once `doctor` is clean. It uses only `GITHUB_TOKEN`.
+
+```yaml
+name: repo-tooling drift
+
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rtorcato/repo-tooling@v6.0.1
+        id: doctor
+        with:
+          fail-on: none # report only; the step below decides about the issue
+
+      - name: Open, update or close the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPORT: ${{ steps.doctor.outputs.json }}
+        run: |
+          set -euo pipefail
+          title='chore: repo-tooling drift'
+          printf '%s' "$REPORT" > "$RUNNER_TEMP/doctor.json"
+          count=$(jq '[.results[] | select(.status == "drift" or .status == "missing")] | length' \
+            "$RUNNER_TEMP/doctor.json")
+          number=$(gh issue list --state open --search 'repo-tooling drift in:title' \
+            --json number,title --jq "[.[] | select(.title == \"$title\")][0].number // empty")
+
+          if [ "$count" -eq 0 ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "doctor is clean as of $(date -u +%F). Closing."
+            fi
+            exit 0
+          fi
+
+          {
+            echo "doctor found $count drift or missing finding(s) on $(date -u +%F)."
+            echo
+            jq -r '.results[] | select(.status == "drift" or .status == "missing")
+              | "- `\(.check)` (\(.status)): \(.detail)"' "$RUNNER_TEMP/doctor.json"
+          } > "$RUNNER_TEMP/body.md"
+
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+```
+
+The scheduled run is `doctor --offline`, like every run of the action, so the
+GitHub-settings checks (branch protection, repository settings, secrets,
+milestones) report `skipped`. They never open or close this issue. Drift in
+those settings needs a manual `doctor` run with a token that can read them.
 
 ## Scaffolded workflows
 

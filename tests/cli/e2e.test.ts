@@ -7,8 +7,13 @@ import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const CLI = join(process.cwd(), 'dist', 'cli', 'index.js')
 
-function cli(args: string[], cwd = process.cwd()) {
-	return spawnSync('node', [CLI, ...args], { cwd, encoding: 'utf8', timeout: 10_000 })
+function cli(args: string[], cwd = process.cwd(), env?: NodeJS.ProcessEnv) {
+	return spawnSync('node', [CLI, ...args], {
+		cwd,
+		encoding: 'utf8',
+		timeout: 10_000,
+		env: env && { ...process.env, ...env },
+	})
 }
 
 describe.skipIf(!fs.existsSync(CLI))('CLI smoke tests (requires pnpm build)', () => {
@@ -23,30 +28,56 @@ describe.skipIf(!fs.existsSync(CLI))('CLI smoke tests (requires pnpm build)', ()
 		expect(stdout.trim()).toBe(await getToolVersion())
 	})
 
-	it('list prints known configs', () => {
+	// #825: outputHelp() then parse() printed the help twice and exited 1.
+	it('bare command prints help once and exits 0', () => {
+		const { status, stdout } = cli([])
+		expect(status).toBe(0)
+		expect(stdout.match(/^Usage:/gm)).toHaveLength(1)
+	})
+
+	it('list prints the fix targets', () => {
 		const { status, stdout } = cli(['list'])
 		expect(status).toBe(0)
-		expect(stdout).toContain('TypeScript')
-		expect(stdout).toContain('Biome')
-		expect(stdout).toContain('Vitest')
-		expect(stdout).toContain('Commitlint')
+		for (const target of ['tsconfig', 'biome', 'vitest', 'commitlint', 'swiftlint', 'ruff']) {
+			expect(stdout).toContain(target)
+		}
 	})
 
 	it('ls is an alias for list', () => {
 		const { status, stdout } = cli(['ls'])
 		expect(status).toBe(0)
-		expect(stdout).toContain('TypeScript')
+		expect(stdout).toContain('Registered fix targets')
 	})
 
-	it('list --json emits a parseable catalog with fixTarget per tool', () => {
-		const { status, stdout } = cli(['list', '--json'])
-		expect(status).toBe(0)
-		const payload = JSON.parse(stdout)
-		expect(Array.isArray(payload.tools)).toBe(true)
-		expect(payload.tools.length).toBeGreaterThan(10)
-		const biome = payload.tools.find((t: { name: string }) => t.name === 'Biome')
-		expect(biome.fixTarget).toBe('biome')
-		expect(biome.exports).toContain('@rtorcato/repo-tooling/biome')
+	it('list --json is the fix registry, the same targets as fix --list --json (#828)', () => {
+		const list = JSON.parse(cli(['list', '--json']).stdout)
+		const fixList = JSON.parse(cli(['fix', '--list', '--json']).stdout)
+		expect(list.targets).toEqual(fixList.targets)
+		expect(list.targets.length).toBeGreaterThan(50)
+		// The pre-#828 shape, derived from the same registry until the next major.
+		expect(list.tools.find((t: { name: string }) => t.name === 'biome')).toEqual(
+			expect.objectContaining({ fixTarget: 'biome' })
+		)
+	})
+
+	it("puts setting git user.email in setup's next steps only when it is unset (#828)", () => {
+		const home = newTmpDir()
+		const gitconfig = join(home, 'gitconfig')
+		const setup = (email?: string) => {
+			fs.writeFileSync(gitconfig, email ? `[user]\n\temail = ${email}\n` : '')
+			const dir = join(newTmpDir(), 'p')
+			return cli(
+				['setup', '--preset', 'minimal', '-d', dir, '--skip-install', '--yes'],
+				undefined,
+				{
+					HOME: home,
+					GIT_CONFIG_GLOBAL: gitconfig,
+					GIT_CONFIG_NOSYSTEM: '1',
+				}
+			).stdout
+		}
+		expect(setup()).toContain('Set your git email before the first commit')
+		expect(setup('dev@torcato.dev')).not.toContain('Set your git email')
 	})
 
 	it('copy biome writes biome.json to target dir', () => {

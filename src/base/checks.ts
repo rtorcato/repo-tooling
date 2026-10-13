@@ -312,19 +312,24 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				// human for no benefit — they reach no consumer. Drift in the
 				// convenience direction, not the safety one, but still drift.
 				if (!automerge.includes("package-ecosystem == 'github-actions'")) {
-					deltas.push('auto-merge workflow leaves CI action bumps to a human (#452)')
+					deltas.push('auto-merge workflow leaves CI action bumps to a human')
 				}
 				// #694: a declined PR used to get only a log notice — no assignee, no
 				// comment — and could sit green and ownerless indefinitely.
 				if (!automerge.includes("steps.merge.outcome == 'skipped'")) {
-					deltas.push('auto-merge workflow leaves declined PRs with no owner (#694)')
+					deltas.push('auto-merge workflow leaves declined PRs with no owner')
 				}
 				// #746: the configured mode (`rules.dependabot.onPr`) decides what the
 				// safe tier does. Compare that one step, not the whole file, so a
 				// repo's own edits elsewhere are not drift.
 				const expected = await dependabotAutomergeWorkflowFor(dir)
 				if (mergeStep(automerge) !== mergeStep(expected)) {
-					deltas.push('auto-merge workflow does not match rules.dependabot.onPr (#746)')
+					deltas.push('auto-merge workflow does not match rules.dependabot.onPr')
+				}
+				// #819: label mode never writes repo contents, so a `contents: write`
+				// grant left over from before it is surplus token scope.
+				if (!/contents: write/.test(expected) && /^\s*contents:\s*write\b/m.test(automerge)) {
+					deltas.push('label-mode auto-merge workflow grants surplus contents: write')
 				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')
@@ -454,16 +459,29 @@ export async function checkAiSetup(dir: string): Promise<CheckResult> {
 		blockFile ??= rel
 		if (hasStaleAgentBlock(content)) stale.push(rel)
 	}
-	const hasSkill =
-		(await fs.pathExists(path.join(dir, '.claude', 'skills', 'repo-tooling.md'))) ||
-		// Pre-rename name — still counts as present until `fix` migrates it.
-		(await fs.pathExists(path.join(dir, '.claude', 'skills', 'js-tooling.md')))
+	const hasSkill = await fs.pathExists(
+		path.join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md')
+	)
+	// Flat files from older releases, which Claude Code doesn't load (#823).
+	const flatSkill = hasSkill
+		? undefined
+		: ['repo-tooling.md', 'js-tooling.md'].find((f) =>
+				fs.pathExistsSync(path.join(dir, '.claude', 'skills', f))
+			)
 	if (stale.length > 0) {
 		return {
 			check: 'AI setup',
 			status: 'drift',
 			detail: `${stale.join(', ')} still point agents at the dead \`js-tooling\` package/bin`,
 			hint: 'Run `npx @rtorcato/repo-tooling fix ai` to refresh the agent instructions in place',
+		}
+	}
+	if (flatSkill) {
+		return {
+			check: 'AI setup',
+			status: 'optional-missing',
+			detail: `.claude/skills/${flatSkill} is a flat file, which Claude Code doesn't load as a skill`,
+			hint: 'Run `npx @rtorcato/repo-tooling fix claude-skill` to move it to .claude/skills/repo-tooling/SKILL.md',
 		}
 	}
 	if (blockFile || hasSkill) {

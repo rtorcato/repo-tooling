@@ -15,45 +15,11 @@ import {
 import type { CheckResult } from './doctor.js'
 import { runDoctor } from './doctor.js'
 import { declinedInLock, lockfilePatchForTarget } from './fix-targets.js'
-import { computeFileList } from './setup-presets.js'
-import {
-	BASE_FIXERS,
-	type Fixer,
-	FixerAbort,
-	type FixRiskLevel,
-	type Pkg,
-} from '../../base/fixers.js'
+import { ALL_FIXERS, fixersForLanguage } from './fixers-by-language.js'
+import { computeFileList, PRESET_NAMES } from './setup-presets.js'
+import { type Fixer, FixerAbort, type FixRiskLevel, type Pkg } from '../../base/fixers.js'
 import { FIXERS, readPackageJson } from '../../languages/js/fixers.js'
-import { PERL_FIXERS } from '../../languages/perl/fixers.js'
-import { PYTHON_FIXERS } from '../../languages/python/fixers.js'
-import { SWIFT_FIXERS } from '../../languages/swift/fixers.js'
-import { detectAuditLanguage } from '../utils/detect-language.js'
-
-/** The module-specific fixer set per detected language (#286, #289, #290, #303). */
-const LANGUAGE_FIXERS: Record<string, Fixer[]> = {
-	js: FIXERS,
-	swift: SWIFT_FIXERS,
-	python: PYTHON_FIXERS,
-	perl: PERL_FIXERS,
-}
-
-/**
- * The fixers that apply to a repo, by detected language: the language-agnostic
- * base set plus the module's own. A repo with no marker gets the base set only —
- * the JS fixers would run against a missing package.json (#632).
- */
-function fixersForLanguage(language: string): Fixer[] {
-	return [...BASE_FIXERS, ...(LANGUAGE_FIXERS[language] ?? [])]
-}
-
-/** Every fixer across every language — for `--list` and the unknown-target hint. */
-const ALL_FIXERS: Fixer[] = [
-	...BASE_FIXERS,
-	...FIXERS,
-	...SWIFT_FIXERS,
-	...PYTHON_FIXERS,
-	...PERL_FIXERS,
-]
+import { detectAuditLanguage, isFreshDir } from '../utils/detect-language.js'
 
 export interface FixOptions {
 	directory?: string
@@ -131,6 +97,32 @@ export function listFixers(): FixerSummary[] {
 		riskLevel: f.riskLevel ?? 'destructive',
 		canFixDrift: f.canFixDrift ?? false,
 	}))
+}
+
+/** `fix --list` and `list` (#828): both read the registry, never a hand-kept copy. */
+export function printFixTargets(json: boolean, { legacyTools = false } = {}): void {
+	const summary = listFixers()
+	if (json) {
+		// ponytail: `tools` is the shape `list --json` emitted before #828, kept so
+		// existing readers don't break; drop it in the next major.
+		const tools = summary.map((f) => ({
+			name: f.target,
+			description: f.description,
+			exports: [],
+			fixTarget: f.target,
+		}))
+		console.log(JSON.stringify({ targets: summary, ...(legacyTools && { tools }) }, null, 2))
+		return
+	}
+	console.log(chalk.cyan('\n🔧 Registered fix targets:\n'))
+	for (const f of summary) {
+		console.log(`  ${chalk.green('●')} ${chalk.bold(f.target)}`)
+		console.log(`     ${chalk.gray(f.description)}`)
+		console.log(
+			`     ${chalk.dim(`risk=${f.riskLevel}, drift=${f.canFixDrift ? 'yes' : 'no'}, outputs=${f.outputs.join(', ')}`)}`
+		)
+	}
+	console.log()
 }
 
 // Fixer outputs sometimes carry annotations like
@@ -408,20 +400,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 	const showDiff = options.diff === true && !json
 
 	if (options.list) {
-		const summary = listFixers()
-		if (json) {
-			console.log(JSON.stringify({ targets: summary }, null, 2))
-			return
-		}
-		console.log(chalk.cyan('\n🔧 Registered fix targets:\n'))
-		for (const f of summary) {
-			console.log(`  ${chalk.green('●')} ${chalk.bold(f.target)}`)
-			console.log(`     ${chalk.gray(f.description)}`)
-			console.log(
-				`     ${chalk.dim(`risk=${f.riskLevel}, drift=${f.canFixDrift ? 'yes' : 'no'}, outputs=${f.outputs.join(', ')}`)}`
-			)
-		}
-		console.log()
+		printFixTargets(json)
 		return
 	}
 
@@ -492,6 +471,21 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			console.log(chalk.green(`  ✅ resynced ${files.length} file(s)\n`))
 		}
 		return
+	}
+
+	// Fixers align an existing project; they can't create one. On an empty dir the
+	// bulk walk wrote tsconfig.json and release.config.mjs around a package.json
+	// nothing scaffolds, and the stray files then hid the project from doctor (#827).
+	// A named target still runs: that is the explicit override.
+	if (!target && (await isFreshDir(targetDir))) {
+		const hint = `run \`npx @rtorcato/repo-tooling setup --preset <${PRESET_NAMES.join('|')}>\` to scaffold the project first`
+		if (json) {
+			console.log(JSON.stringify({ directory: targetDir, error: 'no-project', hint }, null, 2))
+		} else {
+			console.error(chalk.red(`\n❌ ${targetDir} has no project to fix yet`))
+			console.error(chalk.gray(`   ${hint}\n`))
+		}
+		process.exit(1)
 	}
 
 	const pkg = await readPackageJson(targetDir)

@@ -2,6 +2,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
+import { classifyGitEmail, realGitExec } from '../../base/git-identity.js'
 import { collectSecretUses, requiredSecrets, secretHints } from '../../base/secrets.js'
 import {
 	formatNpmPublishGuide,
@@ -10,6 +11,7 @@ import {
 } from '../../languages/js/npm-trust.js'
 import { LANGUAGES, type LanguageModule } from '../../languages/registry.js'
 import { generateConfigs } from '../generators/index.js'
+import { detectPnpmVersion } from '../generators/misc.js'
 import { detectLanguage } from '../utils/detect-language.js'
 import { formatGeneratedFiles } from '../utils/format.js'
 import { installDependencies } from '../utils/install.js'
@@ -104,6 +106,8 @@ export interface SetupOptions {
 	yes?: boolean
 	/** `--from <owner/repo>`: seed the wizard's defaults from that repo's lockfile (#563). */
 	from?: string
+	/** `--no-ai-setup` sets this false: skip the AI agent files whatever the config says (#830). */
+	aiSetup?: boolean
 }
 
 /**
@@ -226,8 +230,20 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		}
 		const projectName = path.basename(path.resolve(options.directory))
 		const config = buildPresetConfig(options.preset as PresetName, projectName)
+		// Before the review, so the opted-out files aren't listed as on.
+		if (options.aiSetup === false) config.aiSetup = false
 		if (options.dryRun || options.yes || !isInteractiveTerminal()) return config
 		return reviewPresetConfig(config)
+	}
+	// The wizard needs someone to answer it. Without a terminal inquirer either
+	// dies with an ExitPromptError stack or waits forever on an open pipe (#825).
+	if (!isInteractiveTerminal()) {
+		console.error(chalk.red('\n❌ setup asks questions, and there is no terminal to answer them.'))
+		console.error(
+			chalk.gray(`   Use --preset <name> (${PRESET_NAMES.join(', ')}) or --config <path>.\n`)
+		)
+		process.exitCode = 1
+		return null
 	}
 	let seed: ProjectConfig | undefined
 	if (options.from) {
@@ -235,7 +251,7 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		if (seeded === null) return null
 		seed = seeded
 	}
-	return promptForConfig(path.resolve(options.directory), seed)
+	return promptForConfig(path.resolve(options.directory), seed, options.aiSetup === false)
 }
 
 export async function setupProject(options: SetupOptions) {
@@ -260,6 +276,8 @@ export async function setupProject(options: SetupOptions) {
 		// yet. It has already explained why — scaffolding a JS project into a Swift
 		// repo would be worse than doing nothing.
 		if (config === null) return
+		// Also covers --config and the Swift wizard, which never ask.
+		if (options.aiSetup === false) config.aiSetup = false
 
 		if (dryRun) {
 			const files = computeFileList(config)
@@ -278,6 +296,17 @@ export async function setupProject(options: SetupOptions) {
 			const shape = config.language === 'swift' ? `Swift ${config.projectType}` : config.projectType
 			console.log(chalk.cyan(`\n🛠️  Scaffolding ${shape} in ${targetDir}\n`))
 		}
+		const install = !options.skipInstall && config.language !== 'swift'
+		// Check before writing a file, so a missing pnpm leaves nothing half-done (#825).
+		if (install && !detectPnpmVersion()) {
+			console.error(chalk.red('\n❌ pnpm is not on PATH, and setup installs with it.'))
+			console.error(
+				chalk.gray('   Run `corepack enable` (or install pnpm), or re-run with --skip-install.\n')
+			)
+			process.exitCode = 1
+			return
+		}
+
 		console.log(chalk.cyan('\n📝 Generating configuration files...\n'))
 
 		await generateConfigs(config, targetDir)
@@ -287,18 +316,47 @@ export async function setupProject(options: SetupOptions) {
 		// install and no Biome to format with — SwiftPM resolves on first build,
 		// and `swiftlint --fix` is the formatter (it needs a Swift toolchain we
 		// can't assume is present).
-		if (!options.skipInstall && config.language !== 'swift') {
+		if (install) {
 			console.log(chalk.cyan('\n📦 Installing dependencies...\n'))
-			await installDependencies(config, targetDir)
+			if (!(await installDependencies(config, targetDir))) {
+				console.error(
+					chalk.red(
+						`\n❌ Setup incomplete: the files are in ${targetDir}, but dependencies did not install. Fix the error above and run \`pnpm install\` there.\n`
+					)
+				)
+				process.exitCode = 1
+				return
+			}
 			// Format now that the linter/formatter is installed, so the scaffold
 			// passes its own `pnpm check` out of the box (templates are written by
 			// hand and don't match biome/prettier whitespace).
 			await formatGeneratedFiles(config, targetDir)
+		} else if (config.language !== 'swift') {
+			// Formatting needs the installed formatter, so it was skipped above and
+			// `pnpm check` fails until it runs (#821).
+			const format =
+				config.linting.tool === 'eslint'
+					? 'pnpm format && pnpm lint:fix'
+					: config.linting.tool === 'none'
+						? null
+						: 'pnpm check:fix'
+			if (format) {
+				console.log(
+					chalk.yellow(
+						`\n⚠️  --skip-install skipped formatting. Run \`pnpm install && ${format}\` before \`pnpm check\`.`
+					)
+				)
+			}
 		}
 
 		console.log(chalk.green('\n✅ Setup completed successfully!\n'))
 		await showNextSteps(config, targetDir)
 	} catch (error) {
+		// Ctrl+C (or a closed stdin) at a prompt — a choice, not a crash.
+		if (error instanceof Error && error.name === 'ExitPromptError') {
+			console.error(chalk.yellow('\nSetup cancelled.'))
+			process.exit(1)
+		}
 		console.error(chalk.red('\n❌ Setup failed:'), error)
 		process.exit(1)
 	}
@@ -370,7 +428,9 @@ function explainNotScaffoldable(module: LanguageModule) {
  */
 async function promptForConfig(
 	targetDir: string,
-	seed?: ProjectConfig
+	seed?: ProjectConfig,
+	/** `--no-ai-setup` already answered the AI question with no. */
+	skipAi = false
 ): Promise<ProjectConfig | null> {
 	const language = await promptForLanguage(targetDir, seed)
 
@@ -593,6 +653,7 @@ async function promptForConfig(
 			name: 'aiSetup',
 			message: '🤖 Add AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill)?',
 			default: seed?.aiSetup ?? true,
+			when: () => !skipAi,
 		},
 		{
 			type: 'select',
@@ -718,6 +779,14 @@ async function showNextSteps(config: ProjectConfig, targetDir: string) {
 	console.log(chalk.bold('\n📋 Next Steps:\n'))
 
 	const steps = []
+
+	// First, because it blocks the first commit (or makes git invent an address
+	// from the hostname) — doctor would only say so after the fact (#828).
+	if (classifyGitEmail(await realGitExec(['config', '--get', 'user.email'], targetDir)) !== 'ok') {
+		steps.push(
+			'✉️  Set your git email before the first commit: git config --global user.email you@yourdomain.com'
+		)
+	}
 
 	// Every step in the else-branch names a pnpm script. Swift's equivalents are
 	// SwiftPM and SwiftLint commands — and neither tool ships with the scaffold,

@@ -368,15 +368,15 @@ describe('evaluateNodeVersion', () => {
 		expect(result.hint).toMatch(/nodejs\.org/)
 	})
 
-	it('reports drift on Node 22 below the LTS patch', () => {
+	it('reports optional-missing (not drift) on Node 22 below the LTS patch', () => {
 		const result = evaluateNodeVersion('v22.10.0')
-		expect(result.status).toBe('drift')
+		expect(result.status).toBe('optional-missing')
 		expect(result.hint).toMatch(/22\.22\.2/)
 	})
 
-	it('reports drift on Node 24 below the LTS patch', () => {
+	it('reports optional-missing (not drift) on Node 24 below the LTS patch', () => {
 		const result = evaluateNodeVersion('v24.14.1')
-		expect(result.status).toBe('drift')
+		expect(result.status).toBe('optional-missing')
 		expect(result.hint).toMatch(/24\.15\.0/)
 	})
 
@@ -565,7 +565,7 @@ describe('doctor extended checks', () => {
 	it('AI setup: drift when a managed block still names the dead js-tooling bin (#393)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling.md'), '# skill\n')
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md'), '# skill\n')
 		await fs.writeFile(
 			join(dir, 'CLAUDE.md'),
 			'<!-- js-tooling:start -->\nSee @AGENTS.md (kept in sync by `js-tooling fix ai`).\n<!-- js-tooling:end -->\n'
@@ -578,9 +578,21 @@ describe('doctor extended checks', () => {
 	it('AI setup: ok when the Claude skill is present without AGENTS.md', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
-		await fs.outputFile(join(dir, '.claude', 'skills', 'js-tooling.md'), '# skill\n')
+		await fs.outputFile(join(dir, '.claude', 'skills', 'repo-tooling', 'SKILL.md'), '# skill\n')
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'AI setup')?.status).toBe('ok')
+	})
+
+	it('AI setup: flags a flat .claude/skills/*.md skill Claude Code does not load (#823)', async () => {
+		for (const flat of ['repo-tooling.md', 'js-tooling.md']) {
+			const dir = newTmpDir()
+			await seedPackageJson(dir)
+			await fs.outputFile(join(dir, '.claude', 'skills', flat), '# skill\n')
+			const result = (await runDoctor(dir)).find((r) => r.check === 'AI setup')
+			expect(result?.status).toBe('optional-missing')
+			expect(result?.detail).toContain(`.claude/skills/${flat}`)
+			expect(result?.hint).toContain('fix claude-skill')
+		}
 	})
 
 	const worktreeCheck = async (dir: string) =>
@@ -590,6 +602,12 @@ describe('doctor extended checks', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		expect((await worktreeCheck(dir))?.status).toBe('optional-missing')
+	})
+
+	it('Claude worktree settings: n/a without a package.json, which fix ai skips (#830)', async () => {
+		const result = await worktreeCheck(newTmpDir())
+		expect(result?.status).toBe('ok')
+		expect(result?.detail).toBe('not applicable (no package.json)')
 	})
 
 	it('Claude worktree settings: optional-missing when the file lacks the entry', async () => {
@@ -1090,6 +1108,25 @@ describe('doctor security checks', () => {
 		expect((await dep())?.status).toBe('ok')
 	})
 
+	it('reports Dependabot drift when a label-mode workflow keeps contents: write (#819)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 4,
+			record: { config: {}, assets: {}, writtenBy: 'x', writtenAt: 'y' },
+			rules: { dependabot: { onPr: 'label' } },
+		})
+		await generateDependabotConfig(dir)
+		const dep = async () => (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		expect((await dep())?.status).toBe('ok')
+		const wf = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		const content = await fs.readFile(wf, 'utf8')
+		await fs.writeFile(wf, content.replace('contents: read', 'contents: write'))
+		expect((await dep())?.detail).toMatch(/surplus contents: write/)
+		await generateDependabotConfig(dir)
+		expect((await dep())?.status).toBe('ok')
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
@@ -1497,6 +1534,32 @@ describe('nextStepSuggestions', () => {
 		// 8 specific + 1 overflow
 		expect(suggestions).toHaveLength(9)
 		expect(suggestions.at(-1)).toMatch(/and \d+ more/)
+	})
+
+	it('points a fresh dir at setup instead of a list of fixers (#827)', () => {
+		const suggestions = nextStepSuggestions(
+			[{ check: 'package.json', status: 'missing', detail: '' }],
+			'js',
+			{ fresh: true }
+		)
+		expect(suggestions).toHaveLength(1)
+		expect(suggestions[0]).toMatch(/setup --preset <minimal\|library/)
+	})
+
+	it('drops a target that fix does not register for the language (#827)', () => {
+		const lockfile = [{ check: 'lockfile', status: 'optional-missing' as const, detail: '' }]
+		expect(nextStepSuggestions(lockfile, 'js')[0]).toMatch(/fix lockfile/)
+		expect(nextStepSuggestions(lockfile, 'swift')[0]).toMatch(/fix swift-lockfile/)
+		expect(nextStepSuggestions(lockfile, 'python')).toEqual([])
+		expect(nextStepSuggestions(lockfile, 'unknown')).toEqual([])
+	})
+
+	it('gives no lockfile hint where fix cannot record one (#827)', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'README.md'), '# x\n')
+		const lockfile = (await runDoctor(dir, { offline: true })).find((r) => r.check === 'lockfile')
+		expect(lockfile?.status).toBe('optional-missing')
+		expect(lockfile?.hint).toBeUndefined()
 	})
 
 	it('skips checks with no registered fix target', () => {
