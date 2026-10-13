@@ -554,7 +554,7 @@ export async function runDoctor(
 	results.push(await checkTreeshakeSetup(targetDir, pkg))
 	results.push(await checkPnpmWorkspace(targetDir, pkg))
 	results.push(await checkBuildApprovals(targetDir, pkg))
-	results.push(await checkClaudeWorktreeSettings(targetDir))
+	results.push(await checkClaudeWorktreeSettings(targetDir, pkg))
 	// Turborepo is monorepo-only — only surface the check when a workspace exists.
 	if (await fs.pathExists(path.join(targetDir, 'pnpm-workspace.yaml'))) {
 		results.push(await checkTurborepo(targetDir))

@@ -1311,8 +1311,13 @@ export async function checkTreeshakeSetup(dir: string, pkg: Pkg | null): Promise
  * makes the symlinks itself. That is why the check is worth passing on a repo
  * running the loop, where the setting alone would govern nothing.
  */
-export async function checkClaudeWorktreeSettings(dir: string): Promise<CheckResult> {
+export async function checkClaudeWorktreeSettings(
+	dir: string,
+	pkg: Pkg | null
+): Promise<CheckResult> {
 	const check = 'Claude worktree settings'
+	// Same gate as `fix ai`, which writes no settings without a package.json.
+	if (!pkg) return { check, status: 'ok', detail: 'not applicable (no package.json)' }
 	const hint = `Run \`npx ${PACKAGE} fix ai\` to merge worktree.symlinkDirectories into ${CLAUDE_SETTINGS_FILE}`
 	if (!(await fs.pathExists(path.join(dir, CLAUDE_SETTINGS_FILE)))) {
 		return {
