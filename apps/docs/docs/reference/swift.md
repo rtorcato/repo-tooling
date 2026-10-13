@@ -202,7 +202,7 @@ DerivedData/
 
 ```bash
 npx @rtorcato/repo-tooling fix swift-ci          # .github/workflows/ci.yml
-npx @rtorcato/repo-tooling fix swift-codeql      # .github/workflows/codeql.yml
+npx @rtorcato/repo-tooling fix codeql            # .github/workflows/codeql.yml
 npx @rtorcato/repo-tooling fix swift-gitlab-ci   # .gitlab-ci.yml
 ```
 
