@@ -28,7 +28,10 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 		packageManager: `pnpm@${detectPnpmVersion() ?? PNPM_FALLBACK_VERSION}`,
 		// An app with no release tool isn't published; without this, doctor reads
 		// the missing semantic-release config as drift on a fresh scaffold (#821).
-		...(config.projectType !== 'library' && !config.semanticRelease && { private: true }),
+		...(config.projectType !== 'library' &&
+			!config.semanticRelease &&
+			!config.changesets &&
+			!config.releasePlease && { private: true }),
 		...existingPackageJson,
 		scripts: resolveScripts(config, generatedScripts, existingScripts),
 		dependencies: {
