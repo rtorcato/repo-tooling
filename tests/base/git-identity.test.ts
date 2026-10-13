@@ -106,7 +106,7 @@ describe('checkGitIdentity', () => {
 	it('skips on CI, where the identity belongs to the runner', async () => {
 		process.env.CI = 'true'
 		const r = await checkGitIdentity(gitRepo(), emailIs('a@example.com'))
-		expect(r.status).toBe('ok')
+		expect(r.status).toBe('skipped')
 		expect(r.detail).toContain('CI')
 	})
 })
@@ -151,7 +151,7 @@ describe('checkGitIdentityHistory', () => {
 
 	it('says so on a shallow clone rather than reporting a false all-clear', async () => {
 		const r = await checkGitIdentityHistory(gitRepo(), history({ shallow: true }))
-		expect(r.status).toBe('ok')
+		expect(r.status).toBe('skipped')
 		expect(r.detail).toContain('shallow clone')
 	})
 
@@ -169,7 +169,7 @@ describe('checkGitIdentityHistory', () => {
 			return null
 		}
 		const r = await checkGitIdentityHistory(gitRepo(), spy)
-		expect(r.status).toBe('ok')
+		expect(r.status).toBe('skipped')
 		expect(called).toBe(false)
 	})
 })
