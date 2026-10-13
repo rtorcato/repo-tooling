@@ -34,6 +34,15 @@ vi.mock('../../../src/cli/utils/install.js', () => ({ installDependencies: vi.fn
 
 const newTmpDir = useTmpDir()
 
+const AI_FILES = [
+	'AGENTS.md',
+	'CLAUDE.md',
+	'.claude',
+	'.cursor',
+	join('.github', 'copilot-instructions.md'),
+	'.mcp.json.example',
+]
+
 /** Pretend both ends of the pipe are a terminal; returns the undo. */
 function fakeTTY(): () => void {
 	const saved = [process.stdin, process.stdout].map(
@@ -595,6 +604,37 @@ describe('setup --preset review prompt', () => {
 		expect(await fs.pathExists(join(dir, 'AGENTS.md'))).toBe(true)
 	})
 
+	it('--no-ai-setup writes none of the AI files and records the opt-out (#830)', async () => {
+		const dir = newTmpDir()
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true, aiSetup: false })
+		} finally {
+			logSpy.mockRestore()
+		}
+		for (const file of AI_FILES) expect(await fs.pathExists(join(dir, file)), file).toBe(false)
+		expect(await fs.pathExists(join(dir, '.husky', 'pre-commit'))).toBe(true)
+		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
+		expect(lock.record.config.aiSetup).toBe(false)
+	})
+
+	it('--no-ai-setup drops the AI row from the review checkbox', async () => {
+		const dir = newTmpDir()
+		const restoreTTY = fakeTTY()
+		const spy = vi
+			.spyOn(inquirer, 'prompt')
+			.mockImplementation((async () => ({ features: [] })) as never)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'library', skipInstall: true, aiSetup: false })
+		} finally {
+			logSpy.mockRestore()
+			restoreTTY()
+		}
+		const [questions] = spy.mock.calls[0] as [Array<{ choices: Array<{ value: string }> }>]
+		expect(questions[0].choices.map((c) => c.value)).not.toContain('aiSetup')
+	})
+
 	it('skips the review with --dry-run even in a terminal', async () => {
 		const dir = newTmpDir()
 		const restoreTTY = fakeTTY()
@@ -839,6 +879,20 @@ describe('setup language prompt', () => {
 	// #563: rules are per-repo, so sharing a guideline means pointing at another
 	// repo. `--from` seeds the wizard from one — seeded, never skipped, so nothing
 	// is written that the user did not see and confirm.
+	it('--no-ai-setup pre-answers the AI question with no (#830)', async () => {
+		const dir = newTmpDir()
+		const spy = mockPrompt({ language: 'js' }, { ...JS_ANSWERS, aiSetup: true })
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, skipInstall: true, aiSetup: false })
+		} finally {
+			logSpy.mockRestore()
+		}
+		const [questions] = spy.mock.calls[1] as [Array<{ name: string; when?: () => boolean }>]
+		expect(questions.find((q) => q.name === 'aiSetup')?.when?.()).toBe(false)
+		for (const file of AI_FILES) expect(await fs.pathExists(join(dir, file)), file).toBe(false)
+	})
+
 	it('seeds the wizard defaults from a reference repo without copying its record', async () => {
 		const dir = newTmpDir()
 		vi.mocked(fetchReferenceLockfile).mockResolvedValue({

@@ -33,6 +33,10 @@ program
 		'--config <path>',
 		'Skip prompts; read a ProjectConfig or .repo-tooling.json lockfile from <path>'
 	)
+	.option(
+		'--no-ai-setup',
+		'Skip the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)'
+	)
 	.option('--dry-run', 'Print the resolved config and file list, write nothing')
 	.option('--config-schema', 'Print the JSON Schema for ProjectConfig and exit')
 	// Seeds the wizard, never skips it (#563) — every answer is still yours.

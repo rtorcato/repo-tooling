@@ -106,6 +106,8 @@ export interface SetupOptions {
 	yes?: boolean
 	/** `--from <owner/repo>`: seed the wizard's defaults from that repo's lockfile (#563). */
 	from?: string
+	/** `--no-ai-setup` sets this false: skip the AI agent files whatever the config says (#830). */
+	aiSetup?: boolean
 }
 
 /**
@@ -228,6 +230,8 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		}
 		const projectName = path.basename(path.resolve(options.directory))
 		const config = buildPresetConfig(options.preset as PresetName, projectName)
+		// Before the review, so the opted-out files aren't listed as on.
+		if (options.aiSetup === false) config.aiSetup = false
 		if (options.dryRun || options.yes || !isInteractiveTerminal()) return config
 		return reviewPresetConfig(config)
 	}
@@ -247,7 +251,7 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		if (seeded === null) return null
 		seed = seeded
 	}
-	return promptForConfig(path.resolve(options.directory), seed)
+	return promptForConfig(path.resolve(options.directory), seed, options.aiSetup === false)
 }
 
 export async function setupProject(options: SetupOptions) {
@@ -272,6 +276,8 @@ export async function setupProject(options: SetupOptions) {
 		// yet. It has already explained why — scaffolding a JS project into a Swift
 		// repo would be worse than doing nothing.
 		if (config === null) return
+		// Also covers --config and the Swift wizard, which never ask.
+		if (options.aiSetup === false) config.aiSetup = false
 
 		if (dryRun) {
 			const files = computeFileList(config)
@@ -422,7 +428,9 @@ function explainNotScaffoldable(module: LanguageModule) {
  */
 async function promptForConfig(
 	targetDir: string,
-	seed?: ProjectConfig
+	seed?: ProjectConfig,
+	/** `--no-ai-setup` already answered the AI question with no. */
+	skipAi = false
 ): Promise<ProjectConfig | null> {
 	const language = await promptForLanguage(targetDir, seed)
 
@@ -645,6 +653,7 @@ async function promptForConfig(
 			name: 'aiSetup',
 			message: '🤖 Add AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill)?',
 			default: seed?.aiSetup ?? true,
+			when: () => !skipAi,
 		},
 		{
 			type: 'select',
