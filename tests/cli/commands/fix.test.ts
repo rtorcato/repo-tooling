@@ -14,6 +14,7 @@ import {
 } from '../../../src/cli/generators/security.js'
 import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
+import { getToolRange } from '../../../src/cli/utils/version.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 vi.mock('inquirer', () => ({
@@ -638,7 +639,7 @@ describe('fix targeted', () => {
 		await fs.writeJson(join(dir, 'package.json'), { name: 'demo', version: '0.0.0' })
 		await fixCommand('package-json', { directory: dir, yes: true })
 		const pkg = await fs.readJson(join(dir, 'package.json'))
-		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe('latest')
+		expect(pkg.devDependencies['@rtorcato/repo-tooling']).toBe(await getToolRange())
 	})
 
 	it('fix biome on existing biome.json respects "no" on overwrite prompt', async () => {

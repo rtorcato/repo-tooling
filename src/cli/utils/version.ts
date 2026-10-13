@@ -76,3 +76,14 @@ export function getToolVersion(): Promise<string> {
 	cached ??= resolveShippedVersion(getPackageRoot(), String(packageJson.version))
 	return cached
 }
+
+/**
+ * The range a scaffold or `fix package-json` writes for this package (#822).
+ *
+ * It used to be `latest`, so the presets a run had just written could land next
+ * to a CLI from another major. A caret on the running version keeps the two on
+ * the same major while still taking fixes.
+ */
+export async function getToolRange(): Promise<string> {
+	return `^${await getToolVersion()}`
+}
