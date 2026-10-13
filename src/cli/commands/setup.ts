@@ -2,6 +2,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
+import { classifyGitEmail, realGitExec } from '../../base/git-identity.js'
 import { collectSecretUses, requiredSecrets, secretHints } from '../../base/secrets.js'
 import {
 	formatNpmPublishGuide,
@@ -769,6 +770,14 @@ async function showNextSteps(config: ProjectConfig, targetDir: string) {
 	console.log(chalk.bold('\n📋 Next Steps:\n'))
 
 	const steps = []
+
+	// First, because it blocks the first commit (or makes git invent an address
+	// from the hostname) — doctor would only say so after the fact (#828).
+	if (classifyGitEmail(await realGitExec(['config', '--get', 'user.email'], targetDir)) !== 'ok') {
+		steps.push(
+			'✉️  Set your git email before the first commit: git config --global user.email you@yourdomain.com'
+		)
+	}
 
 	// Every step in the else-branch names a pnpm script. Swift's equivalents are
 	// SwiftPM and SwiftLint commands — and neither tool ships with the scaffold,

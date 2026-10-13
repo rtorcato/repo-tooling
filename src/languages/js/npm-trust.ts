@@ -459,7 +459,7 @@ export async function applyNpmTrustedPublisher(
 export const NPM_TRUST_FIXER: Fixer = {
 	target: NPM_TRUST_FIX,
 	description:
-		'Register the npm trusted publisher (OIDC) for this package with `npm trust github`, derived from the publishing job (#687)',
+		'Register the npm trusted publisher (OIDC) for this package with `npm trust github`, derived from the publishing job',
 	appliesTo: [NPM_TRUST_CHECK],
 	outputs: ['npm trusted publisher (remote, via npm trust)'],
 	// safe-add keeps `--diff` from shadow-running it (that would call npm for real);

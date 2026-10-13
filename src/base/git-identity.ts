@@ -66,7 +66,7 @@ const DETAIL: Record<Exclude<GitIdentityVerdict, 'ok'>, (email: string) => strin
 }
 
 const HINT =
-	'Commits made with this identity will not link to your forge account, and the address cannot be added as a verified secondary email to fix them retroactively (#327). Set a real one: `git config --global user.email you@yourdomain.com` — or per-repo, drop `--global`.'
+	'Commits made with this identity will not link to your forge account, and the address cannot be added as a verified secondary email to fix them retroactively. Set a real one: `git config --global user.email you@yourdomain.com` — or per-repo, drop `--global`.'
 
 const CHECK = 'Git identity'
 
@@ -201,7 +201,7 @@ export const HISTORY_SCAN_LIMIT = 200
 const HISTORY_SAMPLE = 3
 
 const HISTORY_HINT =
-	'These commits are already made: the address can never be verified as a secondary email, so they cannot be re-linked to a forge account without a history rewrite (#327). Fix the identity going forward (see the Git identity check) and treat the history as recorded loss.'
+	'These commits are already made: the address can never be verified as a secondary email, so they cannot be re-linked to a forge account without a history rewrite. Fix the identity going forward (see the Git identity check) and treat the history as recorded loss.'
 
 /**
  * The retrospective half of `checkGitIdentity` (#557): that check reads the

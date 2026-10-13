@@ -3,7 +3,7 @@
 import chalk from 'chalk'
 import { Command } from 'commander'
 import { doctorCommand } from './commands/doctor.js'
-import { fixCommand } from './commands/fix.js'
+import { fixCommand, printFixTargets } from './commands/fix.js'
 import { setupProject } from './commands/setup.js'
 import { selfRepoRefusal } from './self-repo.js'
 import { copyPreset, PRESETS, type PresetName } from './utils/copy-preset.js'
@@ -13,7 +13,9 @@ const program = new Command()
 
 program
 	.name('@rtorcato/repo-tooling')
-	.description('🛠️  JavaScript and TypeScript tooling setup for modern projects')
+	.description(
+		'🛠️  Scaffold and audit project tooling: JavaScript/TypeScript, Swift, Python and Perl'
+	)
 	.version(await getToolVersion())
 
 program
@@ -64,260 +66,14 @@ program
 		}
 	})
 
-interface ToolCatalogEntry {
-	name: string
-	description: string
-	exports: string[]
-	fixTarget: string | null
-}
-
-const TOOL_CATALOG: ToolCatalogEntry[] = [
-	{
-		name: 'TypeScript',
-		description: 'Base, React, Next.js, Node.js, Express, Bun tsconfig presets',
-		exports: [
-			'@rtorcato/repo-tooling/typescript/base',
-			'@rtorcato/repo-tooling/typescript/react',
-			'@rtorcato/repo-tooling/typescript/next',
-			'@rtorcato/repo-tooling/typescript/node',
-			'@rtorcato/repo-tooling/typescript/express',
-			'@rtorcato/repo-tooling/typescript/bun',
-			'@rtorcato/repo-tooling/typescript/test',
-			'@rtorcato/repo-tooling/typescript/reset',
-		],
-		fixTarget: 'tsconfig',
-	},
-	{
-		name: 'Bun',
-		description: 'Bun runtime/test-runner config (bunfig.toml + Bun-typed tsconfig)',
-		exports: ['@rtorcato/repo-tooling/typescript/bun'],
-		fixTarget: 'bun',
-	},
-	{
-		name: 'ESLint',
-		description: 'Base and Next.js ESLint configurations',
-		exports: ['@rtorcato/repo-tooling/eslint/base', '@rtorcato/repo-tooling/eslint/nextjs'],
-		fixTarget: 'eslint',
-	},
-	{
-		name: 'Biome',
-		description: 'Fast formatter and linter configuration',
-		exports: ['@rtorcato/repo-tooling/biome'],
-		fixTarget: 'biome',
-	},
-	{
-		name: 'Prettier',
-		description: 'Code formatter configuration',
-		exports: ['@rtorcato/repo-tooling/prettier'],
-		fixTarget: 'prettier',
-	},
-	{
-		name: 'Vitest',
-		description: 'Testing framework configuration',
-		exports: [
-			'@rtorcato/repo-tooling/vitest/config',
-			'@rtorcato/repo-tooling/vitest/react',
-			'@rtorcato/repo-tooling/vitest/setup',
-		],
-		fixTarget: 'vitest',
-	},
-	{
-		name: 'Jest',
-		description: 'Testing framework presets for browser and Node.js',
-		exports: [
-			'@rtorcato/repo-tooling/jest-presets/browser/jest-preset',
-			'@rtorcato/repo-tooling/jest-presets/node/jest-preset',
-		],
-		fixTarget: null,
-	},
-	{
-		name: 'Playwright',
-		description: 'End-to-end testing configuration',
-		exports: ['@rtorcato/repo-tooling/playwright'],
-		fixTarget: null,
-	},
-	{
-		name: 'Cypress',
-		description: 'End-to-end testing configuration',
-		exports: ['@rtorcato/repo-tooling/cypress'],
-		fixTarget: 'cypress',
-	},
-	{
-		name: 'Commitlint',
-		description: 'Conventional commit linting',
-		exports: ['@rtorcato/repo-tooling/commitlint/config'],
-		fixTarget: 'commitlint',
-	},
-	{
-		name: 'Husky',
-		description: 'Git hooks for pre-commit validation',
-		exports: [],
-		fixTarget: 'husky',
-	},
-	{
-		name: 'lint-staged',
-		description: 'Run linters on staged files (pairs with Husky)',
-		exports: [],
-		fixTarget: 'husky',
-	},
-	{
-		name: 'Semantic Release',
-		description: 'Automated versioning and publishing',
-		exports: [
-			'@rtorcato/repo-tooling/semantic-release',
-			'@rtorcato/repo-tooling/semantic-release/github',
-			'@rtorcato/repo-tooling/semantic-release/docker',
-		],
-		fixTarget: 'semantic-release',
-	},
-	{
-		name: 'Changesets',
-		description: 'Monorepo-friendly release tool (alternative to semantic-release)',
-		exports: ['@rtorcato/repo-tooling/changesets'],
-		fixTarget: 'changesets',
-	},
-	{
-		name: 'Release Please',
-		description: 'Release-PR-driven release tool (alternative to semantic-release)',
-		exports: ['@rtorcato/repo-tooling/release-please'],
-		fixTarget: 'release-please',
-	},
-	{
-		name: 'Oxlint',
-		description: 'Rust-based linter (additive to Biome/ESLint)',
-		exports: ['@rtorcato/repo-tooling/oxlint'],
-		fixTarget: 'oxlint',
-	},
-	{
-		name: 'tsup',
-		description: 'TypeScript bundler configuration',
-		exports: ['@rtorcato/repo-tooling/tsup'],
-		fixTarget: null,
-	},
-	{
-		name: 'TypeDoc',
-		description: 'API documentation generation for TypeScript library projects',
-		exports: ['@rtorcato/repo-tooling/typedoc'],
-		fixTarget: 'typedoc',
-	},
-	{
-		name: 'esbuild',
-		description: 'Fast JavaScript bundler configuration',
-		exports: ['@rtorcato/repo-tooling/esbuild'],
-		fixTarget: null,
-	},
-	{
-		name: 'Vite',
-		description: 'Modern web app build tool configuration',
-		exports: ['@rtorcato/repo-tooling/vite'],
-		fixTarget: null,
-	},
-	{
-		name: 'EditorConfig',
-		description: 'Cross-editor formatting consistency (.editorconfig)',
-		exports: [],
-		fixTarget: 'editorconfig',
-	},
-	{
-		name: '.nvmrc',
-		description: 'Pin Node version per repository',
-		exports: [],
-		fixTarget: 'nvmrc',
-	},
-	{
-		name: 'knip',
-		description: 'Find unused files, exports, and dependencies',
-		exports: [],
-		fixTarget: 'knip',
-	},
-	{
-		name: 'Dependabot',
-		description: 'Weekly automated dependency updates',
-		exports: [],
-		fixTarget: 'dependabot',
-	},
-	{
-		name: 'Renovate',
-		description: 'Weekly automated dependency updates (alternative to Dependabot)',
-		exports: [],
-		fixTarget: 'renovate',
-	},
-	{
-		name: 'CodeQL',
-		description: 'GitHub security scanning workflow',
-		exports: [],
-		fixTarget: 'codeql',
-	},
-	{
-		name: 'SwiftLint',
-		description: 'Swift linter configuration (lint + --fix; pairs with `swiftlint --strict` in CI)',
-		exports: [],
-		fixTarget: 'swiftlint',
-	},
-	{
-		name: 'Periphery',
-		description: 'Swift dead-code scanner configuration (retains public API for SwiftPM libraries)',
-		exports: [],
-		fixTarget: 'periphery',
-	},
-	{
-		name: 'Ruff',
-		description:
-			'Python linter and formatter in one tool (replaces flake8, isort, pyupgrade, black)',
-		exports: [],
-		fixTarget: 'ruff',
-	},
-	{
-		name: 'mypy',
-		description:
-			'Python static type checker configuration (strict on your code, lenient on untyped deps)',
-		exports: [],
-		fixTarget: 'mypy',
-	},
-	{
-		name: 'pytest',
-		description: 'Python test runner configuration (strict markers and config, warnings as errors)',
-		exports: [],
-		fixTarget: 'pytest',
-	},
-	{
-		name: 'Perl::Critic',
-		description: 'Perl linter configuration (severity 3, with the family rule exceptions)',
-		exports: [],
-		fixTarget: 'perlcritic',
-	},
-	{
-		name: 'perltidy',
-		description: 'Perl formatter configuration (Perl Best Practices layout at 100 columns)',
-		exports: [],
-		fixTarget: 'perltidy',
-	},
-	{
-		name: 'AI Agent Setup',
-		description: 'Scaffold AGENTS.md, CLAUDE.md, Cursor/Copilot rules, Claude skill, MCP example',
-		exports: [],
-		fixTarget: 'ai',
-	},
-]
-
 program
 	.command('list')
 	.alias('ls')
-	.description('📋 List all available tooling configurations')
+	.description('📋 List every fix target (the same registry as `fix --list`)')
 	.option('--json', 'Emit machine-readable JSON output')
-	.action((options: { json?: boolean }) => {
-		if (options.json) {
-			console.log(JSON.stringify({ tools: TOOL_CATALOG }, null, 2))
-			return
-		}
-
-		console.log(chalk.cyan('\n🛠️  Available tooling configurations:\n'))
-		for (const { name, description } of TOOL_CATALOG) {
-			console.log(`  ${chalk.green('●')} ${chalk.bold(name)}: ${chalk.gray(description)}`)
-		}
-		console.log(chalk.dim('\n💡 Run `repo-tooling setup` for a new project'))
-		console.log(chalk.dim('   or `repo-tooling fix` to apply missing pieces to an existing one\n'))
-	})
+	.action((options: { json?: boolean }) =>
+		printFixTargets(options.json === true, { legacyTools: true })
+	)
 
 program
 	.command('doctor')
