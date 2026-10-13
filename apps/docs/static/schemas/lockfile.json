@@ -304,6 +304,49 @@
 						}
 					}
 				},
+				"github": {
+					"type": "object",
+					"additionalProperties": false,
+					"description": "The GitHub settings this repo says it has, so a dashboard change shows up as drift until someone commits it. Every field is optional; an absent one falls back to the standard. `doctor` diffs live state against it and names the field, `fix github-settings` applies it (`fix release-environment` for the reviewers).",
+					"properties": {
+						"requiredChecks": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"description": "Required status checks on the default branch, exhaustive: a live check not listed here is drift too. `test` also covers matrix legs like `test (node 22)`. Standard: lint, typecheck, build, test (a floor, extras allowed)."
+						},
+						"strict": {
+							"type": "boolean",
+							"description": "Require branches to be up to date before merging. Standard: false."
+						},
+						"autoMerge": {
+							"type": "boolean",
+							"description": "Allow auto-merge. Standard: true."
+						},
+						"deleteOnMerge": {
+							"type": "boolean",
+							"description": "Delete head branches on merge. Standard: true."
+						},
+						"vulnerabilityAlerts": {
+							"type": "boolean",
+							"description": "Dependabot vulnerability alerts. Standard: true."
+						},
+						"automatedSecurityFixes": {
+							"type": "boolean",
+							"description": "Dependabot automated security fixes. Standard: true."
+						},
+						"releaseReviewers": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"description": "GitHub user logins required to approve the `release` environment. Unchecked when absent."
+						}
+					}
+				},
 				"requiredSkills": {
 					"type": "array",
 					"items": {

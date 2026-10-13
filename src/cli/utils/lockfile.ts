@@ -73,6 +73,31 @@ export interface LockfileRecord {
 /** What the generated Dependabot workflow does with a PR it could auto-merge. */
 export type DependabotOnPr = 'automerge' | 'label'
 
+/**
+ * `rules.github` in .repo-tooling.json (#817): the settings this repo says it
+ * has, committed and reviewed like any other file. Every field is optional and
+ * an absent one falls back to the standard, so `{}` means "the standard". A
+ * declared field is diffed against live state by doctor (drift names the
+ * field) and applied by `fix github-settings`, or `fix release-environment`
+ * for the reviewers.
+ */
+export interface GithubRules {
+	/** Required status contexts on the default branch. Standard: lint, typecheck, build, test. */
+	requiredChecks?: string[]
+	/** Require branches to be up to date before merging. Standard: false. */
+	strict?: boolean
+	/** Standard: true. */
+	autoMerge?: boolean
+	/** Standard: true. */
+	deleteOnMerge?: boolean
+	/** Dependabot vulnerability alerts. Standard: true. */
+	vulnerabilityAlerts?: boolean
+	/** Dependabot automated security fixes. Standard: true. */
+	automatedSecurityFixes?: boolean
+	/** GitHub user logins required to approve the `release` environment. No standard: unchecked when absent. */
+	releaseReviewers?: string[]
+}
+
 export interface LockfileRules {
 	/**
 	 * What `dependabot-automerge.yml` does with a safe-tier PR (#746).
@@ -83,6 +108,8 @@ export interface LockfileRules {
 		onPr?: DependabotOnPr
 		label?: string
 	}
+	/** The GitHub settings this repo says it has (#817). See `GithubRules`. */
+	github?: GithubRules
 	/**
 	 * @deprecated Moved to `.repo-ai.json`, owned by `@infrazero/repo-ai` (#689).
 	 * Still accepted so existing lockfiles validate; removed in the next major.
@@ -273,6 +300,43 @@ export function lockfileSchema() {
 									'The label `onPr: "label"` adds. Defaults to `needs-review` when omitted.',
 							},
 						} satisfies Record<keyof NonNullable<LockfileRules['dependabot']>, object>,
+					},
+					github: {
+						type: 'object',
+						additionalProperties: false,
+						description:
+							'The GitHub settings this repo says it has, so a dashboard change shows up as drift until someone commits it. Every field is optional; an absent one falls back to the standard. `doctor` diffs live state against it and names the field, `fix github-settings` applies it (`fix release-environment` for the reviewers).',
+						properties: {
+							requiredChecks: {
+								type: 'array',
+								items: { type: 'string', minLength: 1 },
+								description:
+									'Required status checks on the default branch, exhaustive: a live check not listed here is drift too. `test` also covers matrix legs like `test (node 22)`. Standard: lint, typecheck, build, test (a floor, extras allowed).',
+							},
+							strict: {
+								type: 'boolean',
+								description: 'Require branches to be up to date before merging. Standard: false.',
+							},
+							autoMerge: { type: 'boolean', description: 'Allow auto-merge. Standard: true.' },
+							deleteOnMerge: {
+								type: 'boolean',
+								description: 'Delete head branches on merge. Standard: true.',
+							},
+							vulnerabilityAlerts: {
+								type: 'boolean',
+								description: 'Dependabot vulnerability alerts. Standard: true.',
+							},
+							automatedSecurityFixes: {
+								type: 'boolean',
+								description: 'Dependabot automated security fixes. Standard: true.',
+							},
+							releaseReviewers: {
+								type: 'array',
+								items: { type: 'string', minLength: 1 },
+								description:
+									'GitHub user logins required to approve the `release` environment. Unchecked when absent.',
+							},
+						} satisfies Record<keyof GithubRules, object>,
 					},
 					requiredSkills: {
 						type: 'array',
