@@ -259,6 +259,17 @@ function environmentOf(v: unknown): string | null {
 	return null
 }
 
+/** The git root's package.json `repository`, or undefined when it can't be read. */
+async function rootRepository(dir: string): Promise<unknown> {
+	const root = await gitRoot(dir)
+	if (!root) return undefined
+	try {
+		return (await fs.readJson(path.join(root, 'package.json')))?.repository
+	} catch {
+		return undefined
+	}
+}
+
 type TrustContext =
 	| { skip: string; unpublished?: boolean; guide?: NpmPublishGuide }
 	| { guide: NpmPublishGuide; nwo: string; job: NpmPublishJob }
@@ -288,7 +299,8 @@ async function trustContext(
 	if (job.environment && !ENV_NAME.test(job.environment)) {
 		return { skip: 'the publish job declares an environment with unsupported characters' }
 	}
-	const repo = parseRepository(pkg.repository)
+	// A workspace package often leaves `repository` to the root (#813), as the root-run row does.
+	const repo = parseRepository(pkg.repository ?? (await rootRepository(dir)))
 	if (!repo) return { skip: 'package.json `repository` names no GitHub repo' }
 	const nwo = `${repo.owner}/${repo.repo}`
 	const guide = npmPublishGuide({ name, ...repo, file: job.file, environment: job.environment })
