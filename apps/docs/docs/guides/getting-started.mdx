@@ -16,7 +16,7 @@ import TabItem from '@theme/TabItem'
   </TabItem>
   <TabItem value="pnpm" label="pnpm dlx">
     ```bash
-    pnpm --package=@rtorcato/repo-tooling dlx setup
+    pnpm dlx @rtorcato/repo-tooling setup
     ```
   </TabItem>
   <TabItem value="global" label="global">
@@ -32,24 +32,35 @@ import TabItem from '@theme/TabItem'
 ```ansi title="Terminal"
 $ npx @rtorcato/repo-tooling setup
 
-🛠️  Welcome to JS Tooling Setup!
+🛠️  Welcome to repo-tooling setup!
 
 Setting up tooling in: /home/user/my-lib
 
-? 🗣️  What is the primary language of this repo? JavaScript/TypeScript
-? 📦 What is your project name? my-lib
-? 🏗️  What type of project are you building? 📚 Library/Package
-? 📘 Do you want to use TypeScript? Yes
-? ⚙️  Which TypeScript configuration? 🔧 Base (General purpose)
-? 🔍 Which linting/formatting tool? ⚡ Biome (Fast, all-in-one)
-? 🧪 Which testing framework? ⚡ Vitest (Fast, Vite-powered)
-? 🪝 Set up Git hooks (Husky + lint-staged)? Yes
-? 📝 Set up conventional commit linting? Yes
-? 🚀 Set up semantic release for automated versioning? Yes
-? 🛡️  Include security automation (Dependabot + CodeQL)? Yes
-? 📦 Which bundler/build tool? 📦 tsup (TypeScript packages)
+✔ 🗣️  What is the primary language of this repo? JavaScript/TypeScript
+✔ 📦 What is your project name? my-lib
+✔ 🏗️  What type of project are you building? 📚 Library/Package
+✔ 📘 Do you want to use TypeScript? Yes
+✔ ⚙️  Which TypeScript configuration? 🔧 Base (General purpose)
+✔ 🔍 Which linting/formatting tool? ⚡ Biome (Fast, all-in-one)
+✔ 🦀 Also run Oxlint alongside (50–100× faster than ESLint)? No
+✔ 🧪 Which testing framework? ⚡ Vitest (Fast, Vite-powered)
+✔ 🪝 Set up Git hooks (Husky + lint-staged)? Yes
+✔ 📝 Set up conventional commit linting? Yes
+✔ 🚀 Automated release tool? 📦 semantic-release (commit-message-driven)
+✔ 🌳 Add a tree-shake verification check (apps/treeshake-check)? No
+✔ 📦 Add publint to lint your package before publishing? Yes
+✔ 🔖 Add status badges (CI, npm, coverage, license) to the README? Yes
+✔ 🛡️  Include security automation (Dependabot + CodeQL)? Yes
+✔ 🤖 Add AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill)? Yes
+✔ 📦 Which bundler/build tool? 📦 tsup (TypeScript packages)
+✔ 🥟 Target the Bun runtime (bunfig.toml + Bun-typed tsconfig)? No
 
 📝 Generating configuration files...
+
+📦 Installing dependencies...
+
+✅ Dependencies installed successfully!
+✨ Formatted generated files
 
 ✅ Setup completed successfully!
 
@@ -59,7 +70,11 @@ Setting up tooling in: /home/user/my-lib
   2. 🔍 Run linting with: pnpm biome check .
   3. 🧪 Run tests with: pnpm vitest
   4. 🪝 Commit your changes to test the git hooks
-  5. 📖 Check the generated README.md for more details
+  5. 🔒 .repo-tooling.json records your setup choices — doctor uses it to suppress intentional opt-outs
+  6. 📖 Check the generated README.md for more details
+
+📦 Publish to npm (OIDC trusted publishing — no NPM_TOKEN):
+  ...
 ```
 
 ## Setup wizard
@@ -75,13 +90,21 @@ Running `setup` (or its alias `init`) launches an interactive wizard:
 | TS config variant | `base`, `react`, `next`, `node`, `express` (context-filtered) |
 | Linting/formatting tool | `biome` (recommended), `eslint`, `both`, `none` |
 | ESLint config *(if ESLint)* | `base` or `nextjs` |
+| Oxlint alongside? *(if linting)* | yes/no |
 | Testing framework | `vitest` (recommended), `jest`, `playwright`, `cypress`, `none` |
 | Test environment *(if Jest)* | `node`, `browser`, `both` |
 | Git hooks (Husky + lint-staged)? | yes/no |
 | Conventional commit linting? | yes/no *(if git hooks enabled)* |
-| Semantic release? | yes/no *(library projects only)* |
+| Release tool *(library projects only)* | `semantic-release`, `changesets`, `release-please`, `none` |
+| Tree-shake check? *(library projects only)* | yes/no |
+| publint? *(library projects only)* | yes/no |
+| README status badges? | yes/no |
 | Security automation (Dependabot + CodeQL)? | yes/no |
-| Bundler | `tsup`, `esbuild`, `vite` *(web apps)*, `none` |
+| AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot, Claude skill)? | yes/no |
+| Monorepo task orchestrator *(if a pnpm workspace)* | `turbo`, `nx`, `none` |
+| Tailwind CSS v4? *(web apps)* | yes/no |
+| Bundler *(not Next.js)* | `tsup`, `esbuild`, `rollup`, `rolldown`, `vite` *(web apps)*, `none` |
+| Bun runtime? *(library and Node API)* | yes/no |
 
 A universal baseline (`.editorconfig`, `.nvmrc`, `engines.node`, `knip.json`, `.vscode/extensions.json`) is scaffolded automatically — no prompt — because these are safe defaults for every project.
 
