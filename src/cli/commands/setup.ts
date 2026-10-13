@@ -294,6 +294,22 @@ export async function setupProject(options: SetupOptions) {
 			// passes its own `pnpm check` out of the box (templates are written by
 			// hand and don't match biome/prettier whitespace).
 			await formatGeneratedFiles(config, targetDir)
+		} else if (config.language !== 'swift') {
+			// Formatting needs the installed formatter, so it was skipped above and
+			// `pnpm check` fails until it runs (#821).
+			const format =
+				config.linting.tool === 'eslint'
+					? 'pnpm format && pnpm lint:fix'
+					: config.linting.tool === 'none'
+						? null
+						: 'pnpm check:fix'
+			if (format) {
+				console.log(
+					chalk.yellow(
+						`\n⚠️  --skip-install skipped formatting. Run \`pnpm install && ${format}\` before \`pnpm check\`.`
+					)
+				)
+			}
 		}
 
 		console.log(chalk.green('\n✅ Setup completed successfully!\n'))

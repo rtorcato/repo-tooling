@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import fs from 'fs-extra'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
+import { COMMITLINT_DEPS } from './git.js'
 import { PNPM_FALLBACK_VERSION, detectPnpmVersion } from './misc.js'
 
 export async function generatePackageJson(config: ProjectConfig, targetDir: string) {
@@ -25,9 +26,16 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 		// The single source of truth for pnpm/action-setup, which is why the
 		// generated workflows carry no `version:` input (#364).
 		packageManager: `pnpm@${detectPnpmVersion() ?? PNPM_FALLBACK_VERSION}`,
+		// An app with no release tool isn't published; without this, doctor reads
+		// the missing semantic-release config as drift on a fresh scaffold (#821).
+		...(config.projectType !== 'library' &&
+			!config.semanticRelease &&
+			!config.changesets &&
+			!config.releasePlease && { private: true }),
 		...existingPackageJson,
 		scripts: resolveScripts(config, generatedScripts, existingScripts),
 		dependencies: {
+			...getRuntimeDependencies(config),
 			...(existingPackageJson as any)?.dependencies,
 		},
 		devDependencies: {
@@ -113,6 +121,17 @@ function resolveScripts(
 
 interface GetScriptsOptions {
 	includeTreeshake?: boolean
+}
+
+/**
+ * The framework a react-app / nextjs-app scaffold is built on. Without it the
+ * starter source (and the vite react plugin) can't even typecheck (#821).
+ */
+function getRuntimeDependencies(config: ProjectConfig): Record<string, string> {
+	if (config.projectType === 'nextjs-app')
+		return { next: '^16.0.0', react: '^19.0.0', 'react-dom': '^19.0.0' }
+	if (config.projectType === 'react-app') return { react: '^19.0.0', 'react-dom': '^19.0.0' }
+	return {}
 }
 
 function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record<string, string> {
@@ -280,6 +299,10 @@ export function composeVerifyScript(
 		cmds.push('pnpm test:e2e')
 	}
 	if (opts.includeTreeshake) cmds.push('pnpm treeshake')
+	// publint and attw lint the packed tarball, which has no dist/ until a build
+	// runs, so a fresh clone's `pnpm verify` failed on every advertised path (#821).
+	const packs = config.publint || config.projectType === 'library'
+	if (packs && config.bundler !== 'none') cmds.push('pnpm build')
 	if (config.publint) cmds.push('pnpm publint')
 	// attw is a publish-safety rider, not a core check — it never justifies a
 	// verify chain on its own, so append it only once we've decided to emit one.
@@ -313,7 +336,10 @@ export function composeVerifyScriptFromPkg(
 	// one. Its `test` script is still the thing verify should call (#364).
 	else if (scripts.test) cmds.push('pnpm test')
 	if (opts.includeTreeshake) cmds.push('pnpm treeshake')
-	if (deps.publint || scripts.publint) cmds.push('pnpm publint')
+	if (deps.publint || scripts.publint) {
+		if (scripts.build) cmds.push('pnpm build') // publint needs dist/ (#821)
+		cmds.push('pnpm publint')
+	}
 	return cmds.length >= 2 ? cmds.join(' && ') : null
 }
 
@@ -398,6 +424,12 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 		if (config.projectType === 'react-app') deps['@vitejs/plugin-react'] = '^5.0.0'
 	}
 
+	// Types for the React runtime getRuntimeDependencies adds.
+	if (config.projectType === 'react-app' || config.projectType === 'nextjs-app') {
+		deps['@types/react'] = '^19.0.0'
+		deps['@types/react-dom'] = '^19.0.0'
+	}
+
 	// Tailwind CSS v4 — CSS-first, wired via the PostCSS plugin.
 	if (config.tailwind) {
 		deps['tailwindcss'] = '^4.0.0'
@@ -425,8 +457,7 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 
 	// Commit linting (enforcement) + commitizen (assistance)
 	if (config.commitLint) {
-		deps['@commitlint/cli'] = '^20.0.0'
-		deps['@commitlint/config-conventional'] = '^20.0.0'
+		Object.assign(deps, COMMITLINT_DEPS)
 		deps['commitizen'] = '^4.3.1'
 		deps['cz-conventional-changelog'] = '^3.3.0'
 	}

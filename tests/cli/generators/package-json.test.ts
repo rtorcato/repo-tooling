@@ -31,6 +31,18 @@ function baseConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 }
 
 describe('generatePackageJson', () => {
+	// #821: an app is private only when no release tool would publish it.
+	it.each([
+		[{}, true],
+		[{ semanticRelease: true }, undefined],
+		[{ changesets: true }, undefined],
+		[{ releasePlease: true }, undefined],
+	] as const)('marks an app with release config %o private: %s', async (release, expected) => {
+		const dir = newTmpDir()
+		await generatePackageJson(baseConfig({ projectType: 'react-app', ...release }), dir)
+		expect((await fs.readJson(join(dir, 'package.json'))).private).toBe(expected)
+	})
+
 	it('creates a new package.json with the project name', async () => {
 		const dir = newTmpDir()
 		await generatePackageJson(baseConfig({ projectName: 'cool-lib' }), dir)
@@ -315,6 +327,14 @@ describe('composeVerifyScript', () => {
 			})
 		)
 		expect(result).toBe('pnpm typecheck && pnpm check && pnpm test --ci && pnpm attw')
+	})
+
+	// #821: publint and attw lint the packed tarball, which has no dist/ yet.
+	it('builds before publint and attw when there is a bundler', () => {
+		const result = composeVerifyScript(
+			baseConfig({ linting: { tool: 'biome' }, publint: true, bundler: 'tsup' })
+		)
+		expect(result).toBe('pnpm typecheck && pnpm check && pnpm build && pnpm publint && pnpm attw')
 	})
 
 	it('returns null when fewer than two tools are enabled', () => {
