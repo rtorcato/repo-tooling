@@ -368,15 +368,15 @@ describe('evaluateNodeVersion', () => {
 		expect(result.hint).toMatch(/nodejs\.org/)
 	})
 
-	it('reports drift on Node 22 below the LTS patch', () => {
+	it('reports optional-missing (not drift) on Node 22 below the LTS patch', () => {
 		const result = evaluateNodeVersion('v22.10.0')
-		expect(result.status).toBe('drift')
+		expect(result.status).toBe('optional-missing')
 		expect(result.hint).toMatch(/22\.22\.2/)
 	})
 
-	it('reports drift on Node 24 below the LTS patch', () => {
+	it('reports optional-missing (not drift) on Node 24 below the LTS patch', () => {
 		const result = evaluateNodeVersion('v24.14.1')
-		expect(result.status).toBe('drift')
+		expect(result.status).toBe('optional-missing')
 		expect(result.hint).toMatch(/24\.15\.0/)
 	})
 
