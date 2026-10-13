@@ -6,6 +6,7 @@ import {
 	githubJobs,
 	hasBin,
 	hasCommitlint,
+	nodeFloorOf,
 	renderReleaseWorkflow,
 	scriptsOf,
 } from '../../languages/js/ci.js'
@@ -71,6 +72,7 @@ import {
 	checkGitDependencies,
 	checkKnip,
 	checkLintStaged,
+	checkNodeTestMatrix,
 	checkNodeVersionConsistency,
 	checkNodeVersionPin,
 	checkPackageJson,
@@ -122,21 +124,27 @@ interface RemoteCheck {
 	remote: true
 	/** The check names it reports, so an offline run can still list them. */
 	names: readonly string[]
-	run: (dir: string) => Promise<CheckResult | CheckResult[]>
+	run: (dir: string, lock: Lockfile | null) => Promise<CheckResult | CheckResult[]>
 }
 
 const REMOTE_CHECKS = {
 	// GitHub repo-settings drift (branch protection, merge settings, workflow
 	// permissions). Read-only; self-skips as `ok` outside a live GitHub repo.
-	githubSettings: { remote: true, names: GITHUB_SETTINGS_CHECKS, run: checkGitHubSettings },
-	secrets: { remote: true, names: [SECRETS_CHECK], run: checkRepositorySecrets },
+	githubSettings: {
+		remote: true,
+		names: GITHUB_SETTINGS_CHECKS,
+		// rules.github (#817): the settings the repo declares, else the standard.
+		run: (dir, lock) => checkGitHubSettings(dir, undefined, lock?.rules?.github),
+	},
+	secrets: { remote: true, names: [SECRETS_CHECK], run: (dir) => checkRepositorySecrets(dir) },
 	// Milestone hygiene (#397) — same seam, same self-skip.
-	milestones: { remote: true, names: [MILESTONES_CHECK], run: checkMilestones },
+	milestones: { remote: true, names: [MILESTONES_CHECK], run: (dir) => checkMilestones(dir) },
 } satisfies Record<string, RemoteCheck>
 
 async function runRemote(
 	spec: RemoteCheck,
 	dir: string,
+	lock: Lockfile | null,
 	offline: boolean | undefined
 ): Promise<CheckResult[]> {
 	if (offline) {
@@ -146,7 +154,7 @@ async function runRemote(
 			detail: 'offline — reads live GitHub state via gh',
 		}))
 	}
-	return [await spec.run(dir)].flat()
+	return [await spec.run(dir, lock)].flat()
 }
 
 const PACKAGE = '@rtorcato/repo-tooling'
@@ -406,7 +414,7 @@ async function runBaseChecks(
 	results.push(await checkDependabot(dir))
 	results.push(await checkCodeQL(root, opts.codeqlLanguages))
 	for (const spec of Object.values(REMOTE_CHECKS)) {
-		results.push(...(await runRemote(spec, root, opts.offline)))
+		results.push(...(await runRemote(spec, root, lock, opts.offline)))
 	}
 	results.push(await checkGitLabCI(dir))
 	results.push(await checkCodeowners(dir))
@@ -556,6 +564,7 @@ export async function runDoctor(
 	results.push(await checkVscodeExtensions(targetDir))
 	results.push(await checkNodeVersionPin(targetDir))
 	results.push(await checkNodeVersionConsistency(targetDir, pkg))
+	results.push(await checkNodeTestMatrix(targetDir, pkg))
 	for (const spec of FILE_CHECKS) {
 		// Biome is the one spec that needs the directory as well as the file
 		// contents — it compares the `$schema` version against the installed
@@ -605,6 +614,7 @@ export async function runDoctor(
 					scripts: scriptsOf(pkg),
 					bin: hasBin(pkg),
 					commitlint: hasCommitlint(pkg),
+					nodeFloor: nodeFloorOf(pkg),
 				})
 			),
 			presetRelease: renderReleaseWorkflow(inferProjectConfig(pkg), { scripts: scriptsOf(pkg) }),

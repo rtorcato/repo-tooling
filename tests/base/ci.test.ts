@@ -58,7 +58,20 @@ describe('renderGitHubWorkflow', () => {
 			SWIFT_JOB,
 		])
 		expect(yaml).not.toMatch(/\n\n\n/)
-		expect(yaml.endsWith('swift test\n')).toBe(true)
+		expect(yaml.endsWith('cancelled "* ]]\n')).toBe(true)
+	})
+
+	it('ends with a `ci` gate that needs every job and runs even when one fails (#816)', () => {
+		const yaml = renderGitHubWorkflow([
+			{ id: 'build', steps: '      - run: swift build' },
+			SWIFT_JOB,
+		])
+		const gate = yaml.slice(yaml.indexOf('\n  ci:\n'))
+		expect(gate).toContain('needs: [check-skip, build, test]')
+		expect(gate).toContain('if: always()')
+		// Not skip-guarded: a skipped required check would pass a red run.
+		expect(gate).not.toContain('should-skip')
+		expect(gate).toContain('[[ " $RESULTS " != *" failure "* && " $RESULTS " != *" cancelled "* ]]')
 	})
 })
 

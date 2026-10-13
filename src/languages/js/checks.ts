@@ -18,6 +18,7 @@ import {
 } from '../../cli/generators/pnpm-workspace.js'
 import type { CheckResult } from '../../base/types.js'
 import { parseJsonc } from '../../cli/utils/jsonc.js'
+import { NEWEST_NODE, nodeMatrix } from './ci.js'
 
 const PACKAGE = '@rtorcato/repo-tooling'
 
@@ -576,6 +577,71 @@ export async function checkNodeVersionConsistency(
 		status: 'drift',
 		detail: `Node major disagreement: ${summary}`,
 		hint: 'Run `npx @rtorcato/repo-tooling fix node-version` to point workflows at `node-version-file: .nvmrc` (one source of truth)',
+	}
+}
+
+/**
+ * The Node majors a workflow's `node*` matrix key lists: flow (`node: [22, 26]`)
+ * or block (`node:` then `- 22` lines). Null when ci.yml has no such key.
+ *
+ * ponytail: line matching, like the workflow scans above, not a YAML parser.
+ */
+function nodeMatrixMajors(yaml: string): number[] | null {
+	const lines = yaml.split('\n')
+	for (let i = 0; i < lines.length; i++) {
+		const m = /^(\s*)node[\w-]*:\s*(.*?)\s*$/.exec(lines[i] ?? '')
+		if (!m) continue
+		let items: string[] = []
+		if (m[2]?.startsWith('[')) items = (m[2].match(/\[(.*)\]/)?.[1] ?? '').split(',')
+		else if (m[2] === '') {
+			for (let j = i + 1; /^\s*-\s*/.test(lines[j] ?? ''); j++) items.push(lines[j] ?? '')
+		}
+		const majors = items
+			.map((v) => v.match(/\d+/)?.[0])
+			.filter((v): v is string => v !== undefined)
+			.map((v) => Number.parseInt(v, 10))
+		if (majors.length > 0) return [...new Set(majors)].sort((a, b) => a - b)
+	}
+	return null
+}
+
+/**
+ * The test matrix standard (#816): exactly the `engines.node` floor and the
+ * newest Node. A missing floor ships a promise nobody tests; a version between
+ * the two re-proves what the ends already cover.
+ */
+export async function checkNodeTestMatrix(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+	const check = 'Node test matrix'
+	const floor = enginesFloorMajor(pkg)
+	const ciPath = path.join(dir, '.github', 'workflows', 'ci.yml')
+	if (floor === null || !(await fs.pathExists(ciPath))) {
+		return { check, status: 'ok', detail: 'no engines.node floor or ci.yml to compare' }
+	}
+	const want = nodeMatrix(floor)
+	const hint = `Test on [${want.join(', ')}]: a \`strategy.matrix.node\` on the test job, with \`node-version: \${{ matrix.node }}\` (\`fix github-actions --diff\` shows the preset)`
+	const have = nodeMatrixMajors(await fs.readFile(ciPath, 'utf-8'))
+	if (have === null) {
+		return {
+			check,
+			status: 'optional-missing',
+			detail: `ci.yml tests on one Node version (standard: the engines floor ${floor} and the newest, ${NEWEST_NODE})`,
+			hint,
+		}
+	}
+	const missing = want.filter((v) => !have.includes(v))
+	const extra = have.filter((v) => !want.includes(v))
+	if (missing.length === 0 && extra.length === 0) {
+		return { check, status: 'ok', detail: `tests on Node ${want.join(' + ')}` }
+	}
+	const deltas = [
+		...(missing.length ? [`missing Node ${missing.join(', ')}`] : []),
+		...(extra.length ? [`also tests Node ${extra.join(', ')}`] : []),
+	]
+	return {
+		check,
+		status: 'drift',
+		detail: `matrix [${have.join(', ')}]: ${deltas.join('; ')} (standard: floor ${floor} + newest ${NEWEST_NODE})`,
+		hint,
 	}
 }
 

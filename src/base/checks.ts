@@ -11,7 +11,13 @@ import {
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import { dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
-import { migrateReleaseJob, pushReleaseJob, semanticReleaseJob } from './github-settings.js'
+import { CI_GATE_JOB } from './ci.js'
+import {
+	migrateReleaseJob,
+	pushReleaseJob,
+	semanticReleaseJob,
+	workflowJobs,
+} from './github-settings.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -224,6 +230,13 @@ export async function checkGitHubActions(
 				if (needs.length > 0) {
 					hint = `Remove the \`needs.\` references from \`${ciRelease}\` — ${needs.join(', ')} — then run \`fix github-actions\`; release.yml has no other job to read them from`
 				}
+			}
+			// The gate is the one check protection requires (#816); without it, a
+			// matrix change strands PRs on a check that never reports.
+			if (workflowJobs(preset).has(CI_GATE_JOB) && !workflowJobs(ci).has(CI_GATE_JOB)) {
+				deltas.push(
+					`ci.yml: no \`${CI_GATE_JOB}\` gate job (preset gates every job behind it, and branch protection requires only \`${CI_GATE_JOB}\`)`
+				)
 			}
 			pinDeltas('ci.yml', ci, preset)
 		}

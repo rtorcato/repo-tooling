@@ -32,7 +32,7 @@ import {
 	generateVscodeExtensions,
 	pnpmSetupNeedsVersion,
 } from '../../cli/generators/misc.js'
-import { hasBin, hasCommitlint, scriptsOf } from './ci.js'
+import { hasBin, hasCommitlint, nodeFloorOf, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
 import { usesPnpm } from './checks.js'
 import {
@@ -587,6 +587,7 @@ export const FIXERS: Fixer[] = [
 				scripts: scriptsOf(pkg),
 				bin: hasBin(pkg),
 				commitlint: hasCommitlint(pkg),
+				nodeFloor: nodeFloorOf(pkg),
 			})
 			// `pnpm/action-setup` without a `version:` input dies at setup with "No
 			// pnpm version is specified" unless packageManager is set — so pin it

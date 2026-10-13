@@ -1,7 +1,7 @@
 /**
  * A JSON Schema validator covering exactly the keyword subset `lockfileSchema()`
  * and `CONFIG_SCHEMA` use: type (object/array/string/integer/boolean), enum,
- * minLength, required, properties, additionalProperties (`false` or a schema)
+ * minLength, minItems, required, properties, additionalProperties (`false` or a schema)
  * and items. Returns one message per problem; an empty array means valid.
  *
  * Hand-rolled because the repo has no JSON Schema validator and the schemas lean
@@ -16,6 +16,7 @@ export interface JsonSchema {
 	type?: string
 	enum?: readonly string[]
 	minLength?: number
+	minItems?: number
 	required?: readonly string[]
 	properties?: Record<string, JsonSchema>
 	additionalProperties?: boolean | JsonSchema
@@ -29,6 +30,8 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
 	}
 	if (schema.type === 'array') {
 		if (!Array.isArray(value)) return [`${path}: expected array`]
+		if (schema.minItems !== undefined && value.length < schema.minItems)
+			errors.push(`${path}: expected at least ${schema.minItems} item(s)`)
 		if (schema.items) {
 			for (const [i, item] of value.entries()) {
 				errors.push(...validateAgainstSchema(item, schema.items, `${path}[${i}]`))

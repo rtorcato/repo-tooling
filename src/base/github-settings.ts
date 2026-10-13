@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import { workspaceGlobs } from '../cli/generators/agent-rules.js'
+import type { GithubRules } from '../cli/utils/lockfile.js'
 import { RELEASE_JOB_GATE, RELEASE_WORKFLOW_HEADER } from './ci.js'
 import type { CheckResult } from './types.js'
 
@@ -81,8 +82,34 @@ export const realGhExec = (
 /** The standard doctor checks these settings against. */
 export const GITHUB_STANDARD = {
 	// Required status contexts on the default branch (strict off — see below).
-	requiredContexts: ['lint', 'typecheck', 'build', 'test'],
+	// Only the `ci` gate job, which needs every other job (#816): requiring a
+	// matrix leg such as `test (22)` strands every PR at BLOCKED the day the leg
+	// stops existing, with all checks green (js-common#364).
+	requiredContexts: ['ci'],
 } as const
+
+/** The suffix a delta gets when a declared `rules.github` field, not the standard, set the bar. */
+const declaredBy = (field: keyof GithubRules, value: unknown) =>
+	` (rules.github.${field}: ${JSON.stringify(value)})`
+const onOff = (b: boolean) => (b ? 'on' : 'off')
+/**
+ * Alerts off means fixes off: GitHub refuses security fixes without alerts, so
+ * an undeclared `automatedSecurityFixes` follows a declared-false alerts value
+ * rather than the standard's `true` (#817).
+ */
+const withDerivedDefaults = (rules: GithubRules): GithubRules =>
+	rules.automatedSecurityFixes === undefined && rules.vulnerabilityAlerts === false
+		? { ...rules, automatedSecurityFixes: false }
+		: rules
+const EMPTY_REVIEWERS =
+	'rules.github.releaseReviewers is empty, and a release environment with no reviewers holds nothing. List at least one login, or drop the field'
+const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/
+/** Lowercased and sorted, so a list compares by membership: GitHub logins are case-insensitive. */
+const normalizeReviewers = (logins: string[]) =>
+	logins
+		.filter(Boolean)
+		.map((l) => l.toLowerCase())
+		.sort()
 
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
 export const RELEASE_GATE_CHECK = 'Release gate'
@@ -193,7 +220,11 @@ async function probeRepo(exec: GhExec): Promise<{ info: RepoInfo } | { skip: str
 	}
 }
 
-export async function checkGitHubSettings(target: string, exec?: GhExec): Promise<CheckResult[]> {
+export async function checkGitHubSettings(
+	target: string,
+	exec?: GhExec,
+	rules: GithubRules = {}
+): Promise<CheckResult[]> {
 	// Cheap gate first: no .git → never spawn (keeps tmp-dir doctor runs offline).
 	// `-d packages/x` audits from the repo root, where the workflows live (#811).
 	const dir = await gitRoot(target)
@@ -205,12 +236,12 @@ export async function checkGitHubSettings(target: string, exec?: GhExec): Promis
 	if ('skip' in probe) return skipAll(probe.skip)
 	const { info } = probe
 	return [
-		await checkBranchProtection(gh, info.nwo, info.branch),
-		checkMergeSettings(info),
+		await checkBranchProtection(gh, info.nwo, info.branch, dir, rules),
+		checkMergeSettings(info, rules),
 		await checkWorkflowPermissions(gh, info.nwo),
-		await checkSecurityUpdates(gh, info.nwo),
+		await checkSecurityUpdates(gh, info.nwo, rules),
 		await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir),
-		...(await checkReleaseGate(gh, info.nwo, dir)),
+		...(await checkReleaseGate(gh, info.nwo, dir, rules)),
 	]
 }
 
@@ -223,40 +254,68 @@ function probeFailureReason(probe: GhResult): string {
 async function checkBranchProtection(
 	exec: GhExec,
 	nwo: string,
-	branch: string
+	branch: string,
+	dir: string,
+	rules: GithubRules = {}
 ): Promise<CheckResult> {
 	const check = 'Branch protection'
-	const r = await exec(['api', `repos/${nwo}/branches/${branch}/protection`])
-	if (!r.ok) {
-		if (/404|not found/i.test(r.stderr)) {
-			return {
-				check,
-				status: 'optional-missing',
-				detail: `${branch} is unprotected`,
-				hint: `Protect ${branch}: require checks ${GITHUB_STANDARD.requiredContexts.join(', ')}, no force-push/deletions`,
-			}
-		}
-		if (/403|forbidden/i.test(r.stderr)) return skip(check, 'token lacks admin access')
-		return skip(check, 'could not read branch protection')
+	const required: readonly string[] = rules.requiredChecks ?? GITHUB_STANDARD.requiredContexts
+	const strict = rules.strict ?? false
+	const unprotected: CheckResult = {
+		check,
+		status: 'optional-missing',
+		detail: `${branch} is unprotected`,
+		hint: `Protect ${branch}: require checks ${required.join(', ')}, no force-push/deletions`,
 	}
-
+	const r = await exec(['api', `repos/${nwo}/branches/${branch}/protection`])
 	let p: Record<string, any>
-	try {
-		p = JSON.parse(r.stdout)
-	} catch {
-		return skip(check, 'could not parse protection response')
+	// Only the required checks are visible without admin; the rest goes unchecked.
+	let partial = false
+	if (!r.ok) {
+		if (/403|forbidden/i.test(r.stderr)) return skip(check, 'token lacks admin access')
+		if (!/404|not found/i.test(r.stderr)) return skip(check, 'could not read branch protection')
+		// A non-admin token gets a 404 here even on a protected branch, which read
+		// as "unprotected" and hid js-common#364's stale required check (#816). The
+		// branch endpoint shows any reader whether it is protected, and its checks.
+		const b = await exec(['api', `repos/${nwo}/branches/${branch}`])
+		if (!b.ok) return skip(check, 'could not read branch protection')
+		try {
+			const branchInfo = JSON.parse(b.stdout)
+			if (branchInfo.protected !== true) return unprotected
+			p = branchInfo.protection ?? {}
+			partial = true
+		} catch {
+			return skip(check, 'could not parse branch response')
+		}
+	} else {
+		try {
+			p = JSON.parse(r.stdout)
+		} catch {
+			return skip(check, 'could not parse protection response')
+		}
 	}
 
 	const deltas: string[] = []
 	const contexts: string[] = p.required_status_checks?.contexts ?? []
-	// A matrix job reports each leg as `test (node 22)`, `test (node 24)`, etc.
-	// Treat any `<ctx> (...)` variant as satisfying the bare `<ctx>` requirement,
-	// so matrix CIs aren't falsely flagged as missing the check.
-	const isSatisfied = (c: string) => contexts.some((ctx) => ctx === c || ctx.startsWith(`${c} (`))
-	const missing = GITHUB_STANDARD.requiredContexts.filter((c) => !isSatisfied(c))
-	if (missing.length) deltas.push(`missing required checks: ${missing.join(', ')}`)
-	if (p.required_status_checks?.strict === true)
-		deltas.push('strict status checks on (should be off)')
+	deltas.push(...(await requiredContextDeltas(contexts, dir, required)))
+	// Only a declared list is exhaustive: the standard is a floor, so extra
+	// contexts pass, but a check added in the dashboard is exactly the drift a
+	// committed list exists to surface (#817).
+	if (rules.requiredChecks) {
+		const extra = contexts.filter((ctx) => !required.includes(ctx))
+		if (extra.length)
+			deltas.push(
+				`undeclared required checks: ${extra.join(', ')}${declaredBy('requiredChecks', required)}`
+			)
+	}
+	// The branch endpoint a non-admin falls back to doesn't carry `strict`.
+	const liveStrict = p.required_status_checks?.strict === true
+	if (!partial && liveStrict !== strict)
+		deltas.push(
+			rules.strict === undefined
+				? 'strict status checks on (should be off)'
+				: `strict status checks ${onOff(liveStrict)}${declaredBy('strict', strict)}`
+		)
 	// enforce_admins must stay off so the App/RELEASE_TOKEN can bypass protection
 	// to push semantic-release's version commit (see Release-token doctor check).
 	if (p.enforce_admins?.enabled === true) deltas.push('enforce_admins on (blocks release bypass)')
@@ -265,14 +324,84 @@ async function checkBranchProtection(
 	// Required human review deadlocks solo Dependabot auto-merge.
 	if (p.required_pull_request_reviews) deltas.push('required PR reviews on (deadlocks auto-merge)')
 
+	const scope = partial ? ' (required checks only — the rest needs admin to read)' : ''
 	if (deltas.length)
 		return {
 			check,
 			status: 'drift',
-			detail: deltas.join('; '),
-			hint: `Align ${branch} protection with the standard`,
+			detail: `${deltas.join('; ')}${scope}`,
+			hint: `Align ${branch} protection with ${rules.requiredChecks || rules.strict !== undefined ? 'rules.github' : 'the standard'}: require only ${required.map((c) => `\`${c}\``).join(', ')} (\`fix github-settings\`, needs admin)`,
 		}
-	return { check, status: 'ok', detail: `${branch} protected per standard` }
+	return { check, status: 'ok', detail: `${branch} protected per standard${scope}` }
+}
+
+/** `test (22)`, `test (node 24)`: one leg of a matrix job, gone when the matrix changes. */
+const MATRIX_LEG = /^\S.* \(.+\)$/
+
+/**
+ * What's wrong with the required status checks (#816): the standard's own
+ * missing, a matrix leg required by name, or a check no CI job produces. The
+ * last two are the js-common#364 trap: a required context that never reports
+ * leaves every PR BLOCKED while every check is green.
+ */
+export async function requiredContextDeltas(
+	contexts: string[],
+	dir: string,
+	required: readonly string[] = GITHUB_STANDARD.requiredContexts
+): Promise<string[]> {
+	const deltas: string[] = []
+	const missing = required.filter((c) => !contexts.includes(c))
+	if (missing.length) deltas.push(`missing required checks: ${missing.join(', ')}`)
+	const legs = contexts.filter((c) => MATRIX_LEG.test(c) && !required.includes(c))
+	if (legs.length)
+		deltas.push(
+			`requires matrix legs by name: ${legs.join(', ')} (require the \`ci\` gate instead)`
+		)
+	const produced = await workflowCheckNames(dir)
+	if (produced) {
+		// A `/` marks a context no local job id makes: a status-API app
+		// (`codecov/patch`, `license/cla`) or a reusable workflow (`caller / inner`).
+		// ponytail: a slash-free external check (`Vercel`) is still flagged; read the
+		// commit's check runs on the default branch if that bites.
+		const orphans = contexts.filter(
+			(c) => !MATRIX_LEG.test(c) && !c.includes('/') && !produced.has(c)
+		)
+		if (orphans.length) deltas.push(`requires checks no CI job produces: ${orphans.join(', ')}`)
+	}
+	return deltas
+}
+
+/**
+ * Every check name the repo's workflows can report: each job's id, and its
+ * `name:` when that is static. Null when there are no workflows to read, so a
+ * repo whose CI we can't see is never told its checks are orphaned.
+ *
+ * ponytail: a templated `name:` (`test (\${{ matrix.node }})`) is skipped, not
+ * expanded; those are matrix legs, which `requiredContextDeltas` flags anyway.
+ */
+async function workflowCheckNames(dir: string): Promise<Set<string> | null> {
+	const workflowsDir = path.join(dir, '.github', 'workflows')
+	let files: string[]
+	try {
+		files = (await fs.readdir(workflowsDir)).filter((f) => /\.ya?ml$/.test(f))
+	} catch {
+		return null
+	}
+	if (files.length === 0) return null
+	const names = new Set<string>()
+	for (const file of files) {
+		const yaml = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
+		for (const [id, body] of workflowJobs(yaml)) {
+			names.add(id)
+			const jobIndent = body.split('\n').find((l) => l.trim() !== '' && !l.trim().startsWith('#'))
+			const indent = jobIndent ? jobIndent.length - jobIndent.trimStart().length : 0
+			const name = new RegExp(`^ {${indent}}name:[ \\t]*(.+?)[ \\t]*(?:[ \\t]#.*)?$`, 'm').exec(
+				body
+			)?.[1]
+			if (name && !name.includes('${{')) names.add(name.replace(/^(['"])(.*)\1$/, '$2'))
+		}
+	}
+	return names
 }
 
 /**
@@ -285,15 +414,22 @@ async function checkBranchProtection(
  * #204, whose CONTRIBUTING already said squash-only — the rule existed, nothing
  * enforced it.
  */
-function checkMergeSettings(info: RepoInfo): CheckResult {
+function checkMergeSettings(info: RepoInfo, rules: GithubRules = {}): CheckResult {
 	const check = 'Merge settings'
 	// The token can't see the merge-setting fields (no admin:read) — skip rather
 	// than misreport the absent booleans as "disabled" (a false-positive drift).
 	if (!info.mergeVisible) return skip(check, 'token lacks admin:read for merge settings')
 	const deltas: string[] = []
-	if (!info.autoMerge) deltas.push('auto-merge disabled')
+	const autoMerge = rules.autoMerge ?? true
+	const deleteOnMerge = rules.deleteOnMerge ?? true
+	const toggle = (live: boolean, want: boolean, field: keyof GithubRules, name: string) => {
+		if (live === want) return
+		const state = live ? 'enabled' : 'disabled'
+		deltas.push(`${name} ${state}${rules[field] === undefined ? '' : declaredBy(field, want)}`)
+	}
+	toggle(info.autoMerge, autoMerge, 'autoMerge', 'auto-merge')
 	if (!info.squashMerge) deltas.push('squash-merge disabled')
-	if (!info.deleteOnMerge) deltas.push('delete-branch-on-merge disabled')
+	toggle(info.deleteOnMerge, deleteOnMerge, 'deleteOnMerge', 'delete-branch-on-merge')
 	if (info.mergeCommit) deltas.push('merge commits allowed (squash only)')
 	if (info.rebaseMerge) deltas.push('rebase merging allowed (squash only)')
 	if (deltas.length)
@@ -301,9 +437,18 @@ function checkMergeSettings(info: RepoInfo): CheckResult {
 			check,
 			status: 'drift',
 			detail: deltas.join('; '),
-			hint: 'Enable auto-merge and delete-branch-on-merge, and make squash the only merge method',
+			hint:
+				rules.autoMerge === undefined && rules.deleteOnMerge === undefined
+					? 'Enable auto-merge and delete-branch-on-merge, and make squash the only merge method'
+					: 'Run `npx @rtorcato/repo-tooling fix github-settings` to apply rules.github, and make squash the only merge method',
 		}
-	return { check, status: 'ok', detail: 'squash-only, auto-merge and delete-on-merge on' }
+	if (autoMerge && deleteOnMerge)
+		return { check, status: 'ok', detail: 'squash-only, auto-merge and delete-on-merge on' }
+	return {
+		check,
+		status: 'ok',
+		detail: `squash-only, auto-merge ${onOff(autoMerge)}, delete-on-merge ${onOff(deleteOnMerge)} per rules.github`,
+	}
 }
 
 async function checkWorkflowPermissions(exec: GhExec, nwo: string): Promise<CheckResult> {
@@ -365,13 +510,35 @@ async function readSecurityUpdates(
 	return { alerts, fixes }
 }
 
-async function checkSecurityUpdates(exec: GhExec, nwo: string): Promise<CheckResult> {
+async function checkSecurityUpdates(
+	exec: GhExec,
+	nwo: string,
+	rules: GithubRules = {}
+): Promise<CheckResult> {
 	const check = SECURITY_UPDATES_CHECK
+	rules = withDerivedDefaults(rules)
 	const s = await readSecurityUpdates(exec, nwo)
 	if ('skip' in s) return skip(check, s.skip)
 	const deltas: string[] = []
-	if (!s.alerts) deltas.push('vulnerability alerts disabled')
-	if (!s.fixes) deltas.push('automated security fixes disabled')
+	const declared: string[] = []
+	const toggle = (live: boolean, field: keyof GithubRules, name: string) => {
+		const want = rules[field]
+		if (want === undefined) {
+			if (!live) deltas.push(`${name} disabled`)
+		} else if (live !== want) {
+			declared.push(`${name} ${live ? 'enabled' : 'disabled'}${declaredBy(field, want)}`)
+		}
+	}
+	toggle(s.alerts, 'vulnerabilityAlerts', 'vulnerability alerts')
+	toggle(s.fixes, 'automatedSecurityFixes', 'automated security fixes')
+	// A declared value the repo doesn't match is drift outright (#817).
+	if (declared.length)
+		return {
+			check,
+			status: 'drift',
+			detail: [...declared, ...deltas].join('; '),
+			hint: 'Run `npx @rtorcato/repo-tooling fix github-settings` to apply rules.github',
+		}
 	// optional-missing, not drift: doctor promotes it when the lock records
 	// securityAutomation: true, and demotes it when the lock records false.
 	if (deltas.length)
@@ -381,7 +548,13 @@ async function checkSecurityUpdates(exec: GhExec, nwo: string): Promise<CheckRes
 			detail: deltas.join('; '),
 			hint: 'Run `npx @rtorcato/repo-tooling fix github-settings` to enable Dependabot alerts and security updates',
 		}
-	return { check, status: 'ok', detail: 'vulnerability alerts and automated security fixes on' }
+	if (s.alerts && s.fixes)
+		return { check, status: 'ok', detail: 'vulnerability alerts and automated security fixes on' }
+	return {
+		check,
+		status: 'ok',
+		detail: `vulnerability alerts ${onOff(s.alerts)}, automated security fixes ${onOff(s.fixes)} per rules.github`,
+	}
 }
 
 /**
@@ -1053,7 +1226,18 @@ async function findPublishJob(dir: string): Promise<PublishJob | null | 'skip'> 
 }
 
 /** Environment name → whether it carries a `required_reviewers` protection rule. */
-type Environments = Map<string, boolean>
+interface Environment {
+	/** Carries a `required_reviewers` rule — a real gate. */
+	gated: boolean
+	/** Reviewer logins (users) or slugs (teams), lowercased, sorted. */
+	reviewers: string[]
+}
+type Environments = Map<string, Environment>
+
+interface ReviewerRule {
+	type?: string
+	reviewers?: Array<{ reviewer?: { login?: string; slug?: string } }>
+}
 
 async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments | 'skip'> {
 	const r = await gh(['api', `repos/${nwo}/environments`])
@@ -1061,15 +1245,18 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 	if (!r.ok) return /404|not found/i.test(r.stderr) ? new Map() : 'skip'
 	try {
 		const parsed = JSON.parse(r.stdout) as {
-			environments?: Array<{ name?: string; protection_rules?: Array<{ type?: string }> }>
+			environments?: Array<{ name?: string; protection_rules?: ReviewerRule[] }>
 		}
 		const envs: Environments = new Map()
 		for (const e of parsed.environments ?? []) {
 			if (typeof e.name !== 'string') continue
-			envs.set(
-				e.name,
-				(e.protection_rules ?? []).some((p) => p.type === 'required_reviewers')
-			)
+			const rule = (e.protection_rules ?? []).find((p) => p.type === 'required_reviewers')
+			envs.set(e.name, {
+				gated: rule !== undefined,
+				reviewers: normalizeReviewers(
+					(rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? x.reviewer?.slug ?? '')
+				),
+			})
 		}
 		return envs
 	} catch {
@@ -1101,7 +1288,8 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 async function checkReleaseGate(
 	gh: GhExec,
 	nwo: string,
-	dir: string
+	dir: string,
+	rules: GithubRules = {}
 ): Promise<[CheckResult, CheckResult, CheckResult]> {
 	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
 	if (publish === 'skip') {
@@ -1153,7 +1341,7 @@ async function checkReleaseGate(
 			detail: `${where} names the \`${named}\` environment, which the repo does not have — Actions creates it unprotected on first run, so the publish is never held`,
 			hint: GATE_HINT,
 		}
-	} else if (!envs.get(named)) {
+	} else if (!envs.get(named)?.gated) {
 		gate = {
 			check: RELEASE_GATE_CHECK,
 			status: 'drift',
@@ -1165,6 +1353,21 @@ async function checkReleaseGate(
 			check: RELEASE_GATE_CHECK,
 			status: 'ok',
 			detail: `${where} runs behind the \`${named}\` environment (required reviewers)`,
+		}
+	}
+
+	// Declared reviewers (#817): the gate is real, but is it the people the repo
+	// says it is? Only meaningful once the gate itself is ok.
+	const wanted = rules.releaseReviewers && normalizeReviewers(rules.releaseReviewers)
+	const live = named && envs.get(named)?.reviewers
+	if (wanted?.length === 0) {
+		gate = { check: RELEASE_GATE_CHECK, status: 'drift', detail: EMPTY_REVIEWERS }
+	} else if (gate.status === 'ok' && wanted && live && live.join() !== wanted.join()) {
+		gate = {
+			check: RELEASE_GATE_CHECK,
+			status: 'drift',
+			detail: `the \`${named}\` environment's reviewers are ${live.join(', ') || 'none'}${declaredBy('releaseReviewers', rules.releaseReviewers)}`,
+			hint: 'Run `npx @rtorcato/repo-tooling fix release-environment` to apply rules.github.releaseReviewers',
 		}
 	}
 
@@ -1282,6 +1485,12 @@ export interface GhApplyState {
 	alerts?: boolean
 	/** Automated security fixes off (#692). */
 	securityFixes?: boolean
+	/**
+	 * The repo's declared settings (#817). Sets the values the commands write,
+	 * so a flagged `alerts`/`securityFixes` turns the feature *off* when the
+	 * rules say false. Absent means the standard.
+	 */
+	rules?: GithubRules
 }
 
 /** A single `gh api` mutation plus the human label reported once it succeeds. */
@@ -1292,43 +1501,59 @@ export interface GhCommand {
 	stdin?: string
 }
 
-/** The branch-protection body PUT to the API — mirrors the doctor standard. */
-const PROTECTION_BODY = JSON.stringify({
-	required_status_checks: { strict: false, contexts: GITHUB_STANDARD.requiredContexts },
-	// enforce_admins off so the App/RELEASE_TOKEN can bypass to push release commits.
-	enforce_admins: false,
-	// Required human review would deadlock solo Dependabot auto-merge.
-	//
-	// Note this is *applied*, not merely tolerated: checkBranchProtection reports
-	// any required_pull_request_reviews as drift, so `fix github-settings` PUTs it
-	// back to null. A repo that deliberately requires approvals will have that
-	// silently reverted by the next unrelated fix run, with nothing in the output
-	// naming the rule that was removed. Known downstream case: @infrazero/repo-ai's
-	// ai-loop pipeline works around it with approval labels precisely because of this.
-	// Loosen the standard here first if a repo ever genuinely needs review gating.
-	required_pull_request_reviews: null,
-	restrictions: null,
-	allow_force_pushes: false,
-	allow_deletions: false,
-})
+/** The branch-protection body PUT to the API — mirrors the doctor standard, or rules.github. */
+const protectionBody = (rules: GithubRules) =>
+	JSON.stringify({
+		required_status_checks: {
+			strict: rules.strict ?? false,
+			contexts: rules.requiredChecks ?? GITHUB_STANDARD.requiredContexts,
+		},
+		// enforce_admins off so the App/RELEASE_TOKEN can bypass to push release commits.
+		enforce_admins: false,
+		// Required human review would deadlock solo Dependabot auto-merge.
+		//
+		// Note this is *applied*, not merely tolerated: checkBranchProtection reports
+		// any required_pull_request_reviews as drift, so `fix github-settings` PUTs it
+		// back to null. A repo that deliberately requires approvals will have that
+		// silently reverted by the next unrelated fix run, with nothing in the output
+		// naming the rule that was removed. Known downstream case: @infrazero/repo-ai's
+		// ai-loop pipeline works around it with approval labels precisely because of this.
+		// Loosen the standard here first if a repo ever genuinely needs review gating.
+		required_pull_request_reviews: null,
+		restrictions: null,
+		allow_force_pushes: false,
+		allow_deletions: false,
+	})
+
+// GitHub answers a write it won't allow with 404, not 403, so a non-admin token
+// looks like a missing repo (#817).
+const ADMIN_404 = /404|not found/i
+const ADMIN_404_HINT =
+	'GitHub returns 404 when the token lacks admin rights on the repo; re-run with an admin token (`gh auth refresh -s repo` as a repo admin)'
 
 /** Pure: the exact `gh api` invocations for whatever deviates ([] when compliant). */
 export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 	const commands: GhCommand[] = []
+	const rules = withDerivedDefaults(state.rules ?? {})
+	const autoMerge = rules.autoMerge ?? true
+	const deleteOnMerge = rules.deleteOnMerge ?? true
 	if (state.merge)
 		commands.push({
-			label: 'merge settings (squash-only, auto-merge, delete-on-merge)',
+			label:
+				autoMerge && deleteOnMerge
+					? 'merge settings (squash-only, auto-merge, delete-on-merge)'
+					: `merge settings (squash-only, auto-merge ${onOff(autoMerge)}, delete-on-merge ${onOff(deleteOnMerge)})`,
 			args: [
 				'api',
 				'-X',
 				'PATCH',
 				`repos/${state.nwo}`,
 				'-F',
-				'allow_auto_merge=true',
+				`allow_auto_merge=${autoMerge}`,
 				'-F',
 				'allow_squash_merge=true',
 				'-F',
-				'delete_branch_on_merge=true',
+				`delete_branch_on_merge=${deleteOnMerge}`,
 				'-F',
 				'allow_merge_commit=false',
 				'-F',
@@ -1346,7 +1571,7 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 				'--input',
 				'-',
 			],
-			stdin: PROTECTION_BODY,
+			stdin: protectionBody(rules),
 		})
 	if (state.workflow)
 		commands.push({
@@ -1362,17 +1587,24 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 				'can_approve_pull_request_reviews=false',
 			],
 		})
-	// Alerts first: GitHub refuses security fixes on a repo with alerts off.
+	// Alerts first when enabling: GitHub refuses security fixes on a repo with
+	// alerts off. Fixes first when disabling, for the same reason.
+	const security: GhCommand[] = []
+	const toggle = (on: boolean, label: string, endpoint: string) =>
+		security.push({
+			label: on ? label : `${label} off (rules.github)`,
+			args: ['api', '-X', on ? 'PUT' : 'DELETE', `repos/${state.nwo}/${endpoint}`],
+		})
 	if (state.alerts)
-		commands.push({
-			label: 'vulnerability alerts',
-			args: ['api', '-X', 'PUT', `repos/${state.nwo}/vulnerability-alerts`],
-		})
+		toggle(rules.vulnerabilityAlerts ?? true, 'vulnerability alerts', 'vulnerability-alerts')
 	if (state.securityFixes)
-		commands.push({
-			label: 'automated security fixes',
-			args: ['api', '-X', 'PUT', `repos/${state.nwo}/automated-security-fixes`],
-		})
+		toggle(
+			rules.automatedSecurityFixes ?? true,
+			'automated security fixes',
+			'automated-security-fixes'
+		)
+	if (rules.vulnerabilityAlerts === false) security.reverse()
+	commands.push(...security)
 	return commands
 }
 
@@ -1388,7 +1620,11 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
  * `--json` payload. #358 fixed the fixer files but not this one — it isn't a
  * fixer file, it's just called by one.
  */
-export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<string[]> {
+export async function applyGithubSettings(
+	dir: string,
+	exec?: GhExec,
+	rules: GithubRules = {}
+): Promise<string[]> {
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
 		console.error(chalk.gray('   skipped — not a git repository'))
 		return []
@@ -1404,17 +1640,33 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 
 	// Re-read via the same checks so the delta logic stays single-sourced. A 403
 	// (no admin) reports `ok` → treated as "nothing to apply", never a failed PUT.
-	const bp = await checkBranchProtection(gh, info.nwo, info.branch)
+	const bp = await checkBranchProtection(gh, info.nwo, info.branch, dir, rules)
 	const wp = await checkWorkflowPermissions(gh, info.nwo)
 	const sec = await readSecurityUpdates(gh, info.nwo)
+	let protection = bp.status === 'optional-missing' || bp.status === 'drift'
+	// Requiring a `ci` check that no workflow reports would block every PR (#816).
+	const produced = await workflowCheckNames(dir)
+	const unreported = (rules.requiredChecks ?? GITHUB_STANDARD.requiredContexts).filter(
+		(c) => !produced?.has(c)
+	)
+	if (protection && unreported.length > 0) {
+		console.error(
+			chalk.yellow(
+				`   not changing branch protection — no CI job reports ${unreported.join(', ')} yet, so requiring it would block every PR. Run \`fix github-actions\` (or add the gate job), merge it, then re-run.`
+			)
+		)
+		protection = false
+	}
 	const commands = buildGhApplyCommands({
 		nwo: info.nwo,
 		branch: info.branch,
-		merge: checkMergeSettings(info).status === 'drift',
-		protection: bp.status === 'optional-missing' || bp.status === 'drift',
+		merge: checkMergeSettings(info, rules).status === 'drift',
+		protection,
 		workflow: wp.status === 'drift',
-		alerts: !('skip' in sec) && !sec.alerts,
-		securityFixes: !('skip' in sec) && !sec.fixes,
+		alerts: !('skip' in sec) && sec.alerts !== (rules.vulnerabilityAlerts ?? true),
+		securityFixes:
+			!('skip' in sec) && sec.fixes !== (withDerivedDefaults(rules).automatedSecurityFixes ?? true),
+		rules,
 	})
 
 	const applied: string[] = []
@@ -1423,7 +1675,9 @@ export async function applyGithubSettings(dir: string, exec?: GhExec): Promise<s
 		if (r.ok) applied.push(cmd.label)
 		else
 			console.error(
-				chalk.yellow(`   could not apply ${cmd.label}: ${r.stderr.trim() || 'gh error'}`)
+				chalk.yellow(
+					`   could not apply ${cmd.label}: ${r.stderr.trim() || 'gh error'}${ADMIN_404.test(r.stderr) ? ` — ${ADMIN_404_HINT}` : ''}`
+				)
 			)
 	}
 
@@ -1522,7 +1776,11 @@ export function addJobEnvironment(yaml: string, jobId: string, env: string): str
  * A job already behind some *other* environment is a warning, not a rename —
  * this fixer scaffolds the standard, it does not migrate a custom setup.
  */
-export async function applyReleaseEnvironment(target: string, exec?: GhExec): Promise<string[]> {
+export async function applyReleaseEnvironment(
+	target: string,
+	exec?: GhExec,
+	rules: GithubRules = {}
+): Promise<string[]> {
 	const dir = await gitRoot(target)
 	if (!dir) {
 		console.error(chalk.gray('   skipped — not a git repository'))
@@ -1561,21 +1819,49 @@ export async function applyReleaseEnvironment(target: string, exec?: GhExec): Pr
 	}
 
 	const applied: string[] = []
-	if (envs.get(RELEASE_ENVIRONMENT) !== true) {
-		const user = await gh(['api', 'user', '--jq', '.id'])
-		const id = user.ok ? Number.parseInt(user.stdout.trim(), 10) : Number.NaN
-		if (Number.isNaN(id)) {
-			console.error(
-				chalk.yellow(
-					`   could not resolve the authenticated user for required_reviewers: ${user.stderr.trim() || 'gh error'}`
+	const env = envs.get(RELEASE_ENVIRONMENT)
+	const declared = rules.releaseReviewers
+	// An empty list would PUT `reviewers: []` and remove the gate it describes.
+	if (declared?.length === 0) {
+		console.error(chalk.yellow(`   ${EMPTY_REVIEWERS}`))
+		return applied
+	}
+	// A declared list is applied over any existing rule (#817); without one, an
+	// environment that is already gated stays untouched (see above).
+	const stale =
+		declared !== undefined && env?.reviewers.join() !== normalizeReviewers(declared).join()
+	if (!env?.gated || stale) {
+		const logins = declared ?? [null]
+		const ids: number[] = []
+		for (const login of logins) {
+			// The login lands in an API path, so a value like `../x` must not reach it.
+			if (login !== null && !GITHUB_LOGIN.test(login)) {
+				console.error(
+					chalk.yellow(
+						`   rules.github.releaseReviewers: ${JSON.stringify(login)} is not a GitHub login`
+					)
 				)
-			)
-			return applied
+				return applied
+			}
+			const user = await gh(['api', login === null ? 'user' : `users/${login}`, '--jq', '.id'])
+			const id = user.ok ? Number.parseInt(user.stdout.trim(), 10) : Number.NaN
+			if (Number.isNaN(id)) {
+				console.error(
+					chalk.yellow(
+						`   could not resolve ${login ?? 'the authenticated user'} for required_reviewers: ${user.stderr.trim() || 'gh error'}`
+					)
+				)
+				return applied
+			}
+			ids.push(id)
 		}
-		const label = `\`${RELEASE_ENVIRONMENT}\` environment with the authenticated user as required reviewer`
+		const who = declared
+			? `rules.github.releaseReviewers (${declared.join(', ')})`
+			: 'the authenticated user'
+		const label = `\`${RELEASE_ENVIRONMENT}\` environment with ${who} as required reviewer${declared && declared.length !== 1 ? 's' : ''}`
 		const r = await gh(
 			['api', '-X', 'PUT', `repos/${nwo}/environments/${RELEASE_ENVIRONMENT}`, '--input', '-'],
-			JSON.stringify({ reviewers: [{ type: 'User', id }] })
+			JSON.stringify({ reviewers: ids.map((id) => ({ type: 'User', id })) })
 		)
 		if (r.ok) applied.push(label)
 		else {
