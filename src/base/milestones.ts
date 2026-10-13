@@ -52,7 +52,7 @@ const CATCH_ALL_TITLE = /backlog|post-\d|someday/i
 
 const skip = (reason: string): CheckResult => ({
 	check: CHECK,
-	status: 'ok',
+	status: 'skipped',
 	detail: `skipped — ${reason}`,
 })
 

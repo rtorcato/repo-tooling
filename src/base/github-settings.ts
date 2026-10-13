@@ -127,17 +127,17 @@ const CODE_SCANNING_RULESET_BODY = JSON.stringify({
 	],
 })
 
-/** All three checks as an `ok` skip — keeps them out of next-steps and exit code. */
+/** Every check as `skipped` — never a finding, never `ok`, so a missing gh doesn't read as all-green. */
 function skipAll(reason: string): CheckResult[] {
 	return GITHUB_SETTINGS_CHECKS.map((check) => ({
 		check,
-		status: 'ok',
+		status: 'skipped',
 		detail: `skipped — ${reason}`,
 	}))
 }
 
 function skip(check: string, reason: string): CheckResult {
-	return { check, status: 'ok', detail: `skipped — ${reason}` }
+	return { check, status: 'skipped', detail: `skipped — ${reason}` }
 }
 
 interface RepoInfo {

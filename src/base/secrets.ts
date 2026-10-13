@@ -109,7 +109,7 @@ export const SECRETS_CHECK = 'Repository secrets'
 const CHECK = SECRETS_CHECK
 const skip = (why: string): CheckResult => ({
 	check: CHECK,
-	status: 'ok',
+	status: 'skipped',
 	detail: `not checked (${why})`,
 })
 
