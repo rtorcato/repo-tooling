@@ -258,8 +258,11 @@ export const BASE_FIXERS: Fixer[] = [
 		outputs: ['GitHub repo settings (remote, via gh api)'],
 		// safe-add is load-bearing: it exempts this fixer from the `--diff` shadow-run
 		// (previewFixer copies to tmp and *executes* run(), which would fire real
-		// `gh api` PUTs during a mere preview).
+		// `gh api` PUTs during a mere preview). explicitOnly because it applies
+		// `rules.github`, which can *weaken* settings (alerts off, fewer required
+		// checks): a bare `fix --yes` must never rewrite a repo's protection (#866).
 		riskLevel: 'safe-add',
+		explicitOnly: true,
 		canFixDrift: true,
 		async run({ targetDir, lock }) {
 			return { filesWritten: await applyGithubSettings(targetDir, undefined, lock?.rules?.github) }
