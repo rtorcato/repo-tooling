@@ -157,10 +157,10 @@ describe('checkMilestones', () => {
 		expect(r.detail).toContain('can never close')
 	})
 
-	it('self-skips when the milestone read fails', async () => {
+	it('self-skips (not ok) when the milestone read fails', async () => {
 		const exec: GhExec = async () => ({ ok: false, stdout: '', stderr: 'gh error', code: 1 })
 		const r = await checkMilestones(gitRepo(), exec)
-		expect(r.status).toBe('ok')
+		expect(r.status).toBe('skipped')
 		expect(r.detail).toContain('could not read milestones')
 	})
 })
