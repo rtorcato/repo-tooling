@@ -1108,6 +1108,25 @@ describe('doctor security checks', () => {
 		expect((await dep())?.status).toBe('ok')
 	})
 
+	it('reports Dependabot drift when a label-mode workflow keeps contents: write (#819)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 4,
+			record: { config: {}, assets: {}, writtenBy: 'x', writtenAt: 'y' },
+			rules: { dependabot: { onPr: 'label' } },
+		})
+		await generateDependabotConfig(dir)
+		const dep = async () => (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		expect((await dep())?.status).toBe('ok')
+		const wf = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		const content = await fs.readFile(wf, 'utf8')
+		await fs.writeFile(wf, content.replace('contents: read', 'contents: write'))
+		expect((await dep())?.detail).toMatch(/surplus contents: write/)
+		await generateDependabotConfig(dir)
+		expect((await dep())?.status).toBe('ok')
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

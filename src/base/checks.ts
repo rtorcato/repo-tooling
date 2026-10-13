@@ -326,6 +326,11 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				if (mergeStep(automerge) !== mergeStep(expected)) {
 					deltas.push('auto-merge workflow does not match rules.dependabot.onPr')
 				}
+				// #819: label mode never writes repo contents, so a `contents: write`
+				// grant left over from before it is surplus token scope.
+				if (!/contents: write/.test(expected) && /^\s*contents:\s*write\b/m.test(automerge)) {
+					deltas.push('label-mode auto-merge workflow grants surplus contents: write')
+				}
 			} else {
 				deltas.push('missing dependabot-automerge workflow')
 			}
