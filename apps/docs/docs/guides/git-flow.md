@@ -111,6 +111,7 @@ optional — a repo with none is reported as `optional-missing`, never a failure
 | Finding | Status | Why it matters |
 | --- | --- | --- |
 | 100% complete but still open | drift | "Open" stops meaning "in flight", so the milestone list carries no signal |
+| 100% complete but still open, where a workflow runs on milestone close | ok (noted as ready to ship) | Closing it publishes, so a finished milestone is waiting for the owner, not drifting |
 | No issues at all (when more than one is open) | drift | GitHub renders the bar as `closed / total`, so an empty milestone is a permanent 0%. The sole open milestone is exempt: it is the rolling one, waiting for work |
 | No open milestone | optional-missing | Nothing marks what ships next |
 | Titled `backlog` / `post-N` / `someday` | note | No completion criterion means it can never close — that is a label |
@@ -124,8 +125,14 @@ Warnings ride in the check's detail and never fail the run.
 `fix milestones` closes 100%-complete milestones, then, if none is left open,
 opens a rolling `next` milestone — so closing a release rolls the window
 forward. It never deletes a milestone. If a closed milestone already holds the
-title `next`, rename it to the version it shipped as and re-run. A bulk `fix`
-skips the `optional-missing` case; name the target to opt in.
+title `next`, rename it to the version it shipped as and re-run. It is
+explicit-only: a bulk `fix` or `fix --yes` never runs it, so name the target to
+opt in.
+
+When a workflow (the preset's `release.yml`) runs on the `milestone` event,
+closing a milestone publishes a release. There `fix milestones` refuses to close
+anything and exits 1 with `error: milestone-close-publishes`. Close the
+milestone on GitHub yourself when you mean to ship it.
 
 ## Single source of truth
 
