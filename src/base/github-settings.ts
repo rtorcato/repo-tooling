@@ -89,6 +89,17 @@ export const GITHUB_STANDARD = {
 const declaredBy = (field: keyof GithubRules, value: unknown) =>
 	` (rules.github.${field}: ${JSON.stringify(value)})`
 const onOff = (b: boolean) => (b ? 'on' : 'off')
+/**
+ * Alerts off means fixes off: GitHub refuses security fixes without alerts, so
+ * an undeclared `automatedSecurityFixes` follows a declared-false alerts value
+ * rather than the standard's `true` (#817).
+ */
+const withDerivedDefaults = (rules: GithubRules): GithubRules =>
+	rules.automatedSecurityFixes === undefined && rules.vulnerabilityAlerts === false
+		? { ...rules, automatedSecurityFixes: false }
+		: rules
+const EMPTY_REVIEWERS =
+	'rules.github.releaseReviewers is empty, and a release environment with no reviewers holds nothing. List at least one login, or drop the field'
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/
 /** Lowercased and sorted, so a list compares by membership: GitHub logins are case-insensitive. */
 const normalizeReviewers = (logins: string[]) =>
@@ -422,6 +433,7 @@ async function checkSecurityUpdates(
 	rules: GithubRules = {}
 ): Promise<CheckResult> {
 	const check = SECURITY_UPDATES_CHECK
+	rules = withDerivedDefaults(rules)
 	const s = await readSecurityUpdates(exec, nwo)
 	if ('skip' in s) return skip(check, s.skip)
 	const deltas: string[] = []
@@ -1265,7 +1277,9 @@ async function checkReleaseGate(
 	// says it is? Only meaningful once the gate itself is ok.
 	const wanted = rules.releaseReviewers && normalizeReviewers(rules.releaseReviewers)
 	const live = named && envs.get(named)?.reviewers
-	if (gate.status === 'ok' && wanted && live && live.join() !== wanted.join()) {
+	if (wanted?.length === 0) {
+		gate = { check: RELEASE_GATE_CHECK, status: 'drift', detail: EMPTY_REVIEWERS }
+	} else if (gate.status === 'ok' && wanted && live && live.join() !== wanted.join()) {
 		gate = {
 			check: RELEASE_GATE_CHECK,
 			status: 'drift',
@@ -1437,7 +1451,7 @@ const ADMIN_404_HINT =
 /** Pure: the exact `gh api` invocations for whatever deviates ([] when compliant). */
 export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 	const commands: GhCommand[] = []
-	const rules = state.rules ?? {}
+	const rules = withDerivedDefaults(state.rules ?? {})
 	const autoMerge = rules.autoMerge ?? true
 	const deleteOnMerge = rules.deleteOnMerge ?? true
 	if (state.merge)
@@ -1553,7 +1567,8 @@ export async function applyGithubSettings(
 		protection: bp.status === 'optional-missing' || bp.status === 'drift',
 		workflow: wp.status === 'drift',
 		alerts: !('skip' in sec) && sec.alerts !== (rules.vulnerabilityAlerts ?? true),
-		securityFixes: !('skip' in sec) && sec.fixes !== (rules.automatedSecurityFixes ?? true),
+		securityFixes:
+			!('skip' in sec) && sec.fixes !== (withDerivedDefaults(rules).automatedSecurityFixes ?? true),
 		rules,
 	})
 
@@ -1709,6 +1724,11 @@ export async function applyReleaseEnvironment(
 	const applied: string[] = []
 	const env = envs.get(RELEASE_ENVIRONMENT)
 	const declared = rules.releaseReviewers
+	// An empty list would PUT `reviewers: []` and remove the gate it describes.
+	if (declared?.length === 0) {
+		console.error(chalk.yellow(`   ${EMPTY_REVIEWERS}`))
+		return applied
+	}
 	// A declared list is applied over any existing rule (#817); without one, an
 	// environment that is already gated stays untouched (see above).
 	const stale =

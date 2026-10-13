@@ -332,6 +332,7 @@ export function lockfileSchema() {
 							},
 							releaseReviewers: {
 								type: 'array',
+								minItems: 1,
 								items: { type: 'string', minLength: 1 },
 								description:
 									'GitHub user logins required to approve the `release` environment. Unchecked when absent.',

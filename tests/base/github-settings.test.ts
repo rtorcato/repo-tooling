@@ -1390,3 +1390,79 @@ describe('rules.github.releaseReviewers validation (#817)', () => {
 		expect(calls.some((a) => a.some((x) => x.includes('orgs/x')))).toBe(false)
 	})
 })
+
+describe('rules.github review fixes (#817)', () => {
+	const RELEASE_JOB =
+		'jobs:\n  release:\n    runs-on: ubuntu-latest\n    environment: release\n    steps:\n      - run: npx semantic-release\n'
+	const gatedBy = (login: string) =>
+		ok(
+			JSON.stringify({
+				environments: [
+					{
+						name: 'release',
+						protection_rules: [
+							{ type: 'required_reviewers', reviewers: [{ reviewer: { login } }] },
+						],
+					},
+				],
+			})
+		)
+	function releaseRepo(): string {
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows/release.yml'), RELEASE_JOB)
+		fs.writeJsonSync(join(dir, 'package.json'), { name: 'thing' })
+		return dir
+	}
+
+	it('reports an empty releaseReviewers as drift', async () => {
+		const g = byName(
+			await checkGitHubSettings(releaseRepo(), fakeGh({ environments: gatedBy('alice') }), {
+				releaseReviewers: [],
+			}),
+			'Release gate'
+		)
+		expect(g?.status).toBe('drift')
+		expect(g?.detail).toContain('releaseReviewers is empty')
+	})
+
+	it('never PUTs an empty reviewer list', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const puts: string[][] = []
+		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+			if (args.includes('PUT')) puts.push(args)
+			if (args[1]?.endsWith('/environments')) return gatedBy('alice')
+			return fakeGh()(args, stdin)
+		})
+		expect(await applyReleaseEnvironment(releaseRepo(), exec, { releaseReviewers: [] })).toEqual([])
+		expect(puts).toEqual([])
+	})
+
+	it('turns fixes off with alerts when only vulnerabilityAlerts: false is declared', () => {
+		const cmds = buildGhApplyCommands({
+			nwo: 'owner/repo',
+			branch: 'main',
+			merge: false,
+			protection: false,
+			workflow: false,
+			alerts: true,
+			securityFixes: true,
+			rules: { vulnerabilityAlerts: false },
+		})
+		expect(cmds.map((c) => c.args)).toEqual([
+			['api', '-X', 'DELETE', 'repos/owner/repo/automated-security-fixes'],
+			['api', '-X', 'DELETE', 'repos/owner/repo/vulnerability-alerts'],
+		])
+	})
+
+	it('does not ask for fixes on a repo whose alerts are declared off', async () => {
+		const results = await checkGitHubSettings(
+			gitRepo(),
+			fakeGh({
+				alerts: fail('gh: Not Found (HTTP 404)'),
+				securityFixes: ok(JSON.stringify({ enabled: false, paused: false })),
+			}),
+			{ vulnerabilityAlerts: false }
+		)
+		expect(byName(results, 'Security updates')?.status).toBe('ok')
+	})
+})
