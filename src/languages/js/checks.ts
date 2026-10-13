@@ -1614,7 +1614,7 @@ function compareFloor(a: [number, number, number], b: [number, number, number]):
 }
 
 /** Full major.minor.patch ordering, for comparing an installed version. */
-function compareVersion(a: [number, number, number], b: [number, number, number]): number {
+export function compareVersion(a: [number, number, number], b: [number, number, number]): number {
 	return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
 }
 

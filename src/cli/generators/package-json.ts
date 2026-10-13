@@ -1,9 +1,12 @@
 import chalk from 'chalk'
 import fs from 'fs-extra'
 import path from 'node:path'
+import packageJson from '../../../package.json' with { type: 'json' }
+import { compareVersion, rangeFloor } from '../../languages/js/checks.js'
 import type { ProjectConfig } from '../commands/setup.js'
 import { COMMITLINT_DEPS } from './git.js'
 import { PNPM_FALLBACK_VERSION, detectPnpmVersion } from './misc.js'
+import { getToolRange } from '../utils/version.js'
 
 export async function generatePackageJson(config: ProjectConfig, targetDir: string) {
 	const packageJsonPath = path.join(targetDir, 'package.json')
@@ -39,7 +42,7 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 			...(existingPackageJson as any)?.dependencies,
 		},
 		devDependencies: {
-			'@rtorcato/repo-tooling': 'latest',
+			'@rtorcato/repo-tooling': await getToolRange(),
 			...getDependencies(config),
 			...(existingPackageJson as any)?.devDependencies,
 		},
@@ -470,5 +473,21 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 		deps['@semantic-release/github'] = '^12.0.0'
 	}
 
+	return raiseToPeerFloors(deps)
+}
+
+/**
+ * Lift every scaffolded peer of this package to the floor it declares (#822).
+ * Dependabot raises those floors in our package.json while the literals above
+ * stay put, and doctor's "Peer versions" check then flags the project that
+ * setup has only just written.
+ */
+function raiseToPeerFloors(deps: Record<string, string>): Record<string, string> {
+	const peers: Record<string, string> = packageJson.peerDependencies
+	for (const [name, range] of Object.entries(deps)) {
+		const floor = peers[name] ? rangeFloor(peers[name]) : null
+		const ours = rangeFloor(range)
+		if (floor && ours && compareVersion(ours, floor) < 0) deps[name] = `^${floor.join('.')}`
+	}
 	return deps
 }

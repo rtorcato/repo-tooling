@@ -110,6 +110,7 @@ import { generateTreeshakeCheck, inferSubpathsFromExports } from '../../cli/gene
 import { generateTSConfig } from '../../cli/generators/tsconfig.js'
 import { generateTailwind } from '../../cli/generators/tailwind.js'
 import { generateTurborepo } from '../../cli/generators/turborepo.js'
+import { getToolRange } from '../../cli/utils/version.js'
 import { generateNx } from '../../cli/generators/nx.js'
 import { generateBun } from '../../cli/generators/bun.js'
 import { generateTypedocConfig, generateTypedocWorkflow } from '../../cli/generators/typedoc.js'
@@ -944,7 +945,7 @@ export const FIXERS: Fixer[] = [
 			const devDeps = {
 				...((updated.devDependencies as Record<string, string> | undefined) ?? {}),
 			}
-			devDeps['@rtorcato/repo-tooling'] = 'latest'
+			devDeps['@rtorcato/repo-tooling'] = await getToolRange()
 			updated.devDependencies = devDeps
 			await fs.writeJson(pkgPath, updated, { spaces: 2 })
 			console.error(chalk.dim('   reminder: run `pnpm install` to install the new dep'))
