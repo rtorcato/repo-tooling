@@ -78,9 +78,9 @@ describe('checkRepositorySecrets', () => {
 		expect(r.status).toBe('ok')
 	})
 
-	it('self-skips as ok when the list is unreadable', async () => {
+	it('self-skips (not ok) when the list is unreadable', async () => {
 		const r = await checkRepositorySecrets(await repo(), gh({ repo: fail }))
-		expect(r.status).toBe('ok')
+		expect(r.status).toBe('skipped')
 		expect(r.detail).toContain('not checked')
 	})
 

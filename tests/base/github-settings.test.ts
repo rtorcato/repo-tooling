@@ -143,20 +143,21 @@ describe('checkGitHubSettings — skip paths', () => {
 		const results = await checkGitHubSettings(newTmpDir(), exec)
 		expect(exec).not.toHaveBeenCalled()
 		expect(results).toHaveLength(8)
-		expect(results.every((r) => r.status === 'ok' && r.detail.includes('skipped'))).toBe(true)
+		expect(results.every((r) => r.status === 'skipped' && r.detail.includes('skipped'))).toBe(true)
 	})
 
-	it('skips all three when gh is not installed', async () => {
+	it('skips all checks as skipped (not ok) when gh is not installed', async () => {
 		const exec = fakeGh({ repo: fail('spawn gh ENOENT', null) })
 		const results = await checkGitHubSettings(gitRepo(), exec)
-		expect(results.every((r) => r.status === 'ok')).toBe(true)
+		expect(results.every((r) => r.status === 'skipped')).toBe(true)
 		expect(byName(results, 'Branch protection')?.detail).toContain('gh not installed')
 	})
 
 	it('skips when the probe fails (no GitHub remote / not authed)', async () => {
 		const exec = fakeGh({ repo: fail('gh auth login required') })
 		const results = await checkGitHubSettings(gitRepo(), exec)
-		expect(results.every((r) => r.status === 'ok' && r.detail.includes('skipped'))).toBe(true)
+		expect(results.every((r) => r.status === 'skipped' && r.detail.includes('skipped'))).toBe(true)
+		expect(byName(results, 'Branch protection')?.detail).toContain('gh not authenticated')
 	})
 })
 
@@ -208,10 +209,10 @@ describe('checkGitHubSettings — code-scanning gate (#269)', () => {
 		expect(gate(await checkGitHubSettings(gitRepo(), exec))?.status).toBe('drift')
 	})
 
-	it('skips (ok) when rulesets cannot be read', async () => {
+	it('skips when rulesets cannot be read', async () => {
 		const exec = fakeGh({ defaultSetup: ok(CODEQL_ON), rulesets: fail('gh: (HTTP 403)') })
 		const g = gate(await checkGitHubSettings(gitRepo(), exec))
-		expect(g?.status).toBe('ok')
+		expect(g?.status).toBe('skipped')
 		expect(g?.detail).toContain('skipped')
 	})
 
@@ -418,13 +419,13 @@ jobs:
 		expect(g?.detail).toContain('does not have')
 	})
 
-	it('skips (ok) when the environments endpoint cannot be read', async () => {
+	it('skips when the environments endpoint cannot be read', async () => {
 		const dir = repoWithWorkflow(workflow())
 		const exec = fakeGh({ environments: fail('gh: (HTTP 403)') })
 		const results = await checkGitHubSettings(dir, exec)
-		expect(gate(results)?.status).toBe('ok')
+		expect(gate(results)?.status).toBe('skipped')
 		expect(gate(results)?.detail).toContain('skipped')
-		expect(env(results)?.status).toBe('ok')
+		expect(env(results)?.status).toBe('skipped')
 	})
 
 	it('reads a 404 from the environments endpoint as "none", not unreadable', async () => {
@@ -596,7 +597,7 @@ describe('checkGitHubSettings — drift', () => {
 	it('skips branch protection (not drift) when the token lacks admin (403)', async () => {
 		const exec = fakeGh({ protection: fail('gh: Must have admin rights (HTTP 403)') })
 		const bp = byName(await checkGitHubSettings(gitRepo(), exec), 'Branch protection')
-		expect(bp?.status).toBe('ok')
+		expect(bp?.status).toBe('skipped')
 		expect(bp?.detail).toContain('skipped')
 	})
 
@@ -679,7 +680,7 @@ describe('checkGitHubSettings — drift', () => {
 		// entirely — they must not be read as "disabled".
 		const repo = ok(JSON.stringify({ full_name: 'owner/repo', default_branch: 'main' }))
 		const ms = byName(await checkGitHubSettings(gitRepo(), fakeGh({ repo })), 'Merge settings')
-		expect(ms?.status).toBe('ok')
+		expect(ms?.status).toBe('skipped')
 		expect(ms?.detail).toContain('skipped')
 	})
 
@@ -726,7 +727,7 @@ describe('checkGitHubSettings — security updates (#692)', () => {
 			gitRepo(),
 			fakeGh({ alerts: fail('gh: Forbidden (HTTP 403)') })
 		)
-		expect(byName(results, 'Security updates')?.status).toBe('ok')
+		expect(byName(results, 'Security updates')?.status).toBe('skipped')
 		expect(byName(results, 'Security updates')?.detail).toContain('skipped')
 	})
 })

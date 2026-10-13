@@ -10,6 +10,7 @@ import {
 } from '../../languages/js/npm-trust.js'
 import { LANGUAGES, type LanguageModule } from '../../languages/registry.js'
 import { generateConfigs } from '../generators/index.js'
+import { detectPnpmVersion } from '../generators/misc.js'
 import { detectLanguage } from '../utils/detect-language.js'
 import { formatGeneratedFiles } from '../utils/format.js'
 import { installDependencies } from '../utils/install.js'
@@ -229,6 +230,16 @@ async function resolveConfig(options: SetupOptions): Promise<ProjectConfig | nul
 		if (options.dryRun || options.yes || !isInteractiveTerminal()) return config
 		return reviewPresetConfig(config)
 	}
+	// The wizard needs someone to answer it. Without a terminal inquirer either
+	// dies with an ExitPromptError stack or waits forever on an open pipe (#825).
+	if (!isInteractiveTerminal()) {
+		console.error(chalk.red('\n❌ setup asks questions, and there is no terminal to answer them.'))
+		console.error(
+			chalk.gray(`   Use --preset <name> (${PRESET_NAMES.join(', ')}) or --config <path>.\n`)
+		)
+		process.exitCode = 1
+		return null
+	}
 	let seed: ProjectConfig | undefined
 	if (options.from) {
 		const seeded = await seedFromReference(options.from)
@@ -278,6 +289,17 @@ export async function setupProject(options: SetupOptions) {
 			const shape = config.language === 'swift' ? `Swift ${config.projectType}` : config.projectType
 			console.log(chalk.cyan(`\n🛠️  Scaffolding ${shape} in ${targetDir}\n`))
 		}
+		const install = !options.skipInstall && config.language !== 'swift'
+		// Check before writing a file, so a missing pnpm leaves nothing half-done (#825).
+		if (install && !detectPnpmVersion()) {
+			console.error(chalk.red('\n❌ pnpm is not on PATH, and setup installs with it.'))
+			console.error(
+				chalk.gray('   Run `corepack enable` (or install pnpm), or re-run with --skip-install.\n')
+			)
+			process.exitCode = 1
+			return
+		}
+
 		console.log(chalk.cyan('\n📝 Generating configuration files...\n'))
 
 		await generateConfigs(config, targetDir)
@@ -287,9 +309,17 @@ export async function setupProject(options: SetupOptions) {
 		// install and no Biome to format with — SwiftPM resolves on first build,
 		// and `swiftlint --fix` is the formatter (it needs a Swift toolchain we
 		// can't assume is present).
-		if (!options.skipInstall && config.language !== 'swift') {
+		if (install) {
 			console.log(chalk.cyan('\n📦 Installing dependencies...\n'))
-			await installDependencies(config, targetDir)
+			if (!(await installDependencies(config, targetDir))) {
+				console.error(
+					chalk.red(
+						`\n❌ Setup incomplete: the files are in ${targetDir}, but dependencies did not install. Fix the error above and run \`pnpm install\` there.\n`
+					)
+				)
+				process.exitCode = 1
+				return
+			}
 			// Format now that the linter/formatter is installed, so the scaffold
 			// passes its own `pnpm check` out of the box (templates are written by
 			// hand and don't match biome/prettier whitespace).
@@ -315,6 +345,11 @@ export async function setupProject(options: SetupOptions) {
 		console.log(chalk.green('\n✅ Setup completed successfully!\n'))
 		await showNextSteps(config, targetDir)
 	} catch (error) {
+		// Ctrl+C (or a closed stdin) at a prompt — a choice, not a crash.
+		if (error instanceof Error && error.name === 'ExitPromptError') {
+			console.error(chalk.yellow('\nSetup cancelled.'))
+			process.exit(1)
+		}
 		console.error(chalk.red('\n❌ Setup failed:'), error)
 		process.exit(1)
 	}

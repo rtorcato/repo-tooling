@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setupProject } from '../../../src/cli/commands/setup.js'
 import {
 	buildPresetConfig,
@@ -11,6 +11,8 @@ import {
 	validateProjectConfig,
 } from '../../../src/cli/commands/setup-presets.js'
 import { generateConfigs } from '../../../src/cli/generators/index.js'
+import { detectPnpmVersion } from '../../../src/cli/generators/misc.js'
+import { installDependencies } from '../../../src/cli/utils/install.js'
 import { DEFAULT_RULES } from '../../../src/cli/utils/lockfile.js'
 import { fetchReferenceLockfile } from '../../../src/cli/utils/reference-rules.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -22,7 +24,31 @@ vi.mock('../../../src/cli/utils/reference-rules.js', () => ({
 	fetchReferenceLockfile: vi.fn(),
 }))
 
+// #825: setup's pnpm check and install are the only parts that shell out to
+// pnpm. Both default to the real thing; a test swaps in a failure.
+vi.mock('../../../src/cli/generators/misc.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../../src/cli/generators/misc.js')>()
+	return { ...actual, detectPnpmVersion: vi.fn(actual.detectPnpmVersion) }
+})
+vi.mock('../../../src/cli/utils/install.js', () => ({ installDependencies: vi.fn() }))
+
 const newTmpDir = useTmpDir()
+
+/** Pretend both ends of the pipe are a terminal; returns the undo. */
+function fakeTTY(): () => void {
+	const saved = [process.stdin, process.stdout].map(
+		(stream) => [stream, Object.getOwnPropertyDescriptor(stream, 'isTTY')] as const
+	)
+	for (const [stream] of saved) {
+		Object.defineProperty(stream, 'isTTY', { value: true, configurable: true })
+	}
+	return () => {
+		for (const [stream, descriptor] of saved) {
+			if (descriptor) Object.defineProperty(stream, 'isTTY', descriptor)
+			else delete (stream as unknown as { isTTY?: boolean }).isTTY
+		}
+	}
+}
 
 // #382: computeFileList is a promise about what generateConfigs writes — the
 // budget has to actually land, or the `size-limit` script has nothing to run.
@@ -457,22 +483,6 @@ describe('setup --preset minimal', () => {
 // deselect. Non-TTY is CI — the case --preset was added for — and must keep the
 // exact one-shot behaviour.
 describe('setup --preset review prompt', () => {
-	/** Pretend both ends of the pipe are a terminal; returns the undo. */
-	function fakeTTY(): () => void {
-		const saved = [process.stdin, process.stdout].map(
-			(stream) => [stream, Object.getOwnPropertyDescriptor(stream, 'isTTY')] as const
-		)
-		for (const [stream] of saved) {
-			Object.defineProperty(stream, 'isTTY', { value: true, configurable: true })
-		}
-		return () => {
-			for (const [stream, descriptor] of saved) {
-				if (descriptor) Object.defineProperty(stream, 'isTTY', descriptor)
-				else delete (stream as unknown as { isTTY?: boolean }).isTTY
-			}
-		}
-	}
-
 	beforeEach(() => {
 		vi.restoreAllMocks()
 	})
@@ -705,9 +715,13 @@ describe('setup language prompt', () => {
 		bundler: 'none',
 	}
 
+	// The wizard refuses to start without a terminal (#825), and vitest has none.
+	let undoTTY: () => void
 	beforeEach(() => {
 		vi.restoreAllMocks()
+		undoTTY = fakeTTY()
 	})
+	afterEach(() => undoTTY())
 
 	// #475: the greeting was still "JS Tooling Setup" months after the rename
 	// because nothing pinned it. It is the first thing a user ever sees.
@@ -925,6 +939,8 @@ describe('setup language prompt', () => {
 				directory: dir,
 				preset: 'library',
 				skipInstall: true,
+				// This suite fakes a terminal; --yes keeps the preset's review prompt out.
+				yes: true,
 				from: 'someone/theirs',
 			})
 		} finally {
@@ -966,5 +982,56 @@ describe('setup language prompt', () => {
 		expect(
 			asked.filter((q) => q.type && !registered.has(q.type)).map((q) => `${q.name}: ${q.type}`)
 		).toEqual([])
+	})
+})
+
+// #825: three first-run failures that used to end in a success message, a
+// stack trace, or a prompt nobody could answer.
+describe('setup first-run failures', () => {
+	let errors: string
+	beforeEach(() => {
+		vi.restoreAllMocks()
+		errors = ''
+		vi.spyOn(console, 'log').mockImplementation(() => {})
+		vi.spyOn(console, 'error').mockImplementation((...args) => {
+			errors += `${args.join(' ')}\n`
+		})
+	})
+	afterEach(() => {
+		process.exitCode = undefined
+	})
+
+	it('points at --preset instead of prompting when there is no terminal', async () => {
+		const dir = newTmpDir()
+		const prompt = vi.spyOn(inquirer, 'prompt')
+		await setupProject({ directory: dir, skipInstall: true })
+		expect(prompt).not.toHaveBeenCalled()
+		expect(errors).toMatch(/--preset <name>/)
+		expect(process.exitCode).toBe(1)
+		expect(await fs.readdir(dir)).toEqual([])
+	})
+
+	it('refuses before writing anything when pnpm is missing', async () => {
+		const dir = newTmpDir()
+		vi.mocked(detectPnpmVersion).mockReturnValueOnce(null)
+		await setupProject({ directory: dir, preset: 'library' })
+		expect(errors).toMatch(/corepack enable/)
+		expect(process.exitCode).toBe(1)
+		expect(installDependencies).not.toHaveBeenCalled()
+		expect(await fs.readdir(dir)).toEqual([])
+	})
+
+	it('never reports success after a failed install', async () => {
+		const dir = newTmpDir()
+		vi.mocked(detectPnpmVersion).mockReturnValueOnce('10.0.0')
+		vi.mocked(installDependencies).mockResolvedValueOnce(false)
+		await setupProject({ directory: dir, preset: 'library' })
+		const logged = vi
+			.mocked(console.log)
+			.mock.calls.map((c) => String(c[0]))
+			.join('\n')
+		expect(logged).not.toMatch(/Setup completed successfully/)
+		expect(errors).toMatch(/Setup incomplete/)
+		expect(process.exitCode).toBe(1)
 	})
 })
