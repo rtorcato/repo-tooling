@@ -158,10 +158,35 @@ ${job.extra ? `${job.extra}\n` : ''}    steps:
 ${job.steps}`
 }
 
+/** The gate job's id — the one check branch protection requires (#816). */
+export const CI_GATE_JOB = 'ci'
+
+/**
+ * The single required check (#816). It needs every other job and runs even when
+ * one fails, so protection names `ci` alone and a matrix change (a leg added or
+ * dropped) never touches protection again. Skipped jobs pass: `[skip ci]` skips
+ * everything, and some jobs only run on some events.
+ */
+function gateJob(ids: readonly string[]): string {
+	return `  ${CI_GATE_JOB}:
+    runs-on: ubuntu-latest
+    needs: [${ids.join(', ')}]
+    if: always()
+    permissions: {}
+    steps:
+      - name: ✅ Every job passed or was skipped
+        env:
+          RESULTS: \${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          [[ " $RESULTS " != *" failure "* && " $RESULTS " != *" cancelled "* ]]`
+}
+
 /** Wrap language-supplied jobs in the shared workflow shell. */
 export function renderGitHubWorkflow(jobs: readonly CiJob[]): string {
 	const header = workflowHeader(jobs.some((job) => job.id === 'commitlint'))
-	return `${header}${[CHECK_SKIP_JOB, ...jobs.map(renderJob)].join('\n\n')}\n`
+	const gate = gateJob(['check-skip', ...jobs.map((job) => job.id)])
+	return `${header}${[CHECK_SKIP_JOB, ...jobs.map(renderJob), gate].join('\n\n')}\n`
 }
 
 /**

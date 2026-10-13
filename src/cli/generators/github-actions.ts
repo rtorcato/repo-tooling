@@ -49,11 +49,13 @@ export async function generateGitHubActions(
 		scripts,
 		bin,
 		commitlint,
+		nodeFloor,
 	}: {
 		overwrite?: boolean
 		scripts?: Record<string, string>
 		bin?: boolean
 		commitlint?: boolean
+		nodeFloor?: number
 	} = {}
 ): Promise<string[]> {
 	const workflowsDir = path.join(targetDir, '.github', 'workflows')
@@ -78,7 +80,7 @@ export async function generateGitHubActions(
 	const releaseEnvironment = releaseEnvironmentOf(existingRelease) ?? releaseEnvironmentOf(existing)
 	const release = renderReleaseWorkflow(config, { scripts, releaseEnvironment })
 
-	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin, commitlint }))
+	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin, commitlint, nodeFloor }))
 	const releaseJob = existing === null ? null : semanticReleaseJob(existing)
 	let ci = existing
 	let releaseYml = release

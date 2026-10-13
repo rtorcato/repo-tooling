@@ -164,6 +164,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [dependencies, check-skip]
     if: needs.check-skip.outputs.should-skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 26]
     steps:
       - name: 📦 Checkout repository
         uses: actions/checkout@v7
@@ -171,7 +175,7 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version-file: .nvmrc
+          node-version: \${{ matrix.node }}
 
       - name: 📦 Setup pnpm
         uses: pnpm/action-setup@v6
@@ -226,6 +230,19 @@ jobs:
             package.json
             README.md
           retention-days: 7
+
+  ci:
+    runs-on: ubuntu-latest
+    needs: [check-skip, dependencies, lint, commitlint, typecheck, test, build]
+    if: always()
+    permissions: {}
+    steps:
+      - name: ✅ Every job passed or was skipped
+        env:
+          RESULTS: \${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          [[ " $RESULTS " != *" failure "* && " $RESULTS " != *" cancelled "* ]]
 "
 `;
 

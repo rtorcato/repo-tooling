@@ -115,6 +115,37 @@ export interface JobOptions {
 	 * which installs it whenever `commitLint` is on.
 	 */
 	commitlint?: boolean
+	/**
+	 * The `engines.node` floor major, the low end of the test matrix (#816).
+	 * Undefined means the setup shape, which writes `>=`{@link DEFAULT_NODE_FLOOR}.
+	 */
+	nodeFloor?: number
+}
+
+/**
+ * The newest Node major, the high end of every test matrix (#816).
+ * ponytail: a constant; bump it when a new even major ships.
+ */
+export const NEWEST_NODE = 26
+
+/** The floor `setup` writes into `engines.node`, assumed when a repo declares none. */
+export const DEFAULT_NODE_FLOOR = 22
+
+/** `JobOptions.nodeFloor` for a real repo: the first integer in `engines.node`. */
+export function nodeFloorOf(pkg: Record<string, unknown> | null): number | undefined {
+	const range = (pkg?.engines as Record<string, string> | undefined)?.node
+	const m = range?.match(/\d+/)
+	return m ? Number.parseInt(m[0], 10) : undefined
+}
+
+/**
+ * The Node majors CI tests on (#816): the floor the package promises and the
+ * newest Node, nothing between. Breaks show up at the ends of the range, so the
+ * middle costs runner minutes to re-prove them absent. A floor at or past the
+ * newest collapses to one entry.
+ */
+export function nodeMatrix(floor = DEFAULT_NODE_FLOOR): number[] {
+	return floor >= NEWEST_NODE ? [floor] : [floor, NEWEST_NODE]
 }
 
 /** `JobOptions.bin` for a real repo. */
@@ -246,7 +277,19 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
         run: ${useCoverage ? 'pnpm coverage' : 'pnpm test'}`
 			),
 		])
-		if (steps) jobs.push({ id: 'test', needs: ['dependencies'], steps })
+		if (steps) {
+			jobs.push({
+				id: 'test',
+				needs: ['dependencies'],
+				// Reports as `test (22)`, `test (26)`; protection requires only the `ci`
+				// gate, so changing these legs never touches it (#816).
+				extra: `    strategy:
+      fail-fast: false
+      matrix:
+        node: [${nodeMatrix(opts.nodeFloor).join(', ')}]`,
+				steps: steps.replace('node-version-file: .nvmrc', 'node-version: \${{ matrix.node }}'),
+			})
+		}
 	}
 
 	if (hasBuild && (!opts.scripts || 'build' in opts.scripts)) {

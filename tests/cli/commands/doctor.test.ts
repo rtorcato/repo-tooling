@@ -17,6 +17,9 @@ import { copyPreset } from '../../../src/cli/utils/copy-preset.js'
 import { LOCKFILE_VERSION } from '../../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
+/** The `ci` gate job the preset emits, so a ci.yml fixture isn't flagged for lacking it (#816). */
+const GATE = '  ci:\n    runs-on: ubuntu-latest\n'
+
 const newTmpDir = useTmpDir()
 
 async function seedPackageJson(dir: string, withDep = true) {
@@ -761,9 +764,71 @@ describe('doctor extended checks', () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fs.ensureDir(join(dir, '.github', 'workflows'))
-		await fs.writeFile(join(dir, '.github', 'workflows', 'ci.yml'), 'name: ci\n')
+		await fs.writeFile(join(dir, '.github', 'workflows', 'ci.yml'), `name: ci\njobs:\n${GATE}`)
 		const results = await runDoctor(dir)
 		expect(results.find((r) => r.check === 'GitHub Actions')?.status).toBe('ok')
+	})
+
+	it('flags a ci.yml without the `ci` gate job (#816)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(
+			join(dir, '.github', 'workflows', 'ci.yml'),
+			'name: ci\njobs:\n  test:\n    runs-on: ubuntu-latest\n'
+		)
+		const gha = (await runDoctor(dir)).find((r) => r.check === 'GitHub Actions')
+		expect(gha?.status).toBe('drift')
+		expect(gha?.detail).toContain('no `ci` gate job')
+	})
+
+	describe('Node test matrix (#816)', () => {
+		const matrixFor = async (engines: string | null, ciYml: string | null) => {
+			const dir = newTmpDir()
+			await fs.writeJson(join(dir, 'package.json'), {
+				name: 'demo',
+				version: '0.0.0',
+				...(engines ? { engines: { node: engines } } : {}),
+			})
+			if (ciYml !== null) await fs.outputFile(join(dir, '.github', 'workflows', 'ci.yml'), ciYml)
+			return (await runDoctor(dir)).find((r) => r.check === 'Node test matrix')
+		}
+		const testJob = (matrix: string) =>
+			`jobs:\n  test:\n    strategy:\n      matrix:\n${matrix}\n    runs-on: ubuntu-latest\n`
+
+		it('is ok on exactly the engines floor and the newest', async () => {
+			const r = await matrixFor('>=22', testJob("        node: ['22', '26']"))
+			expect(r?.status).toBe('ok')
+		})
+
+		it('reads a block-style list too', async () => {
+			const r = await matrixFor(
+				'>=22',
+				testJob('        node-version:\n          - 22\n          - 26')
+			)
+			expect(r?.status).toBe('ok')
+		})
+
+		it('drifts on a matrix missing the newest, with a version in between', async () => {
+			const r = await matrixFor('>=22', testJob('        node-version: [22, 24]'))
+			expect(r?.status).toBe('drift')
+			expect(r?.detail).toContain('missing Node 26')
+			expect(r?.detail).toContain('also tests Node 24')
+		})
+
+		it('drifts on a matrix missing the floor', async () => {
+			const r = await matrixFor('>=24', testJob('        node: [22, 26]'))
+			expect(r?.detail).toContain('missing Node 24')
+			expect(r?.detail).toContain('also tests Node 22')
+		})
+
+		it('notes a single-version CI without failing it', async () => {
+			const r = await matrixFor('>=22', 'jobs:\n  test:\n    runs-on: ubuntu-latest\n')
+			expect(r?.status).toBe('optional-missing')
+		})
+
+		it('has nothing to compare without engines.node', async () => {
+			expect((await matrixFor(null, testJob('        node: [20]')))?.status).toBe('ok')
+		})
 	})
 
 	// #349/#340: "a workflow exists" reported ok on a ci.yml that had drifted
@@ -788,7 +853,7 @@ describe('doctor extended checks', () => {
 		await fs.ensureDir(join(dir, '.github', 'workflows'))
 		await fs.writeFile(
 			join(dir, '.github', 'workflows', 'ci.yml'),
-			'name: ci\njobs:\n  lint:\n    steps:\n      - uses: some-org/some-action@v1\n'
+			`name: ci\njobs:\n  lint:\n    steps:\n      - uses: some-org/some-action@v1\n${GATE}`
 		)
 		const gha = (await runDoctor(dir)).find((r) => r.check === 'GitHub Actions')
 		expect(gha?.status).toBe('ok')
