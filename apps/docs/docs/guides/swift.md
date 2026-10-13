@@ -141,7 +141,7 @@ npx @rtorcato/repo-tooling fix swift-gitignore  # append build artefacts
 npx @rtorcato/repo-tooling fix swift-git-hooks  # .githooks/ + core.hooksPath
 npx @rtorcato/repo-tooling fix swift-ci         # .github/workflows/ci.yml
 npx @rtorcato/repo-tooling fix swift-release    # .github/workflows/release.yml
-npx @rtorcato/repo-tooling fix swift-codeql     # .github/workflows/codeql.yml
+npx @rtorcato/repo-tooling fix codeql           # .github/workflows/codeql.yml
 npx @rtorcato/repo-tooling fix swift-gitlab-ci  # .gitlab-ci.yml
 ```
 
