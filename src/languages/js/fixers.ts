@@ -251,6 +251,20 @@ const GH_WORKFLOW_FIXERS: Fixer[] = GH_WORKFLOWS.map((name) => ({
 	},
 }))
 
+/**
+ * Refusal for a fixer that edits package.json when there is none. These used to
+ * print "skipping" and exit 0, so `fix package-json` on an empty dir looked like
+ * it worked (#827). Only a fresh dir gets here: anything else without a
+ * package.json isn't audited as JS.
+ */
+function noPackageJson(): FixerAbort {
+	return new FixerAbort(
+		'no-package-json',
+		'no package.json found',
+		'run `npx @rtorcato/repo-tooling setup --preset <name>` to scaffold the project, or add a package.json'
+	)
+}
+
 export const FIXERS: Fixer[] = [
 	{
 		target: 'biome',
@@ -418,8 +432,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const includeTreeshake = await fs.pathExists(
 				path.join(targetDir, 'apps', 'treeshake-check', 'check.mjs')
@@ -773,8 +786,7 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: false,
 		async run({ targetDir, pkg }) {
 			if (!pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const workspaceName = (pkg.name as string | undefined) ?? null
 			if (!workspaceName) {
@@ -841,8 +853,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const updated = { ...pkg }
 			const devDeps = {
@@ -872,8 +883,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const updated = { ...pkg }
 			const devDeps = {
@@ -902,8 +912,7 @@ export const FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir, pkg }) {
 			if (!pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const p = pkg as Record<string, unknown>
 			const name = typeof p.name === 'string' ? p.name : undefined
@@ -938,8 +947,7 @@ export const FIXERS: Fixer[] = [
 		async run({ targetDir, pkg }) {
 			const pkgPath = path.join(targetDir, 'package.json')
 			if (!pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const updated = { ...pkg }
 			const devDeps = {
@@ -965,8 +973,7 @@ export const FIXERS: Fixer[] = [
 			// file to the current version on disk (#531), it never re-infers over
 			// choices the repo already made.
 			if (!lock && !pkg) {
-				console.error(chalk.yellow('   no package.json found — skipping'))
-				return { filesWritten: [] }
+				throw noPackageJson()
 			}
 			const config = lock
 				? lock.record.config

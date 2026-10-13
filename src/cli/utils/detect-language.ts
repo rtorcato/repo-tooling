@@ -47,8 +47,21 @@ export async function detectLanguage(dir: string): Promise<DetectedLanguage> {
 export async function detectAuditLanguage(dir: string): Promise<DetectedLanguage> {
 	const language = await detectLanguage(dir)
 	if (language !== 'unknown') return language
+	return (await onlyDotfiles(dir)) ? 'js' : 'unknown'
+}
+
+async function onlyDotfiles(dir: string): Promise<boolean> {
 	const entries = await fs.readdir(dir).catch(() => [])
-	return entries.every((entry) => entry.startsWith('.')) ? 'js' : 'unknown'
+	return entries.every((entry) => entry.startsWith('.'))
+}
+
+/**
+ * True for a dir with nothing in it but dotfiles (`.git`, the lockfile) — a
+ * project `setup` hasn't scaffolded yet. `fix` refuses there, and doctor points
+ * at `setup`, because piecemeal fixers can't create a project (#827).
+ */
+export async function isFreshDir(dir: string): Promise<boolean> {
+	return (await detectLanguage(dir)) === 'unknown' && (await onlyDotfiles(dir))
 }
 
 /** Never worth descending into, and expensive when we do. */
