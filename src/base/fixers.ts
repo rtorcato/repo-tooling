@@ -289,12 +289,15 @@ export const BASE_FIXERS: Fixer[] = [
 	{
 		target: 'milestones',
 		description:
-			'Close 100%-complete open milestones on GitHub via gh api, then open a rolling "next" one if none is left (mutates the remote repo, not files). Never deletes one',
+			'Close 100%-complete open milestones on GitHub via gh api, then open a rolling "next" one if none is left (mutates the remote repo, not files). Never deletes one, and refuses to close any when a workflow runs on milestone close (#833)',
 		appliesTo: ['Milestones'],
 		outputs: ['GitHub milestones (remote, via gh api)'],
 		// safe-add for the same reason github-settings is: it exempts this fixer
 		// from the `--diff` shadow-run, which executes run() for a mere preview.
+		// explicitOnly because closing a milestone fires release.yml (#833), so a
+		// bulk `fix --yes` must never do it.
 		riskLevel: 'safe-add',
+		explicitOnly: true,
 		canFixDrift: true,
 		async run({ targetDir }) {
 			return { filesWritten: await closeCompletedMilestones(targetDir) }

@@ -1,8 +1,13 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { BASE_FIXERS, FixerAbort } from '../../src/base/fixers.js'
 import type { GhExec, GhResult } from '../../src/base/github-settings.js'
-import { checkMilestones, closeCompletedMilestones } from '../../src/base/milestones.js'
+import {
+	checkMilestones,
+	closeCompletedMilestones,
+	milestoneReleaseWorkflow,
+} from '../../src/base/milestones.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -10,6 +15,18 @@ const newTmpDir = useTmpDir()
 function gitRepo(): string {
 	const dir = newTmpDir()
 	fs.ensureDirSync(join(dir, '.git'))
+	return dir
+}
+
+/** A git repo whose release workflow runs on milestone close, like the preset's. */
+function batchedRepo(
+	on = 'on:\n  workflow_dispatch:\n  milestone:\n    types: [closed]\n'
+): string {
+	const dir = gitRepo()
+	fs.outputFileSync(
+		join(dir, '.github', 'workflows', 'release.yml'),
+		`name: Release\n${on}jobs: {}\n`
+	)
 	return dir
 }
 
@@ -157,6 +174,28 @@ describe('checkMilestones', () => {
 		expect(r.detail).toContain('can never close')
 	})
 
+	it('reports a finished milestone as ok, not drift, when closing it publishes (#833)', async () => {
+		const done = milestone({ title: 'v2.1', open_issues: 0, closed_issues: 4 })
+		const r = await checkMilestones(batchedRepo(), fakeGh([done]))
+		expect(r.status).toBe('ok')
+		expect(r.detail).toContain('ready to ship: "v2.1"')
+		expect(r.detail).toContain('.github/workflows/release.yml runs on milestone close')
+		expect(r.hint).toBeUndefined()
+	})
+
+	it('still flags an empty milestone on a batched repo, without pointing at fix', async () => {
+		const r = await checkMilestones(
+			batchedRepo(),
+			fakeGh([
+				milestone({ number: 1, title: 'v2.1', open_issues: 0, closed_issues: 4 }),
+				milestone({ number: 2, title: 'Empty', open_issues: 0, closed_issues: 0 }),
+			])
+		)
+		expect(r.status).toBe('drift')
+		expect(r.detail).not.toContain('100% complete but still open')
+		expect(r.hint).not.toContain('fix milestones')
+	})
+
 	it('self-skips when the milestone read fails', async () => {
 		const exec: GhExec = async () => ({ ok: false, stdout: '', stderr: 'gh error', code: 1 })
 		const r = await checkMilestones(gitRepo(), exec)
@@ -223,5 +262,44 @@ describe('closeCompletedMilestones', () => {
 		const exec = fakeGh([])
 		expect(await closeCompletedMilestones(newTmpDir(), exec)).toEqual([])
 		expect(exec).not.toHaveBeenCalled()
+	})
+
+	it('refuses to close a milestone when that would publish (#833)', async () => {
+		const exec = fakeGh([milestone({ title: 'v2.1', open_issues: 0, closed_issues: 4 })])
+		const err = await closeCompletedMilestones(batchedRepo(), exec).catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(FixerAbort)
+		expect((err as FixerAbort).code).toBe('milestone-close-publishes')
+		expect((err as FixerAbort).message).toContain('closing publishes a release')
+		expect(vi.mocked(exec).mock.calls.every((c) => !c[0].includes('PATCH'))).toBe(true)
+	})
+
+	it('still opens "next" on a batched repo when nothing needs closing', async () => {
+		expect(await closeCompletedMilestones(batchedRepo(), fakeGh([]))).toEqual([
+			'opened milestone "next"',
+		])
+	})
+})
+
+describe('milestoneReleaseWorkflow', () => {
+	it.each([
+		['block', 'on:\n  milestone:\n    types: [closed]\n'],
+		['block list', 'on:\n  - push\n  - milestone\n'],
+		['inline list', 'on: [push, milestone]\n'],
+		['scalar', 'on: milestone\n'],
+	])('finds a %s milestone trigger', async (_, on) => {
+		expect(await milestoneReleaseWorkflow(batchedRepo(on))).toBe('.github/workflows/release.yml')
+	})
+
+	it('ignores workflows without one, and commented-out triggers', async () => {
+		expect(await milestoneReleaseWorkflow(gitRepo())).toBeNull()
+		expect(
+			await milestoneReleaseWorkflow(batchedRepo('on:\n  workflow_dispatch:\n  # milestone:\n'))
+		).toBeNull()
+	})
+})
+
+describe('milestones fixer', () => {
+	it('is explicitOnly, so a bulk `fix --yes` never closes a milestone (#833)', () => {
+		expect(BASE_FIXERS.find((f) => f.target === 'milestones')?.explicitOnly).toBe(true)
 	})
 })

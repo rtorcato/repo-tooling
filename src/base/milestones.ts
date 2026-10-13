@@ -1,6 +1,7 @@
 import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
+import { FixerAbort } from './fixers.js'
 import { type GhExec, realGhExec } from './github-settings.js'
 import type { CheckResult } from './types.js'
 
@@ -14,6 +15,11 @@ import type { CheckResult } from './types.js'
  * the release-hygiene warnings below ride in `detail` — they never fail the run.
  * Milestones stay optional: a repo without any is `optional-missing`, which a
  * bulk `fix` skips.
+ *
+ * Where a workflow runs on the `milestone` event (the preset's release.yml),
+ * closing one publishes (#833). There a finished, still-open milestone is the
+ * intended "ready, waiting for the owner" state: `doctor` reports it ok, and
+ * `fix milestones` refuses to close it.
  *
  * On the same `gh` seam as github-settings.ts. No repo probe is needed — `gh`
  * expands `{owner}/{repo}` from the remote itself.
@@ -57,6 +63,32 @@ const skip = (reason: string): CheckResult => ({
 })
 
 const NEXT_HINT = `Run \`npx @rtorcato/repo-tooling fix milestones\` to open a rolling "${NEXT_MILESTONE}" milestone`
+
+/**
+ * Any `on:` spelling that names the milestone event: block (`  milestone:`),
+ * block list (`  - milestone`) or inline (`on: [push, milestone]`).
+ *
+ * ponytail: line regex, no YAML parser, and any milestone trigger counts, even
+ * `types: [created]`. That fails closed: the worst case is a milestone left
+ * open for the owner to close by hand.
+ */
+const MILESTONE_TRIGGER =
+	/^[ \t]+milestone:|^[ \t]+-[ \t]*milestone[ \t]*$|^['"]?on['"]?:.*\bmilestone\b/m
+
+/** The first workflow that runs on a milestone event, so closing one may publish; null if none. */
+export async function milestoneReleaseWorkflow(dir: string): Promise<string | null> {
+	const wfDir = path.join(dir, '.github', 'workflows')
+	const files = (await fs.pathExists(wfDir)) ? (await fs.readdir(wfDir)).sort() : []
+	for (const f of files) {
+		if (!/\.ya?ml$/.test(f)) continue
+		const live = (await fs.readFile(path.join(wfDir, f), 'utf8'))
+			.split('\n')
+			.filter((l) => !l.trimStart().startsWith('#'))
+			.join('\n')
+		if (MILESTONE_TRIGGER.test(live)) return `.github/workflows/${f}`
+	}
+	return null
+}
 
 const titles = (ms: Milestone[]) => ms.map((m) => `"${m.title}"`).join(', ')
 
@@ -176,20 +208,31 @@ export async function checkMilestones(dir: string, exec?: GhExec): Promise<Check
 		}
 
 	const { complete, empty, catchAll } = classify(milestones)
+	// Closing publishes here, so a finished milestone is waiting for its release,
+	// not drift (#833).
+	const releaseWorkflow = complete.length ? await milestoneReleaseWorkflow(dir) : null
 	const deltas: string[] = []
-	if (complete.length) deltas.push(`100% complete but still open: ${titles(complete)}`)
+	if (complete.length && !releaseWorkflow)
+		deltas.push(`100% complete but still open: ${titles(complete)}`)
 	if (empty.length) deltas.push(`no issues, so a permanent 0%: ${titles(empty)}`)
 	// An unreadable issue list only costs the one warning that needs it.
 	const unmilestoned = (await readUnmilestonedIssues(gh)) ?? []
+	const ready = releaseWorkflow
+		? ` — ready to ship: ${titles(complete)}; closing it publishes (${releaseWorkflow} runs on milestone close), so that is the owner's call`
+		: ''
 	const note =
-		catchAllNote(catchAll) + warningNote(releaseWarnings(milestones, unmilestoned, Date.now()))
+		ready +
+		catchAllNote(catchAll) +
+		warningNote(releaseWarnings(milestones, unmilestoned, Date.now()))
 
 	if (deltas.length)
 		return {
 			check: CHECK,
 			status: 'drift',
 			detail: deltas.join('; ') + note,
-			hint: 'Run `npx @rtorcato/repo-tooling fix milestones` to close the 100%-complete ones (and open a "next" one if none is left). Empty milestones are left alone — file their issues or delete them by hand',
+			hint: releaseWorkflow
+				? 'Empty milestones are left alone by `fix` — file their issues or delete them by hand'
+				: 'Run `npx @rtorcato/repo-tooling fix milestones` to close the 100%-complete ones (and open a "next" one if none is left). Empty milestones are left alone — file their issues or delete them by hand',
 		}
 	if (!milestones.some((m) => m.state === 'open'))
 		return {
@@ -201,7 +244,7 @@ export async function checkMilestones(dir: string, exec?: GhExec): Promise<Check
 	return {
 		check: CHECK,
 		status: 'ok',
-		detail: `${milestones.length} milestone(s); none complete-but-open or empty${note}`,
+		detail: `${milestones.length} milestone(s); ${releaseWorkflow ? 'none empty' : 'none complete-but-open or empty'}${note}`,
 	}
 }
 
@@ -209,7 +252,8 @@ export async function checkMilestones(dir: string, exec?: GhExec): Promise<Check
  * Closes every open milestone that is 100% complete, then — if that leaves none
  * open — opens the rolling "next" one, so closing a release rolls the window
  * forward. Never deletes: an empty milestone is planning intent. Idempotent — a
- * clean repo is a no-op.
+ * clean repo is a no-op. Refuses to close anything when a workflow runs on
+ * milestone close, since that would publish a release (#833).
  *
  * Advisories go to `console.error`; stdout carries the `--json` payload (#357).
  */
@@ -226,6 +270,13 @@ export async function closeCompletedMilestones(dir: string, exec?: GhExec): Prom
 	}
 
 	const { complete, empty } = classify(milestones)
+	const releaseWorkflow = complete.length ? await milestoneReleaseWorkflow(dir) : null
+	if (releaseWorkflow)
+		throw new FixerAbort(
+			'milestone-close-publishes',
+			`refusing to close ${titles(complete)} — ${releaseWorkflow} runs on milestone close, so closing publishes a release`,
+			'close the milestone on GitHub yourself when you mean to ship it'
+		)
 	const closed: string[] = []
 	for (const m of complete) {
 		const r = await gh([
