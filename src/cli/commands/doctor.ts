@@ -306,7 +306,8 @@ function applyExceptions(results: CheckResult[], lock: Lockfile | null): CheckRe
 	const known = new Set(results.map((r) => r.check))
 	const overlaid: CheckResult[] = results.map((r) => {
 		const reason = exceptions[r.check]
-		if (!reason || r.status === 'ok') return r
+		// A skipped check never ran, so there is no deviation to declare (#853).
+		if (!reason || r.status === 'ok' || r.status === 'skipped') return r
 		// Hint deliberately dropped: the deviation is declared, so "how to fix it"
 		// is exactly the noise the exception exists to retire.
 		return {
