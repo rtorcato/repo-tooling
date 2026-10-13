@@ -238,7 +238,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `renovate` | `renovate.json` (alternative to Dependabot) |
 | `codeql` | `.github/workflows/codeql.yml` (security scanning) |
 | `github-settings` | branch protection + auto-merge + workflow permissions + a code-scanning branch ruleset (when CodeQL is on) via `gh api` (mutates the remote repo) |
-| `milestones` | closes 100%-complete open milestones, then opens a rolling `next` one if none is left, via `gh api` (mutates the remote repo). Never deletes one. Explicit-only, and refuses to close anything when a workflow runs on milestone close, since that publishes — see [milestone hygiene](./git-flow.md#milestones) |
+| `milestones` | closes 100%-complete open milestones, then opens a rolling `next` one if none is left, via `gh api` (mutates the remote repo). Never deletes one. Explicit-only, and refuses to close anything when a workflow, in the working tree or on the default branch, runs on milestone close, since that publishes — see [milestone hygiene](./git-flow.md#milestones) |
 | `codeowners` | `.github/CODEOWNERS` with commented examples |
 | `community-health` | `CONTRIBUTING.md`, `SECURITY.md`, PR + issue templates |
 | `lockfile` | records current tool choices in the repo-tooling lockfile |

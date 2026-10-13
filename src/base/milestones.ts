@@ -75,17 +75,61 @@ const NEXT_HINT = `Run \`npx @rtorcato/repo-tooling fix milestones\` to open a r
 const MILESTONE_TRIGGER =
 	/^[ \t]+milestone:|^[ \t]+-[ \t]*milestone[ \t]*$|^['"]?on['"]?:.*\bmilestone\b/m
 
+const hasMilestoneTrigger = (yaml: string) =>
+	MILESTONE_TRIGGER.test(
+		yaml
+			.split('\n')
+			.filter((l) => !l.trimStart().startsWith('#'))
+			.join('\n')
+	)
+
 /** The first workflow that runs on a milestone event, so closing one may publish; null if none. */
 export async function milestoneReleaseWorkflow(dir: string): Promise<string | null> {
 	const wfDir = path.join(dir, '.github', 'workflows')
 	const files = (await fs.pathExists(wfDir)) ? (await fs.readdir(wfDir)).sort() : []
 	for (const f of files) {
 		if (!/\.ya?ml$/.test(f)) continue
-		const live = (await fs.readFile(path.join(wfDir, f), 'utf8'))
-			.split('\n')
-			.filter((l) => !l.trimStart().startsWith('#'))
-			.join('\n')
-		if (MILESTONE_TRIGGER.test(live)) return `.github/workflows/${f}`
+		if (hasMilestoneTrigger(await fs.readFile(path.join(wfDir, f), 'utf8')))
+			return `.github/workflows/${f}`
+	}
+	return null
+}
+
+/**
+ * The same check against the default branch, whose workflows are the ones
+ * GitHub runs on a milestone event (#838). A feature branch, a stale checkout
+ * or a local edit can lack the trigger `main` has. `undefined` means it could
+ * not be read, and the caller fails closed on that.
+ */
+export async function defaultBranchMilestoneWorkflow(
+	gh: GhExec
+): Promise<string | null | undefined> {
+	// No `ref`: the contents API reads the default branch.
+	const r = await gh(['api', 'repos/{owner}/{repo}/contents/.github/workflows'])
+	// The milestone read already proved the repo is visible, so a 404 here is
+	// a default branch with no workflows directory.
+	if (!r.ok) return /HTTP 404/.test(r.stderr) ? null : undefined
+	let entries: unknown
+	try {
+		entries = JSON.parse(r.stdout)
+	} catch {
+		return undefined
+	}
+	if (!Array.isArray(entries)) return undefined
+	const names = entries
+		.filter((e) => e?.type === 'file' && typeof e.name === 'string' && /\.ya?ml$/.test(e.name))
+		.map((e) => e.name as string)
+		.sort()
+	for (const name of names) {
+		// `Accept: raw` returns the file itself rather than the base64-in-JSON envelope.
+		const f = await gh([
+			'api',
+			`repos/{owner}/{repo}/contents/.github/workflows/${encodeURIComponent(name)}`,
+			'-H',
+			'Accept: application/vnd.github.raw',
+		])
+		if (!f.ok) return undefined
+		if (hasMilestoneTrigger(f.stdout)) return `.github/workflows/${name} on the default branch`
 	}
 	return null
 }
@@ -252,8 +296,10 @@ export async function checkMilestones(dir: string, exec?: GhExec): Promise<Check
  * Closes every open milestone that is 100% complete, then — if that leaves none
  * open — opens the rolling "next" one, so closing a release rolls the window
  * forward. Never deletes: an empty milestone is planning intent. Idempotent — a
- * clean repo is a no-op. Refuses to close anything when a workflow runs on
- * milestone close, since that would publish a release (#833).
+ * clean repo is a no-op. Refuses to close anything when a workflow, in the
+ * working tree or on the default branch, runs on milestone close, since that
+ * would publish a release (#833, #838). Refuses too when the default branch
+ * can't be read.
  *
  * Advisories go to `console.error`; stdout carries the `--json` payload (#357).
  */
@@ -270,7 +316,15 @@ export async function closeCompletedMilestones(dir: string, exec?: GhExec): Prom
 	}
 
 	const { complete, empty } = classify(milestones)
-	const releaseWorkflow = complete.length ? await milestoneReleaseWorkflow(dir) : null
+	const releaseWorkflow = complete.length
+		? ((await milestoneReleaseWorkflow(dir)) ?? (await defaultBranchMilestoneWorkflow(gh)))
+		: null
+	if (releaseWorkflow === undefined)
+		throw new FixerAbort(
+			'milestone-close-unverified',
+			`refusing to close ${titles(complete)} — could not read the default branch's workflows, so cannot rule out that closing publishes a release`,
+			'check `gh auth status` and re-run, or close the milestone on GitHub yourself'
+		)
 	if (releaseWorkflow)
 		throw new FixerAbort(
 			'milestone-close-publishes',

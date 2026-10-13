@@ -134,6 +134,13 @@ closing a milestone publishes a release. There `fix milestones` refuses to close
 anything and exits 1 with `error: milestone-close-publishes`. Close the
 milestone on GitHub yourself when you mean to ship it.
 
+GitHub runs the default branch's copy of that workflow, so `fix milestones`
+checks both the working tree and the default branch (over `gh api`) before it
+closes anything. A feature branch or stale checkout without the trigger is still
+refused when `main` has it. If the default branch's workflows can't be read, it
+refuses with `error: milestone-close-unverified` rather than trusting the local
+copy alone.
+
 ## Single source of truth
 
 - This standard, `CONTRIBUTING.md` (branch prefixes, the ≤67-char PR-title

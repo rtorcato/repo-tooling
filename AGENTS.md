@@ -96,7 +96,7 @@ Fixers marked `explicitOnly` are exempt from `fix` all *and* from `fix --yes` �
 
 The same goes for every `optional-missing` finding: a bulk `fix` records it `skipped`, because optional tools are often mutually exclusive (Biome / ESLint / Prettier / Oxlint, semantic-release / Changesets / Release Please) and installing them all is never the intent (#630). Name the one you want — `fix editorconfig --yes`.
 
-A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422), `biome` against a `biome.json` that does not parse, whose settings cannot be merged (#587), and `milestones` when a workflow runs on milestone close, since closing would publish (#833). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
+A fixer may also **refuse** — the target file holds something the generator cannot reproduce, so overwriting would destroy it. Today that is `dependabot` against a config with repo-local `ignore:` rules (#422), `biome` against a `biome.json` that does not parse, whose settings cannot be merged (#587), and `milestones` when a workflow, in the working tree or on the default branch, runs on milestone close, since closing would publish (#833, #838). A targeted `fix dependabot` then exits 1 with `error: dependabot-ignore-rules`; a bulk `fix --yes` records it `skipped` and carries on with the rest. Neither `--yes` nor `--json` overrides it — resolve the named rules by hand and re-run.
 
 ## Source-of-truth files in the repo
 
