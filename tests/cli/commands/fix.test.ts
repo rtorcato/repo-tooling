@@ -357,6 +357,33 @@ describe('fix targeted', () => {
 		)
 	})
 
+	// #873: regenerating the workflow turned `fetch-metadata@<sha> # v3.1.0` into
+	// `@v3` (a mutable tag) and left consumer comments pointing at bare `#458`.
+	it('fix dependabot keeps SHA pins and writes repo-qualified issue refs', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_CONFIG)
+		const fetchPin = `dependabot/fetch-metadata@${'a'.repeat(40)} # v3.1.0`
+		const checkoutPin = `actions/checkout@${'b'.repeat(40)} # v7.0.1`
+		const drifted = DEPENDABOT_AUTOMERGE_WORKFLOW.replace('dependabot/fetch-metadata@v3', fetchPin)
+			.replace('actions/checkout@v7', checkoutPin)
+			// drop the hand-off step so there is drift for the fixer to repair
+			.replace("steps.merge.outcome == 'skipped'", "steps.merge.outcome == 'nope'")
+		await fs.outputFile(join(dir, '.github', 'workflows', 'dependabot-automerge.yml'), drifted)
+
+		await fixCommand('dependabot', { directory: dir, yes: true })
+
+		const yml = await fs.readFile(
+			join(dir, '.github', 'workflows', 'dependabot-automerge.yml'),
+			'utf-8'
+		)
+		expect(yml).toContain(`uses: ${fetchPin}`)
+		expect(yml).toContain(`uses: ${checkoutPin}`)
+		expect(yml).toContain("steps.merge.outcome == 'skipped'")
+		expect(yml).toContain('(rtorcato/repo-tooling#458)')
+		expect(yml).not.toMatch(/\(#\d+\)/)
+	})
+
 	it('fix dependabot keeps an actions-only config in a repo with no package.json (#631)', async () => {
 		const dir = newTmpDir()
 		const config =

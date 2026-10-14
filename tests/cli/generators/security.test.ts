@@ -10,6 +10,7 @@ import {
 	generateCodeQLWorkflow,
 	generateDependabotConfig,
 	generateSecurityConfigs,
+	keepActionPins,
 } from '../../../src/cli/generators/security.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -416,5 +417,35 @@ describe('dependabotAutomergeWorkflowFor', () => {
 
 	it('falls back to a default label', async () => {
 		expect(await workflowFor({ dependabot: { onPr: 'label' } })).toMatch(/LABEL: "needs-review"/)
+	})
+})
+
+// #873: regenerating must not trade an immutable pin for a mutable tag.
+describe('keepActionPins', () => {
+	const sha = 'c'.repeat(40)
+	const rendered = 'steps:\n  - uses: actions/checkout@v7\n  - uses: dependabot/fetch-metadata@v3\n'
+
+	it('keeps a SHA pin at or ahead of the preset, comment and all', () => {
+		const existing = `  - uses: actions/checkout@${sha} # v7.0.1\n  - uses: dependabot/fetch-metadata@${sha}  # v4.0.0\n`
+		expect(keepActionPins(rendered, existing)).toBe(
+			`steps:\n  - uses: actions/checkout@${sha} # v7.0.1\n  - uses: dependabot/fetch-metadata@${sha}  # v4.0.0\n`
+		)
+	})
+
+	it('keeps a SHA pin whose version it cannot read', () => {
+		expect(keepActionPins(rendered, `uses: actions/checkout@${sha}\n`)).toContain(
+			`uses: actions/checkout@${sha}\n`
+		)
+	})
+
+	it('moves a pin or tag that is behind the preset up to it', () => {
+		const existing = `uses: actions/checkout@${sha} # v6.0.0\nuses: dependabot/fetch-metadata@v2\n`
+		expect(keepActionPins(rendered, existing)).toBe(rendered)
+	})
+
+	it('keeps a tag ahead of the preset', () => {
+		expect(keepActionPins(rendered, 'uses: actions/checkout@v8\n')).toContain(
+			'uses: actions/checkout@v8\n'
+		)
 	})
 })
