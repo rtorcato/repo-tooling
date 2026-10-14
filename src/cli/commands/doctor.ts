@@ -30,6 +30,7 @@ import {
 	GITHUB_SETTINGS_CHECKS,
 	gitRoot,
 	isPrivatePackage,
+	releasePlugins,
 } from '../../base/github-settings.js'
 import { checkRepositorySecrets, SECRETS_CHECK } from '../../base/secrets.js'
 import { checkMilestones, MILESTONES_CHECK } from '../../base/milestones.js'
@@ -162,7 +163,9 @@ const PACKAGE = '@rtorcato/repo-tooling'
 // Detects the broken-release-on-protected-main footgun: a workflow that runs
 // semantic-release but only hands it GITHUB_TOKEN, which can't push the version
 // commit + tag past branch protection. The fix is an admin PAT (RELEASE_TOKEN)
-// with a GITHUB_TOKEN fallback.
+// with a GITHUB_TOKEN fallback. A release config without `@semantic-release/git`
+// pushes no commit, only a tag and a GitHub Release, so GITHUB_TOKEN is enough
+// there and the PAT would be surplus power (#870).
 async function checkReleaseToken(target: string): Promise<CheckResult> {
 	// `-d packages/x` keeps its workflows at the repo root (#814).
 	const workflowsDir = path.join((await gitRoot(target)) ?? target, '.github', 'workflows')
@@ -186,6 +189,16 @@ async function checkReleaseToken(target: string): Promise<CheckResult> {
 					check: 'Release token',
 					status: 'ok',
 					detail: `${f} uses RELEASE_TOKEN (with GITHUB_TOKEN fallback)`,
+				}
+			}
+			// Unresolvable config (none, or it throws) keeps the drift: a wrong
+			// warning costs a look, a missed one costs a broken release.
+			const plugins = await releasePlugins(target)
+			if (plugins && !plugins.includes('@semantic-release/git')) {
+				return {
+					check: 'Release token',
+					status: 'ok',
+					detail: `${f} uses GITHUB_TOKEN, and the release config has no @semantic-release/git, so the release pushes no commit to the branch`,
 				}
 			}
 			return {
