@@ -11,6 +11,7 @@ import {
 	worktreeSymlinkDirs,
 } from '../../cli/generators/agent-rules.js'
 import { SEMANTIC_RELEASE_FILES } from '../../cli/generators/build.js'
+import { extraNodeVersionLines } from '../../cli/generators/misc.js'
 import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
@@ -520,6 +521,7 @@ async function nvmrcMajor(dir: string): Promise<{ file: string; major: number } 
 // an optional quote) is required. This skips matrix arrays (`[22, 24]`),
 // `${{ matrix.node-version }}` expressions, bare `node-version:` input keys, and
 // `node-version-file:` (a different key entirely) — those aren't drift signals.
+// Neither is an extra version beside a `node-version-file` step in the same job (#892).
 const HARDCODED_NODE_VERSION = /node-version:\s*['"]?(\d+)/g
 
 async function workflowNodeMajors(dir: string): Promise<NodeSignal[]> {
@@ -536,12 +538,16 @@ async function workflowNodeMajors(dir: string): Promise<NodeSignal[]> {
 	const signals: NodeSignal[] = []
 	for (const file of files) {
 		const contents = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
+		const extras = extraNodeVersionLines(contents)
 		const seen = new Set<number>()
-		for (const match of contents.matchAll(HARDCODED_NODE_VERSION)) {
-			const major = Number.parseInt(match[1] ?? '', 10)
-			if (!Number.isNaN(major) && !seen.has(major)) {
-				seen.add(major)
-				signals.push({ source: `.github/workflows/${file}`, major })
+		for (const [i, line] of contents.split('\n').entries()) {
+			if (extras.has(i)) continue
+			for (const match of line.matchAll(HARDCODED_NODE_VERSION)) {
+				const major = Number.parseInt(match[1] ?? '', 10)
+				if (!Number.isNaN(major) && !seen.has(major)) {
+					seen.add(major)
+					signals.push({ source: `.github/workflows/${file}`, major })
+				}
 			}
 		}
 	}

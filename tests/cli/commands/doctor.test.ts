@@ -515,6 +515,45 @@ describe('doctor extended checks', () => {
 		expect(results.find((r) => r.check === 'Node version consistency')?.status).toBe('ok')
 	})
 
+	// #892: brand-kit's test job adds a Node 24 step after its .nvmrc one.
+	const extraNodeStep = (otherJob: string) =>
+		[
+			'jobs:',
+			'  test:',
+			'    steps:',
+			'      - uses: actions/setup-node@v7',
+			'        with:',
+			'          node-version-file: .nvmrc',
+			'      - run: pnpm test',
+			'      # Node 24 forward-compat',
+			'      - uses: actions/setup-node@v7',
+			'        with:',
+			'          node-version: 24',
+			'      - run: pnpm test',
+			otherJob,
+			'',
+		].join('\n')
+
+	it.each([
+		['ok', 'an extra version beside a node-version-file step in the same job', ''],
+		[
+			'drift',
+			'a hardcoded version in a job with no node-version-file step',
+			'  lint:\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n          node-version: 24',
+		],
+	])('Node version consistency: %s for %s', async (status, _what, otherJob) => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), {
+			name: 'demo',
+			version: '0.0.0',
+			engines: { node: '>=22' },
+		})
+		await fs.writeFile(join(dir, '.nvmrc'), '22\n')
+		await fs.outputFile(join(dir, '.github', 'workflows', 'ci.yml'), extraNodeStep(otherJob))
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'Node version consistency')?.status).toBe(status)
+	})
+
 	it('reports git hooks drift when .husky/ exists without prepare script', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
