@@ -44,8 +44,9 @@ export function dependabotConfig(ecosystem: string | null): string {
       # The tier that can auto-merge on green. "development" is Dependabot's
       # classification, not a safety property: a package listed in both
       # devDependencies and peerDependencies lands here, and peer deps are part
-      # of a published package's contract (#458). The auto-merge workflow
-      # re-checks every name against the manifests rather than trusting this.
+      # of a published package's contract (rtorcato/repo-tooling#458). The
+      # auto-merge workflow re-checks every name against the manifests rather than
+      # trusting this.
       dev-minor:
         dependency-type: development
         update-types:
@@ -230,8 +231,9 @@ jobs:
       # The group name is Dependabot's opinion, not a safety property: a package
       # in both devDependencies and peerDependencies is classified "development"
       # and lands in dev-minor, while peerDependencies ship to consumers of a
-      # published package (#458). So resolve every bumped name against the
-      # tracked manifests and stand down if any of them reaches a consumer.
+      # published package (rtorcato/repo-tooling#458). So resolve every bumped
+      # name against the tracked manifests and stand down if any of them reaches a
+      # consumer.
       #
       # npm-specific by design. A repo with no package.json (Swift, Python) finds
       # nothing here and falls back to the group + semver gate below.
@@ -270,8 +272,9 @@ jobs:
       # trust a config file a consumer repo can edit independently.
       #
       # github-actions bumps are ungrouped, so they report an empty
-      # dependency-group and are matched by ecosystem instead (#452). They reach
-      # no consumer of the published package, and their squash subject is
+      # dependency-group and are matched by ecosystem instead
+      # (rtorcato/repo-tooling#452). They reach no consumer of the published
+      # package, and their squash subject is
       # "ci(deps): …", which cuts no release. Majors still fall through to a
       # human — the update-type clause below applies to them too.
       - name: ${MERGE_STEP_NAME}
@@ -288,8 +291,9 @@ jobs:
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}${labelEnv}
 
       # Everything the step above declines needs a human, and a notice in the
-      # Actions log is not one (#694). Assign the repo owner and say why in a
-      # single comment, edited in place on every later run rather than repeated.
+      # Actions log is not one (rtorcato/repo-tooling#694). Assign the repo owner
+      # and say why in a single comment, edited in place on every later run rather
+      # than repeated.
       - name: Hand the PR to a human
         if: steps.merge.outcome == 'skipped'
         env:

@@ -431,7 +431,8 @@ ${build}${test}
           set -o pipefail
           npx semantic-release 2>&1 | tee release.log
           # semantic-release exits 0 when main moved on since this run started,
-          # publishing nothing (#690). Say so instead of going quietly green.
+          # publishing nothing (rtorcato/repo-tooling#690). Say so instead of going
+          # quietly green.
           # "No relevant changes" is a clean no-op, not this case.
           if grep -q "is behind the remote one" release.log; then
             if [ "\${{ github.event_name }}" = "workflow_dispatch" ]; then
