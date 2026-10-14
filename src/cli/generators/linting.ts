@@ -65,6 +65,18 @@ const BIOME_PRESET = '@rtorcato/repo-tooling/biome'
 const BIOME_PRESET_REF = /@rtorcato\/(?:js|repo)-tooling\/biome/
 
 /**
+ * The file generateBiomeConfig writes in targetDir. A lone biome.jsonc is the
+ * repo's live config (#878), so it stays the name; otherwise BIOME_CONFIG.
+ * Anything that reports a Biome write (resync's dry-run list) asks here too.
+ */
+export async function biomeConfigNameFor(targetDir: string): Promise<string> {
+	return !(await fs.pathExists(path.join(targetDir, BIOME_CONFIG))) &&
+		(await fs.pathExists(path.join(targetDir, BIOME_LEGACY_CONFIG)))
+		? BIOME_LEGACY_CONFIG
+		: BIOME_CONFIG
+}
+
+/**
  * The thin pointer config — the same shape this repo dogfoods. `fix biome` used
  * to copy the whole preset inline instead, which meant the scaffolded file
  * carried no `@rtorcato/repo-tooling/biome` reference for doctor's Biome check
@@ -77,18 +89,6 @@ const BIOME_PRESET_REF = /@rtorcato\/(?:js|repo)-tooling\/biome/
  * existing file doesn't parse, since there is no way to merge into it and
  * overwriting would destroy settings we cannot even read.
  */
-/**
- * The file generateBiomeConfig writes in targetDir. A lone biome.jsonc is the
- * repo's live config (#878), so it stays the name; otherwise BIOME_CONFIG.
- * Anything that reports a Biome write (resync's dry-run list) asks here too.
- */
-export async function biomeConfigNameFor(targetDir: string): Promise<string> {
-	return !(await fs.pathExists(path.join(targetDir, BIOME_CONFIG))) &&
-		(await fs.pathExists(path.join(targetDir, BIOME_LEGACY_CONFIG)))
-		? BIOME_LEGACY_CONFIG
-		: BIOME_CONFIG
-}
-
 export async function generateBiomeConfig(targetDir: string): Promise<string | null> {
 	const name = await biomeConfigNameFor(targetDir)
 	const file = path.join(targetDir, name)
