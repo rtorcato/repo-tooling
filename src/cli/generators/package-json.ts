@@ -255,10 +255,17 @@ function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record
  * and the `size-limit` fixer, so the two paths can't drift (#382 — the divergence
  * behind #371 and #377).
  */
-export const SIZE_LIMIT_SCRIPTS: Record<string, string> = { 'size-limit': 'size-limit' }
+export const SIZE_LIMIT_SCRIPTS: Record<string, string> = { size: 'size-limit' }
 
 /** Shared by the same two paths, for the same reason. */
 export const SIZE_LIMIT_VERSION = '^14.1.0'
+
+/**
+ * size-limit ships no measurer of its own; with only the CLI installed the first
+ * run stops at "Install Size Limit preset depends on type of the project" (#874).
+ * The library scaffold is what every sibling repo pairs it with.
+ */
+export const SIZE_LIMIT_PRESET = '@size-limit/preset-small-lib'
 
 export async function ensureScripts(
 	targetDir: string,
@@ -456,6 +463,7 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 	if (config.projectType === 'library') {
 		deps['@arethetypeswrong/cli'] = '^0.18.2'
 		deps['size-limit'] = SIZE_LIMIT_VERSION
+		deps[SIZE_LIMIT_PRESET] = SIZE_LIMIT_VERSION
 	}
 
 	// Commit linting (enforcement) + commitizen (assistance)
