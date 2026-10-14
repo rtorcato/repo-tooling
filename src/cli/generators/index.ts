@@ -148,6 +148,10 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 		await generateBun(targetDir)
 	}
 
+	// README before the AI files: those upsert a skills block into it, and an
+	// existing README is the user's and must not count as ours (#868).
+	await generateReadme(config, targetDir)
+
 	// AI agent files (AGENTS.md, CLAUDE.md, Cursor/Copilot, Claude skill, MCP example)
 	if (config.aiSetup) {
 		await installAiSetup(targetDir)
@@ -157,9 +161,6 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 	if (writeStarter) {
 		await generateStarter(config, targetDir)
 	}
-
-	// Generate README
-	await generateReadme(config, targetDir)
 
 	// Copy ts-reset if TypeScript is enabled
 	if (config.typescript.enabled) {

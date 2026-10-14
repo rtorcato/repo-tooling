@@ -24,6 +24,15 @@ function baseConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 }
 
 describe('generateReadme', () => {
+	it('leaves an existing README.md byte-identical (#868)', async () => {
+		const dir = newTmpDir()
+		const original = '# My hand-written project\n\nKeep me.\n'
+		await fs.writeFile(join(dir, 'README.md'), original)
+		await generateReadme(baseConfig({ badges: true }), dir)
+
+		expect(await fs.readFile(join(dir, 'README.md'), 'utf-8')).toBe(original)
+	})
+
 	it('creates README.md with the project name as the title', async () => {
 		const dir = newTmpDir()
 		await generateReadme(baseConfig({ projectName: 'super-lib' }), dir)

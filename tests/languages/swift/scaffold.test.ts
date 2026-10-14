@@ -161,6 +161,14 @@ describe('generateSwiftProject', () => {
 		expect(editorconfig).toMatch(/\[\*\.swift\][\s\S]*indent_style = space/)
 	})
 
+	it('leaves an existing README.md byte-identical (#868)', async () => {
+		const dir = newTmpDir()
+		const original = '# Widget\n\nHand-written.\n'
+		await fs.writeFile(join(dir, 'README.md'), original)
+		await generateSwiftProject(buildPresetConfig('swift-library', 'swiftlib'), dir)
+		expect(await fs.readFile(join(dir, 'README.md'), 'utf-8')).toBe(original)
+	})
+
 	// #574: Package.swift is source. Rewriting one that exists renames the package
 	// after the directory and orphans Sources/<Target>/ — and `swift build` still
 	// exits 0, so the loss is silent.

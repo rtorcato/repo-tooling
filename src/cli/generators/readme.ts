@@ -1,3 +1,4 @@
+import chalk from 'chalk'
 import fs from 'fs-extra'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
@@ -111,7 +112,20 @@ message; commitlint enforces the same rules on every commit.
 [Add your license here]
 `
 
-	await fs.writeFile(readmePath, readme)
+	await writeReadmeUnlessPresent(readmePath, readme)
+}
+
+/**
+ * A README is the project's own prose, never config, so an existing one is left
+ * byte-identical even under `setup -y` or a `fix` resync (#868). Badges for it
+ * come from `fix badges`, which edits only its delimited block.
+ */
+export async function writeReadmeUnlessPresent(readmePath: string, content: string): Promise<void> {
+	if (await fs.pathExists(readmePath)) {
+		console.warn(chalk.gray('   kept existing README.md (run `fix badges` to add status badges)'))
+		return
+	}
+	await fs.writeFile(readmePath, content)
 }
 
 /**
