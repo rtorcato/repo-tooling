@@ -145,17 +145,84 @@ export default mergeConfig(preset, defineConfig({ plugins: [react()] }))
 	await fs.writeFile(viteConfigPath, viteConfig)
 }
 
-export async function generateSemanticReleaseConfig(targetDir: string): Promise<string[]> {
-	const releaseConfigPath = path.join(targetDir, 'release.config.mjs')
+/** Every name semantic-release's config search accepts, in the order doctor reads them. */
+export const SEMANTIC_RELEASE_FILES = [
+	'.releaserc',
+	'.releaserc.json',
+	'.releaserc.yaml',
+	'.releaserc.yml',
+	'.releaserc.js',
+	'.releaserc.cjs',
+	'release.config.js',
+	'release.config.cjs',
+	'release.config.mjs',
+]
 
-	const releaseConfig = `export { default } from '@rtorcato/repo-tooling/semantic-release/github'
-`
+/**
+ * What the github preset needs installed to load at all. Core bundles the
+ * commit-analyzer, notes generator and npm plugin (the changelog and git plugins
+ * are gone, #417), but the analyzer's `preset: 'conventionalcommits'` resolves
+ * a package core does not bring, so the first release failed to load it (#875).
+ * Kept inside this package's own peer ranges, or doctor flags a fresh scaffold.
+ */
+export const SEMANTIC_RELEASE_DEPS: Record<string, string> = {
+	'semantic-release': '^25.0.0',
+	'@semantic-release/github': '^12.0.0',
+	'conventional-changelog-conventionalcommits': '^10.0.0',
+}
 
-	// No extra plugin deps to inject: the github preset now uses only what
-	// semantic-release core bundles (commit-analyzer, release-notes-generator,
-	// npm, github). The changelog and git plugins are gone — see #417.
-	await fs.writeFile(releaseConfigPath, releaseConfig)
-	return ['release.config.mjs']
+/**
+ * Point semantic-release at the github preset, and make sure nothing shadows it.
+ *
+ * semantic-release reads a package.json `release` field or any `.releaserc*`
+ * before `release.config.mjs`, so writing ours next to one of those changed
+ * nothing and doctor kept the same drift (#875). They are removed: the fixer
+ * only reaches here for drift under `--yes`, which is the overwrite opt-in.
+ *
+ * @returns the files written, and the configs removed because they shadowed it.
+ */
+export async function generateSemanticReleaseConfig(
+	targetDir: string
+): Promise<{ written: string[]; replaced: string[] }> {
+	const replaced: string[] = []
+	for (const name of SEMANTIC_RELEASE_FILES) {
+		if (name === 'release.config.mjs') continue
+		const file = path.join(targetDir, name)
+		if (await fs.pathExists(file)) {
+			await fs.remove(file)
+			replaced.push(name)
+		}
+	}
+	await fs.writeFile(
+		path.join(targetDir, 'release.config.mjs'),
+		`export { default } from '@rtorcato/repo-tooling/semantic-release/github'\n`
+	)
+	const written = ['release.config.mjs']
+
+	const pkgPath = path.join(targetDir, 'package.json')
+	if (await fs.pathExists(pkgPath)) {
+		const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
+		let changed = false
+		if ('release' in pkg) {
+			delete pkg.release
+			replaced.push('package.json `release`')
+			changed = true
+		}
+		const devDeps = { ...((pkg.devDependencies as Record<string, string> | undefined) ?? {}) }
+		const deps = (pkg.dependencies as Record<string, string> | undefined) ?? {}
+		for (const [name, range] of Object.entries(SEMANTIC_RELEASE_DEPS)) {
+			if (!devDeps[name] && !deps[name]) {
+				devDeps[name] = range
+				changed = true
+			}
+		}
+		if (changed) {
+			pkg.devDependencies = devDeps
+			await fs.writeJson(pkgPath, pkg, { spaces: 2 })
+			written.push('package.json')
+		}
+	}
+	return { written, replaced }
 }
 
 export async function generateChangesetsConfig(targetDir: string) {
