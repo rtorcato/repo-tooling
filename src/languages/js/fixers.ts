@@ -122,6 +122,8 @@ import type { ProjectConfig } from '../../cli/commands/setup.js'
 // The fixer contract moved to src/base/fixers.ts when Swift became the second
 // module (#286) — import it from there.
 import { FixerAbort, type Fixer, type Pkg } from '../../base/fixers.js'
+import { onlyReleaseConcurrencyDrift } from '../../base/checks.js'
+import { gateReleaseWorkflow } from '../../base/github-settings.js'
 
 // The bundlers ProjectConfig can record, in the order a repo carrying more than
 // one is attributed to (a vite app that also pulls in esbuild is a vite app).
@@ -577,6 +579,21 @@ export const FIXERS: Fixer[] = [
 		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'package.json (packageManager field)'],
 		canFixDrift: true,
 		async run({ targetDir, pkg, result }) {
+			// Nothing but release.yml's concurrency drifts: add the gate in place and
+			// leave ci.yml alone (#871). Regenerating dropped both files' own jobs.
+			if (result.check === 'GitHub Actions' && onlyReleaseConcurrencyDrift(result.detail)) {
+				const releasePath = path.join(targetDir, RELEASE_WORKFLOW)
+				const gated = gateReleaseWorkflow(await fs.readFile(releasePath, 'utf-8'))
+				if (!gated) {
+					throw new FixerAbort(
+						'release-gate',
+						`refusing to regenerate ${RELEASE_WORKFLOW} and ${CI_WORKFLOW} for a release.yml-only finding — its publishing job can't take the gate in place (it already has \`needs:\`, or an \`in-flight\` job exists)`,
+						'add the preset `in-flight` job, and `needs: in-flight` plus the `concurrency:` gate on the publishing job, to release.yml by hand'
+					)
+				}
+				await fs.writeFile(releasePath, gated)
+				return { filesWritten: [RELEASE_WORKFLOW] }
+			}
 			// Only a `GitHub Actions` finding means the user was shown that the
 			// workflow itself is wrong (and got the destructive-overwrite prompt).
 			// A sibling finding — npm OIDC publish — must not take a

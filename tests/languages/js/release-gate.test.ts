@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { buildPresetConfig } from '../../../src/cli/commands/setup-presets.js'
 import { renderGitHubWorkflow } from '../../../src/base/ci.js'
 import { checkGitHubActions } from '../../../src/base/checks.js'
-import { publishingJob, pushReleaseJob, workflowJobs } from '../../../src/base/github-settings.js'
+import {
+	gateReleaseWorkflow,
+	publishingJob,
+	pushReleaseJob,
+	workflowJobs,
+} from '../../../src/base/github-settings.js'
 import { githubJobs, renderReleaseWorkflow } from '../../../src/languages/js/ci.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -136,5 +141,79 @@ describe('pushReleaseJob', () => {
 		const noPush =
 			'on:\n  workflow_dispatch:\njobs:\n  release:\n    steps:\n      - run: npm publish\n'
 		expect(pushReleaseJob(noPush)).toBeNull()
+	})
+})
+
+// #871: a release.yml-only concurrency finding is patched in place, so the
+// repo's own release steps and its ci.yml survive.
+describe('gateReleaseWorkflow (#871)', () => {
+	// db-common's shape: a queueing top-level group and a repo-specific step.
+	const QUEUEING = `name: 🚀 Release
+
+on:
+  workflow_dispatch:
+  milestone:
+    types: [closed]
+
+# A newer request queues behind the current one and never cancels it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: 🔧 Configure Git
+        run: git config --global user.name bot
+      - run: npx semantic-release
+`
+
+	it('adds the in-flight job and the gate, and keeps every other line', () => {
+		const gated = gateReleaseWorkflow(QUEUEING) ?? ''
+		expect(gated).not.toMatch(/^concurrency:/m)
+		expect(gated).not.toContain('queues behind the current one')
+		expect([...workflowJobs(gated).keys()]).toEqual(['in-flight', 'release'])
+		const release = workflowJobs(gated).get('release') ?? ''
+		expect(release).toMatch(/^ {4}needs: in-flight\n/)
+		expect(release).toContain(
+			"    concurrency:\n      group: release\n      cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}\n"
+		)
+		expect(release).toContain('      - name: 🔧 Configure Git\n')
+		expect(gated).toContain('    types: [closed]\n\njobs:\n  # Is an approved release')
+	})
+
+	it('clears the doctor finding', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, '.github/workflows/release.yml'), QUEUEING)
+		const before = await checkGitHubActions(dir, null, render())
+		expect(before.detail).toContain('does not supersede a waiting one')
+		await fs.outputFile(
+			join(dir, '.github/workflows/release.yml'),
+			gateReleaseWorkflow(QUEUEING) ?? ''
+		)
+		expect((await checkGitHubActions(dir, null, render())).status).toBe('ok')
+	})
+
+	it('re-indents to a four-space file and replaces a job-level group', () => {
+		const fourSpace =
+			'on:\n    workflow_dispatch:\njobs:\n    release:\n        concurrency:\n            group: release\n            cancel-in-progress: true\n        runs-on: ubuntu-latest\n        steps:\n            - run: npx semantic-release\n'
+		const gated = gateReleaseWorkflow(fourSpace) ?? ''
+		expect(gated).toContain('jobs:\n    # Is an approved release')
+		expect(gated).toContain('\n    in-flight:\n      runs-on: ubuntu-latest\n')
+		expect(gated.match(/cancel-in-progress: .*/g)).toEqual([
+			"cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}",
+		])
+		expect([...workflowJobs(gated).keys()]).toEqual(['in-flight', 'release'])
+	})
+
+	it('is null when the gate cannot go in cleanly', () => {
+		// Its own `needs:` would be replaced by `needs: in-flight`.
+		expect(
+			gateReleaseWorkflow(QUEUEING.replace('    runs-on', '    needs: build\n    runs-on'))
+		).toBeNull()
+		expect(gateReleaseWorkflow(render())).toBeNull()
+		expect(gateReleaseWorkflow('jobs:\n  build:\n    steps:\n      - run: pnpm build\n')).toBeNull()
 	})
 })
