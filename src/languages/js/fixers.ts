@@ -340,8 +340,8 @@ export const FIXERS: Fixer[] = [
 			if (!written) {
 				throw new FixerAbort(
 					'biome-unparseable',
-					`refusing to overwrite ${BIOME_CONFIG} — it does not parse as JSON/JSONC, so its settings cannot be merged`,
-					`fix the syntax error in ${BIOME_CONFIG} (or delete it) and re-run \`fix biome\``
+					'refusing to overwrite the Biome config — it does not parse as JSON/JSONC, so its settings cannot be merged',
+					'fix the syntax error in biome.json/biome.jsonc (or delete it) and re-run `fix biome`'
 				)
 			}
 			const filesWritten = [written]
