@@ -1677,6 +1677,26 @@ describe('fix --resync', () => {
 		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(false)
 	})
 
+	// #882: a lone biome.jsonc is the file the resync run writes (#878), so the dry-run list must name it.
+	it('--resync --dry-run names biome.jsonc, never biome.json, when only biome.jsonc exists', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await writeLock(dir)
+		await fs.writeFile(
+			join(dir, 'biome.jsonc'),
+			'{\n  // team rules\n  "extends": ["@rtorcato/repo-tooling/biome"]\n}\n'
+		)
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await fixCommand(undefined, { directory: dir, resync: true, dryRun: true, json: true })
+			const payload = JSON.parse(logSpy.mock.calls.at(-1)?.[0] as string)
+			expect(payload.files).toContain('biome.jsonc')
+			expect(payload.files).not.toContain('biome.json')
+		} finally {
+			logSpy.mockRestore()
+		}
+	})
+
 	it('--resync --json emits a structured payload listing files written', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
