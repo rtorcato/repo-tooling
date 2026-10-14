@@ -16,6 +16,7 @@ import fs from 'fs-extra'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 import { installAiSetup } from '../../cli/generators/agent-rules.js'
 import { generateEditorConfig } from '../../cli/generators/misc.js'
+import { writeReadmeUnlessPresent } from '../../cli/generators/readme.js'
 import { generateCodeQLWorkflow, generateDependabotConfig } from '../../cli/generators/security.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { LANGUAGES } from '../registry.js'
@@ -319,9 +320,10 @@ export async function generateSwiftProject(config: ProjectConfig, targetDir: str
 		await generateCodeQLWorkflow(targetDir, LANGUAGES.swift.codeqlLanguages)
 	}
 
+	// Before the AI files, which upsert a skills block into the README (#868).
+	await writeReadmeUnlessPresent(path.join(targetDir, 'README.md'), readme(config, module))
+
 	if (config.aiSetup) {
 		await installAiSetup(targetDir)
 	}
-
-	await fs.writeFile(path.join(targetDir, 'README.md'), readme(config, module))
 }

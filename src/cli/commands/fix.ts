@@ -452,7 +452,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 						{
 							type: 'confirm',
 							name: 'confirm',
-							message: `Re-scaffold ${files.length} file(s) from ${LOCKFILE_NAME}? Generators preserve existing customizations where possible, but README.md will be rewritten.`,
+							message: `Re-scaffold ${files.length} file(s) from ${LOCKFILE_NAME}? Generators preserve existing customizations where possible, and an existing README.md is kept.`,
 							default: false,
 						},
 					])
