@@ -181,12 +181,49 @@ async function resolveNodeMajor(targetDir: string): Promise<number> {
 // A hardcoded scalar `node-version: <major>` line (leading digit after an
 // optional quote). Deliberately does NOT match matrix arrays (`[22, 24]`),
 // `${{ }}` expressions, or bare `node-version:` input keys — those are left as-is.
-const NODE_VERSION_LINE = /^([ \t]*)node-version:[ \t]*['"]?\d[\w.-]*['"]?[ \t]*$/gm
+const NODE_VERSION_LINE = /^([ \t]*)node-version:[ \t]*['"]?\d[\w.-]*['"]?[ \t]*$/
+
+/**
+ * Indexes of the workflow lines holding a hardcoded `node-version:` that is extra
+ * coverage, not drift: the same job also runs `setup-node` from `node-version-file`,
+ * so the pinned version is tested and this step adds another major (#892).
+ *
+ * ponytail: jobs found by indentation under `jobs:`, not a YAML parser.
+ */
+export function extraNodeVersionLines(yaml: string): Set<number> {
+	const lines = yaml.split('\n')
+	const extras = new Set<number>()
+	const jobsAt = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l))
+	if (jobsAt === -1) return extras
+	let jobIndent: number | null = null
+	let hardcoded: number[] = []
+	let fromFile = false
+	const endJob = () => {
+		if (fromFile) for (const i of hardcoded) extras.add(i)
+		hardcoded = []
+		fromFile = false
+	}
+	for (let i = jobsAt + 1; i < lines.length; i++) {
+		const line = lines[i] ?? ''
+		const text = line.trimStart()
+		if (text === '' || text.startsWith('#')) continue
+		const indent = line.length - text.length
+		if (indent === 0) break // the next top-level key ends `jobs:`
+		jobIndent ??= indent
+		if (indent <= jobIndent) endJob()
+		if (text.startsWith('node-version-file:')) fromFile = true
+		else if (/^node-version:\s*['"]?\d/.test(text)) hardcoded.push(i)
+	}
+	endJob()
+	return extras
+}
 
 /**
  * Make .nvmrc the single Node source of truth: ensure it exists (pinned to the
  * resolved major) and rewrite hardcoded scalar `node-version:` lines in CI
- * workflows to `node-version-file: .nvmrc`. Returns the files changed.
+ * workflows to `node-version-file: .nvmrc`. An extra version in a job that
+ * already reads `node-version-file` is test coverage and is left alone.
+ * Returns the files changed.
  */
 export async function alignNodeVersion(targetDir: string): Promise<string[]> {
 	const written: string[] = []
@@ -205,7 +242,13 @@ export async function alignNodeVersion(targetDir: string): Promise<string[]> {
 		for (const file of files) {
 			const p = path.join(workflowsDir, file)
 			const contents = await fs.readFile(p, 'utf-8')
-			const next = contents.replace(NODE_VERSION_LINE, '$1node-version-file: .nvmrc')
+			const extras = extraNodeVersionLines(contents)
+			const next = contents
+				.split('\n')
+				.map((l, i) =>
+					extras.has(i) ? l : l.replace(NODE_VERSION_LINE, '$1node-version-file: .nvmrc')
+				)
+				.join('\n')
 			if (next !== contents) {
 				await fs.writeFile(p, next)
 				written.push(`.github/workflows/${file}`)

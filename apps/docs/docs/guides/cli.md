@@ -202,7 +202,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `editorconfig` | `.editorconfig` |
 | `vscode-extensions` | `.vscode/extensions.json` (merge-friendly) |
 | `nvmrc` | `.nvmrc` pinned to Node 22 |
-| `node-version` | points CI at `node-version-file: .nvmrc` (one Node source of truth) |
+| `node-version` | points CI at `node-version-file: .nvmrc` (one Node source of truth); an extra `node-version:` step in a job that already reads `node-version-file` is test coverage and is left alone |
 
 **Testing & verify**
 
