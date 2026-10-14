@@ -14,8 +14,82 @@ export async function generateTestingConfigs(config: ProjectConfig, targetDir: s
 	}
 }
 
+/** Where an existing config can sit — the same candidates doctor's Vitest check reads. */
+const VITEST_CONFIGS = ['vitest.config.ts', 'vitest.config.js', 'vitest.config.mjs']
+
+/** Blank out strings and comments (same length) so brackets inside them can't count. */
+function maskStringsAndComments(src: string): string {
+	return src.replace(
+		/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`/g,
+		(m) => (m[0] === '/' ? ' '.repeat(m.length) : m[0] + ' '.repeat(m.length - 2) + m[0])
+	)
+}
+
+/** Index just past the bracket that closes the one at `open`, or -1. */
+function closingIndex(mask: string, open: number): number {
+	let depth = 0
+	for (let i = open; i < mask.length; i++) {
+		if ('{[('.includes(mask.charAt(i))) depth++
+		else if ('}])'.includes(mask.charAt(i)) && --depth === 0) return i + 1
+	}
+	return -1
+}
+
+/**
+ * The array literals a repo's own config sets for `test.include`, `test.exclude`
+ * and `test.setupFiles`, as source text. These say which files are tests at all,
+ * which the preset can't know: rewriting the config without them collected
+ * workerd suites and Playwright specs on cf-common, and compiled tests under
+ * `dist/` on db-common (#874). Only direct keys of `test` count, so a
+ * `coverage.include` is left alone.
+ *
+ * ponytail: a text scan, not a TS parser. A key whose value isn't an array
+ * literal (a variable, a spread of an import) is dropped as before; a parser
+ * would be the upgrade if that turns up.
+ */
+export function extractVitestTestOptions(src: string): Record<string, string> {
+	const mask = maskStringsAndComments(src)
+	const at = mask.search(/\btest\s*:\s*\{/)
+	if (at < 0) return {}
+	const found: Record<string, string> = {}
+	const key = /(include|exclude|setupFiles)\s*:\s*\[/y
+	for (let i = mask.indexOf('{', at) + 1, depth = 1; i < mask.length && depth > 0; i++) {
+		if (depth === 1 && /[\s{,]/.test(mask.charAt(i - 1))) {
+			key.lastIndex = i
+			const m = key.exec(mask)
+			if (m) {
+				const from = i + m[0].length - 1
+				const to = closingIndex(mask, from)
+				if (to < 0) break
+				found[m[1] as string] = src.slice(from, to)
+				i = to - 1
+				continue
+			}
+		}
+		if ('{[('.includes(mask.charAt(i))) depth++
+		else if ('}])'.includes(mask.charAt(i))) depth--
+	}
+	// The preset's exclude already starts from configDefaults.exclude, and the
+	// generated file doesn't import configDefaults, so the spread can't stay.
+	if (found.exclude) {
+		const rest = found.exclude.replace(/\.\.\.\s*configDefaults\.exclude\s*,?\s*/, '')
+		if (/^\[\s*\]$/.test(rest)) delete found.exclude
+		else found.exclude = rest
+	}
+	return found
+}
+
+async function readVitestTestOptions(targetDir: string): Promise<Record<string, string>> {
+	for (const name of VITEST_CONFIGS) {
+		const file = path.join(targetDir, name)
+		if (await fs.pathExists(file)) return extractVitestTestOptions(await fs.readFile(file, 'utf-8'))
+	}
+	return {}
+}
+
 export async function generateVitestConfig(config: ProjectConfig, targetDir: string) {
 	const vitestConfigPath = path.join(targetDir, 'vitest.config.ts')
+	const kept = await readVitestTestOptions(targetDir)
 
 	// Vite reads `jsx` from tsconfig, and the next preset sets it to "preserve" so
 	// Next's own compiler handles the transform. Vitest has no such compiler, so
@@ -42,13 +116,16 @@ export default mergeConfig(
   defineConfig({
 ${jsxOverride}    test: {
       environment: '${config.testing.environment === 'browser' ? 'jsdom' : 'node'}',
-      setupFiles: ['./vitest.setup.ts']
+${kept.include ? `      include: ${kept.include},\n` : ''}${kept.exclude ? `      exclude: ${kept.exclude},\n` : ''}      setupFiles: ${kept.setupFiles ?? "['./vitest.setup.ts']"}
     }
   })
 )
 `
 
 	await fs.writeFile(vitestConfigPath, vitestConfig)
+
+	// The repo's own setupFiles point somewhere else; an empty one here is clutter.
+	if (kept.setupFiles) return
 
 	// Create setup file
 	const setupPath = path.join(targetDir, 'vitest.setup.ts')

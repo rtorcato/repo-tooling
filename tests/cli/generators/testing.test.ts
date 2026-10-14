@@ -2,7 +2,10 @@ import fs from 'fs-extra'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from '../../../src/cli/commands/setup.js'
-import { generateTestingConfigs } from '../../../src/cli/generators/testing.js'
+import {
+	extractVitestTestOptions,
+	generateTestingConfigs,
+} from '../../../src/cli/generators/testing.js'
 import { FILE_CHECKS } from '../../../src/languages/js/checks.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -131,5 +134,36 @@ describe('generateTestingConfigs', () => {
 
 		const entries = await fs.readdir(dir)
 		expect(entries).toEqual([])
+	})
+})
+
+// #874: the text scan that carries a repo's own test selection into the rewrite.
+describe('extractVitestTestOptions', () => {
+	it('reads only direct keys of `test`, ignoring strings and comments', () => {
+		const src = `// test: { include: ['nope'] }
+export default defineConfig({
+  plugins: [x({ include: ['not-test'] })],
+  test: {
+    name: 'a ] tricky } string',
+    include: [
+      'src/**/*.test.ts', // ]
+    ],
+    coverage: { include: ['src/**'], exclude: ['x'] },
+  },
+})
+`
+		expect(extractVitestTestOptions(src)).toEqual({
+			include: "[\n      'src/**/*.test.ts', // ]\n    ]",
+		})
+	})
+
+	it('drops an exclude that only restates configDefaults', () => {
+		expect(
+			extractVitestTestOptions('defineConfig({ test: { exclude: [...configDefaults.exclude] } })')
+		).toEqual({})
+	})
+
+	it('returns nothing when there is no test block', () => {
+		expect(extractVitestTestOptions('export default {}')).toEqual({})
 	})
 })

@@ -1477,6 +1477,38 @@ describe('fix + lockfile', () => {
 		expect(config).toContain("from '@rtorcato/repo-tooling/vitest/config'")
 	})
 
+	// #874: the rewrite kept only environment/setupFiles, so cf-common's workerd
+	// suites and Playwright specs ran on the node runner, and db-common collected
+	// compiled tests from dist/.
+	it("fix vitest --yes keeps the repo's include, exclude and setupFiles", async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(
+			join(dir, 'vitest.config.ts'),
+			`import { configDefaults, defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.{test,spec}.ts'], // not dist/
+    exclude: [...configDefaults.exclude, 'src/**/*.workers.test.ts'],
+    setupFiles: ['./test/setup.ts'],
+    coverage: { include: ['src/**'] },
+  },
+})
+`
+		)
+		await fixCommand('vitest', { directory: dir, yes: true })
+
+		const config = await fs.readFile(join(dir, 'vitest.config.ts'), 'utf-8')
+		expect(config).toContain("from '@rtorcato/repo-tooling/vitest/config'")
+		expect(config).toContain("include: ['src/**/*.{test,spec}.ts'],")
+		expect(config).toContain("exclude: ['src/**/*.workers.test.ts'],")
+		expect(config).toContain("setupFiles: ['./test/setup.ts']")
+		expect(config).not.toContain('configDefaults')
+		expect(config).not.toContain("include: ['src/**'],")
+		expect(await fs.pathExists(join(dir, 'vitest.setup.ts'))).toBe(false)
+	})
+
 	it('fix vitest --yes on a jest-locked project auto-resyncs the lockfile', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
@@ -1872,28 +1904,42 @@ describe('fix knip/tsconfig/vitest scripts', () => {
 // #382: the budget was scaffolded with no script and no CLI to run it, so its
 // presence implied an enforcement that wasn't there.
 describe('fix size-limit', () => {
-	it('adds the `size-limit` script and devDependency alongside the budget', async () => {
+	// #874: without a preset the first run stops at "Install Size Limit preset".
+	it('adds the `size` script, the CLI and a preset alongside the budget', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		await fixCommand('size-limit', { directory: dir, yes: true })
 
 		const pkg = await fs.readJson(join(dir, 'package.json'))
 		expect(await fs.pathExists(join(dir, '.size-limit.json'))).toBe(true)
-		expect(pkg.scripts['size-limit']).toBe('size-limit')
+		expect(pkg.scripts.size).toBe('size-limit')
 		expect(pkg.devDependencies['size-limit']).toBe(SIZE_LIMIT_VERSION)
+		expect(pkg.devDependencies['@size-limit/preset-small-lib']).toBe(SIZE_LIMIT_VERSION)
 	})
 
-	it('leaves an existing script and pin alone', async () => {
+	it('leaves an existing script, pin and preset alone', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir, {
 			scripts: { 'size-limit': 'size-limit --why' },
-			devDependencies: { 'size-limit': '^10.0.0' },
+			devDependencies: { 'size-limit': '^10.0.0', '@size-limit/preset-app': '^10.0.0' },
 		})
 		await fixCommand('size-limit', { directory: dir, yes: true })
 
 		const pkg = await fs.readJson(join(dir, 'package.json'))
 		expect(pkg.scripts['size-limit']).toBe('size-limit --why')
+		expect(pkg.scripts.size).toBeUndefined()
 		expect(pkg.devDependencies['size-limit']).toBe('^10.0.0')
+		expect(pkg.devDependencies['@size-limit/preset-small-lib']).toBeUndefined()
+	})
+
+	it('adds only the missing preset when the CLI is already pinned', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { devDependencies: { 'size-limit': '^10.0.0' } })
+		await fixCommand('size-limit', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.devDependencies['size-limit']).toBe('^10.0.0')
+		expect(pkg.devDependencies['@size-limit/preset-small-lib']).toBe(SIZE_LIMIT_VERSION)
 	})
 
 	// The divergence between getScripts() and the fixers is the root cause behind
@@ -1922,8 +1968,11 @@ describe('fix size-limit', () => {
 
 		const setupPkg = await fs.readJson(join(setupDir, 'package.json'))
 		const fixPkg = await fs.readJson(join(fixDir, 'package.json'))
-		expect(setupPkg.scripts['size-limit']).toBe(fixPkg.scripts['size-limit'])
+		expect(setupPkg.scripts.size).toBe(fixPkg.scripts.size)
 		expect(setupPkg.devDependencies['size-limit']).toBe(fixPkg.devDependencies['size-limit'])
+		expect(setupPkg.devDependencies['@size-limit/preset-small-lib']).toBe(
+			fixPkg.devDependencies['@size-limit/preset-small-lib']
+		)
 	})
 })
 

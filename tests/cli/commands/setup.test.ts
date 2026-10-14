@@ -471,7 +471,7 @@ describe('setup --preset minimal', () => {
 		const pkg = await fs.readJson(join(dir, 'package.json'))
 		expect(Object.keys(pkg.scripts)).not.toContain('publint')
 		expect(Object.keys(pkg.scripts)).not.toContain('attw')
-		expect(Object.keys(pkg.scripts)).not.toContain('size-limit')
+		expect(Object.keys(pkg.scripts)).not.toContain('size')
 		expect(Object.keys(pkg.scripts)).not.toContain('release')
 		expect(Object.keys(pkg.scripts)).not.toContain('prepare')
 		expect(pkg.exports).toBeUndefined()

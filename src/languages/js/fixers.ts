@@ -36,6 +36,7 @@ import { hasBin, hasCommitlint, nodeFloorOf, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
 import { usesPnpm } from './checks.js'
 import {
+	SIZE_LIMIT_PRESET,
 	SIZE_LIMIT_SCRIPTS,
 	SIZE_LIMIT_VERSION,
 	composeVerifyScriptFromPkg,
@@ -67,8 +68,9 @@ const KNIP_SCRIPTS: Record<string, string> = {
 }
 
 /**
- * Add `size-limit` to devDependencies unless the repo already pins it (either
- * dependency list). Returns true when package.json was written.
+ * Add `size-limit` and a preset to devDependencies unless the repo already has
+ * them (either dependency list; any `@size-limit/preset-*` counts as a preset).
+ * Returns true when package.json was written.
  */
 async function ensureSizeLimitDependency(targetDir: string): Promise<boolean> {
 	const pkgPath = path.join(targetDir, 'package.json')
@@ -77,9 +79,14 @@ async function ensureSizeLimitDependency(targetDir: string): Promise<boolean> {
 	const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
 	const deps = (pkg.dependencies as Record<string, string> | undefined) ?? {}
 	const devDeps = { ...((pkg.devDependencies as Record<string, string> | undefined) ?? {}) }
-	if (devDeps['size-limit'] || deps['size-limit']) return false
+	const names = [...Object.keys(deps), ...Object.keys(devDeps)]
+	const missing = [
+		...(names.includes('size-limit') ? [] : ['size-limit']),
+		...(names.some((n) => n.startsWith('@size-limit/preset-')) ? [] : [SIZE_LIMIT_PRESET]),
+	]
+	if (missing.length === 0) return false
 
-	devDeps['size-limit'] = SIZE_LIMIT_VERSION
+	for (const name of missing) devDeps[name] = SIZE_LIMIT_VERSION
 	pkg.devDependencies = devDeps
 	await fs.writeJson(pkgPath, pkg, { spaces: 2 })
 	return true
@@ -773,20 +780,25 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'size-limit',
 		description:
-			'Scaffold a size-limit budget — exports-driven .size-limit.cjs for multi-subpath libraries, else a static .size-limit.json — plus the `size-limit` script and devDependency',
+			'Scaffold a size-limit budget — exports-driven .size-limit.cjs for multi-subpath libraries, else a static .size-limit.json — plus the `size` script and the size-limit + preset devDependencies',
 		appliesTo: ['size-limit'],
 		outputs: ['.size-limit.cjs', '.size-limit.json', 'package.json (devDependencies + scripts)'],
 		// safe-merge: installs the CLI and only fills in a missing script.
 		riskLevel: 'safe-merge',
 		canFixDrift: true,
-		async run({ targetDir }) {
+		async run({ targetDir, pkg }) {
 			const written = await generateSizeLimitConfig(targetDir)
 			const filesWritten = [written]
 			// A budget with nothing to run it is worse than no budget — the file's
 			// presence implies an enforcement that isn't there (#382). The script
 			// needs the CLI installed too, or it dies with "command not found".
 			const installed = await ensureSizeLimitDependency(targetDir)
-			const scripted = await ensureScripts(targetDir, SIZE_LIMIT_SCRIPTS)
+			// A repo that already runs size-limit under another script name (the old
+			// `size-limit` key this used to add) doesn't need a second one.
+			const scripts = Object.values(scriptsOf(pkg) ?? {})
+			const scripted =
+				!scripts.some((cmd) => /^size-limit\b/.test(cmd)) &&
+				(await ensureScripts(targetDir, SIZE_LIMIT_SCRIPTS))
 			if (installed || scripted) filesWritten.push('package.json')
 			return { filesWritten }
 		},

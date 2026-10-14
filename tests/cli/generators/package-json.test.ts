@@ -156,14 +156,16 @@ describe('generatePackageJson', () => {
 		await generatePackageJson(baseConfig({ projectType: 'library' }), dir)
 
 		const pkg = await fs.readJson(join(dir, 'package.json'))
-		expect(pkg.scripts['size-limit']).toBe('size-limit')
+		expect(pkg.scripts.size).toBe('size-limit')
 		expect(pkg.devDependencies['size-limit']).toBe(SIZE_LIMIT_VERSION)
+		// #874: the CLI alone can't measure anything.
+		expect(pkg.devDependencies['@size-limit/preset-small-lib']).toBe(SIZE_LIMIT_VERSION)
 
 		const appDir = newTmpDir()
 		await generatePackageJson(baseConfig({ projectType: 'react-app' }), appDir)
 
 		const appPkg = await fs.readJson(join(appDir, 'package.json'))
-		expect(appPkg.scripts['size-limit']).toBeUndefined()
+		expect(appPkg.scripts.size).toBeUndefined()
 		expect(appPkg.devDependencies['size-limit']).toBeUndefined()
 	})
 
