@@ -683,6 +683,33 @@ describe('fix targeted', () => {
 		expect(yaml).toBe(ci.replace('node-version: 20', 'node-version-file: .nvmrc'))
 	})
 
+	it('fix node-version rewrites a CRLF workflow and keeps its line endings (#892)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { engines: { node: '>=22' } })
+		await fs.writeFile(join(dir, '.nvmrc'), '22\n')
+		const ci = [
+			'jobs:',
+			'  test:',
+			'    steps:',
+			'      - uses: actions/setup-node@v7',
+			'        with:',
+			'          node-version-file: .nvmrc',
+			'      - uses: actions/setup-node@v7',
+			'        with:',
+			'          node-version: 24',
+			'  lint:',
+			'    steps:',
+			'      - uses: actions/setup-node@v7',
+			'        with:',
+			'          node-version: 20',
+			'',
+		].join('\r\n')
+		await fs.outputFile(join(dir, '.github', 'workflows', 'ci.yml'), ci)
+		await fixCommand('node-version', { directory: dir, yes: true })
+		const yaml = await fs.readFile(join(dir, '.github', 'workflows', 'ci.yml'), 'utf-8')
+		expect(yaml).toBe(ci.replace('node-version: 20', 'node-version-file: .nvmrc'))
+	})
+
 	it('fix engines adds engines.node when missing', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

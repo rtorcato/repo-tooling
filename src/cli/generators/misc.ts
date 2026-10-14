@@ -181,7 +181,8 @@ async function resolveNodeMajor(targetDir: string): Promise<number> {
 // A hardcoded scalar `node-version: <major>` line (leading digit after an
 // optional quote). Deliberately does NOT match matrix arrays (`[22, 24]`),
 // `${{ }}` expressions, or bare `node-version:` input keys — those are left as-is.
-const NODE_VERSION_LINE = /^([ \t]*)node-version:[ \t]*['"]?\d[\w.-]*['"]?[ \t]*$/
+// The lookahead leaves a CRLF line's `\r` in place, since lines come from `split('\n')`.
+const NODE_VERSION_LINE = /^([ \t]*)node-version:[ \t]*['"]?\d[\w.-]*['"]?[ \t]*(?=\r?$)/
 
 /**
  * Indexes of the workflow lines holding a hardcoded `node-version:` that is extra
