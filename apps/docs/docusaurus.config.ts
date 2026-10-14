@@ -93,6 +93,8 @@ const config: Config = {
 				alt: 'repo-tooling',
 				src: 'img/logo.svg',
 				srcDark: 'img/logo-dark.svg',
+				width: 26,
+				height: 26,
 			},
 			items: [
 				{ to: '/docs', position: 'left', label: 'Docs' },

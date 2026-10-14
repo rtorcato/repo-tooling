@@ -1,8 +1,10 @@
 import Link from '@docusaurus/Link'
+import useBaseUrl from '@docusaurus/useBaseUrl'
 import CodeBlock from '@theme/CodeBlock'
 import Layout from '@theme/Layout'
 import TabItem from '@theme/TabItem'
 import Tabs from '@theme/Tabs'
+import ThemedImage from '@theme/ThemedImage'
 import { siblings } from '@rtorcato/shared-docs'
 import clsx from 'clsx'
 import type { ReactElement } from 'react'
@@ -289,10 +291,14 @@ const EXAMPLES: Example[] = [
 /* ------------------------------------------------------------------ */
 
 function Hero(): ReactElement {
+	const mark = { light: useBaseUrl('/img/logo.svg'), dark: useBaseUrl('/img/logo-dark.svg') }
 	return (
 		<header className={styles.hero}>
 			<div className={styles.heroGlow} aria-hidden />
 			<div className={styles.heroInner}>
+				<div className={styles.heroMarkWrap}>
+					<ThemedImage className={styles.heroMark} alt="" sources={mark} />
+				</div>
 				<div className={styles.wordmark}>
 					<span className={styles.wmJs}>repo</span>
 					<span className={styles.wmDash}>-</span>
