@@ -93,14 +93,33 @@ describe('generateLintingConfigs', () => {
 	// #365: `fix biome` wrote biome.json while `fix --resync` wrote biome.jsonc.
 	// Biome resolves biome.json first and never mentions the other, so resync
 	// looked like it worked while changing nothing.
-	it('removes a stale biome.jsonc left by an older scaffold', async () => {
+	it('removes a stale biome.jsonc left next to a biome.json', async () => {
 		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'biome.json'), { extends: ['@rtorcato/repo-tooling/biome'] })
 		await fs.writeFile(join(dir, 'biome.jsonc'), '{ "linter": { "enabled": false } }\n')
 
 		await generateBiomeConfig(dir)
 
 		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(true)
 		expect(await fs.pathExists(join(dir, 'biome.jsonc'))).toBe(false)
+	})
+
+	// #878: a lone biome.jsonc is the live config. It used to be replaced by a
+	// bare biome.json, which dropped `files.includes` and changed Biome's scope.
+	it('merges into a lone biome.jsonc in place, keeping files.includes', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(
+			join(dir, 'biome.jsonc'),
+			'{\n\t// scope\n\t"files": { "includes": ["src/**", "!dist"] }\n}\n'
+		)
+
+		const written = await generateBiomeConfig(dir)
+
+		expect(written).toBe('biome.jsonc')
+		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(false)
+		const biome = await fs.readJson(join(dir, 'biome.jsonc'))
+		expect(biome.files).toEqual({ includes: ['src/**', '!dist'] })
+		expect(biome.extends).toEqual(['@rtorcato/repo-tooling/biome'])
 	})
 
 	// The scaffolded config must carry the `extends` that doctor's Biome check

@@ -39,8 +39,9 @@ export const BIOME_CONFIG = 'biome.json'
  * The name this generator used to write. Biome resolves `biome.json` first and
  * says nothing about a `biome.jsonc` sitting next to it, so a repo that had run
  * both `fix biome` (biome.json) and `fix --resync` (biome.jsonc) ended up with
- * two configs, one of them silently dead (#365). Both paths now write
- * BIOME_CONFIG and delete this on the way past, so the ambiguity can't persist.
+ * two configs, one of them silently dead (#365). When both exist, the merge goes
+ * into BIOME_CONFIG and this one is deleted, so the ambiguity can't persist.
+ * When it is the only config, it is the live one and is merged in place (#878).
  */
 export const BIOME_LEGACY_CONFIG = 'biome.jsonc'
 
@@ -76,7 +77,14 @@ const BIOME_PRESET_REF = /@rtorcato\/(?:js|repo)-tooling\/biome/
  * overwriting would destroy settings we cannot even read.
  */
 export async function generateBiomeConfig(targetDir: string): Promise<string | null> {
-	const file = path.join(targetDir, BIOME_CONFIG)
+	// A lone biome.jsonc is the repo's live config: reading only biome.json used
+	// to replace it with a bare one and drop its `files.includes` (#878).
+	const name =
+		!(await fs.pathExists(path.join(targetDir, BIOME_CONFIG))) &&
+		(await fs.pathExists(path.join(targetDir, BIOME_LEGACY_CONFIG)))
+			? BIOME_LEGACY_CONFIG
+			: BIOME_CONFIG
+	const file = path.join(targetDir, name)
 	let existing: Record<string, any> = {}
 	if (await fs.pathExists(file)) {
 		const parsed = parseJsonc(await fs.readFile(file, 'utf-8'))
@@ -112,8 +120,8 @@ export async function generateBiomeConfig(targetDir: string): Promise<string | n
 	}
 
 	await fs.writeJson(file, biomeConfig, { spaces: 2 })
-	await fs.remove(path.join(targetDir, BIOME_LEGACY_CONFIG))
-	return BIOME_CONFIG
+	if (name === BIOME_CONFIG) await fs.remove(path.join(targetDir, BIOME_LEGACY_CONFIG))
+	return name
 }
 
 export async function generateESLintConfig(config: ProjectConfig, targetDir: string) {
