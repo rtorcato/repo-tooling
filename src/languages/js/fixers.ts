@@ -34,7 +34,7 @@ import {
 } from '../../cli/generators/misc.js'
 import { hasBin, hasCommitlint, nodeFloorOf, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
-import { usesPnpm } from './checks.js'
+import { presetExtendedBy, usesPnpm } from './checks.js'
 import {
 	SIZE_LIMIT_PRESET,
 	SIZE_LIMIT_SCRIPTS,
@@ -374,7 +374,26 @@ export const FIXERS: Fixer[] = [
 			// bunfig.toml is the signal, and without it this would strip `types: ['bun']`
 			// off a Bun repo by dropping it back onto the base preset.
 			if (await fs.pathExists(path.join(targetDir, 'bunfig.toml'))) config.bun = true
-			await generateTSConfig(config, targetDir)
+			// A repo that builds from a preset-based tsconfig.build.json already has the
+			// overrides its code needs (module, types, relaxed index access). A bare
+			// preset tsconfig.json dropped all of them, so the editor and `tsc --noEmit`
+			// reported 119 errors on code that builds (#872). Layer on it instead;
+			// naming the preset too keeps doctor's matcher, which reads this file alone.
+			const tsconfigPath = path.join(targetDir, 'tsconfig.json')
+			const buildPath = path.join(targetDir, 'tsconfig.build.json')
+			const preset =
+				!(await fs.pathExists(tsconfigPath)) && (await fs.pathExists(buildPath))
+					? presetExtendedBy(await fs.readFile(buildPath, 'utf-8'))
+					: null
+			if (preset) {
+				await fs.writeJson(
+					tsconfigPath,
+					{ extends: [preset, './tsconfig.build.json'] },
+					{ spaces: 2 }
+				)
+			} else {
+				await generateTSConfig(config, targetDir)
+			}
 			const filesWritten = ['tsconfig.json']
 			// Without `typecheck` the generated CI drops its typecheck job entirely
 			// (#377). Shared with non-JS paths, so this is a no-op when there's no

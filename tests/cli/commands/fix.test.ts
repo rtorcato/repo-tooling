@@ -190,6 +190,39 @@ describe('fix tsconfig', () => {
 		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('ok')
 	})
 
+	// #872: a bare preset tsconfig.json dropped the build config's overrides, so
+	// `tsc --noEmit` failed (119 × TS4111) on code that built cleanly.
+	it('layers on a preset-based tsconfig.build.json instead of ignoring it', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'tsconfig.build.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { noPropertyAccessFromIndexSignature: false, module: 'NodeNext' },
+			include: ['src'],
+		})
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect(await fs.readJson(join(dir, 'tsconfig.json'))).toEqual({
+			extends: ['@rtorcato/repo-tooling/typescript/base', './tsconfig.build.json'],
+		})
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('ok')
+	})
+
+	it('scaffolds from the preset when tsconfig.build.json turns strict off', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'tsconfig.build.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { strict: false },
+		})
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'tsconfig.json'))).extends).toBe(
+			'@rtorcato/repo-tooling/typescript/base'
+		)
+	})
+
 	it('keeps the library outDir/rootDir', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
