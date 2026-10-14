@@ -171,6 +171,18 @@ function matchesTsConfig(contents: string): boolean {
 	)
 }
 
+/**
+ * The preset a `tsconfig.build.json` extends, when it passes the same check a
+ * `tsconfig.json` would (preset named, strict left on) — else null (#872).
+ */
+export function presetExtendedBy(contents: string): string | null {
+	if (!matchesTsConfig(contents)) return null
+	const ext = parseJsonc(contents)?.extends
+	const list: unknown[] = Array.isArray(ext) ? ext : [ext]
+	const preset = list.find((e): e is string => typeof e === 'string' && TS_PRESET_REF.test(e))
+	return preset ?? null
+}
+
 export const BIOME_FILE_CHECK: FileCheck = {
 	check: 'Biome',
 	candidates: ['biome.json', 'biome.jsonc'],
