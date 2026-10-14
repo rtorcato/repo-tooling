@@ -191,6 +191,39 @@ describe('fix tsconfig', () => {
 		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('ok')
 	})
 
+	// #872: a bare preset tsconfig.json dropped the build config's overrides, so
+	// `tsc --noEmit` failed (119 × TS4111) on code that built cleanly.
+	it('layers on a preset-based tsconfig.build.json instead of ignoring it', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'tsconfig.build.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { noPropertyAccessFromIndexSignature: false, module: 'NodeNext' },
+			include: ['src'],
+		})
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect(await fs.readJson(join(dir, 'tsconfig.json'))).toEqual({
+			extends: ['@rtorcato/repo-tooling/typescript/base', './tsconfig.build.json'],
+		})
+		const results = await runDoctor(dir)
+		expect(results.find((r) => r.check === 'TypeScript')?.status).toBe('ok')
+	})
+
+	it('scaffolds from the preset when tsconfig.build.json turns strict off', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, 'tsconfig.build.json'), {
+			extends: '@rtorcato/repo-tooling/typescript/base',
+			compilerOptions: { strict: false },
+		})
+		await fixCommand('tsconfig', { directory: dir, yes: true })
+
+		expect((await fs.readJson(join(dir, 'tsconfig.json'))).extends).toBe(
+			'@rtorcato/repo-tooling/typescript/base'
+		)
+	})
+
 	it('keeps the library outDir/rootDir', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
@@ -2321,5 +2354,48 @@ describe('fix -d <package> inside a monorepo targets the repo root', () => {
 		vi.spyOn(console, 'log').mockImplementation(() => {})
 		await fixCommand('codeql', { directory: dir, yes: true })
 		expect(await fs.pathExists(join(dir, '.github/workflows/codeql.yml'))).toBe(true)
+	})
+})
+
+// #875: semantic-release reads package.json `release` and every `.releaserc*`
+// before release.config.mjs, so writing ours next to one changed nothing.
+describe('fix semantic-release', () => {
+	const semanticRelease = async (dir: string) =>
+		(await runDoctor(dir)).find((r) => r.check === 'semantic-release')
+
+	it('replaces a shadowing .releaserc.json and installs the preset dependencies', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, '.releaserc.json'), { branches: ['main'] })
+		expect((await semanticRelease(dir))?.status).toBe('drift')
+
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		await fixCommand('semantic-release', { directory: dir, yes: true })
+
+		expect(await fs.pathExists(join(dir, '.releaserc.json'))).toBe(false)
+		expect(await fs.readFile(join(dir, 'release.config.mjs'), 'utf-8')).toContain(
+			'@rtorcato/repo-tooling/semantic-release/github'
+		)
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.devDependencies['conventional-changelog-conventionalcommits']).toBe('^10.0.0')
+		expect(pkg.devDependencies['semantic-release']).toBe('^25.0.0')
+		expect((await semanticRelease(dir))?.status).toBe('ok')
+	})
+
+	it('drops a package.json `release` field and keeps existing pins', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, {
+			release: { branches: ['main'] },
+			devDependencies: { 'semantic-release': '^24.0.0' },
+		})
+
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		await fixCommand('semantic-release', { directory: dir, yes: true })
+
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.release).toBeUndefined()
+		expect(pkg.devDependencies['semantic-release']).toBe('^24.0.0')
+		expect(pkg.devDependencies['conventional-changelog-conventionalcommits']).toBe('^10.0.0')
+		expect((await semanticRelease(dir))?.status).toBe('ok')
 	})
 })

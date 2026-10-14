@@ -116,6 +116,16 @@ describe('generateBuildConfigs', () => {
 		expect(content).toContain('@rtorcato/repo-tooling/semantic-release/github')
 	})
 
+	it('leaves an existing release config alone on setup (#875)', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, '.releaserc.json'), { branches: ['main'] })
+		await fs.writeJson(join(dir, 'package.json'), { name: 'x', release: { branches: ['main'] } })
+		await generateBuildConfigs(baseConfig({ semanticRelease: true }), dir)
+
+		expect(await fs.pathExists(join(dir, '.releaserc.json'))).toBe(true)
+		expect((await fs.readJson(join(dir, 'package.json'))).release).toEqual({ branches: ['main'] })
+	})
+
 	it('writes .changeset/config.json when changesets is true', async () => {
 		const dir = newTmpDir()
 		await generateBuildConfigs(baseConfig({ changesets: true }), dir)

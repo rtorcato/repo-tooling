@@ -10,6 +10,7 @@ import {
 	workspaceSymlinkDirs,
 	worktreeSymlinkDirs,
 } from '../../cli/generators/agent-rules.js'
+import { SEMANTIC_RELEASE_FILES } from '../../cli/generators/build.js'
 import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
@@ -168,6 +169,18 @@ function matchesTsConfig(contents: string): boolean {
 		rootDir.includes('${configDir}') &&
 		TS_PRESET_STRICTNESS.every((key) => compilerOptions[key] === true)
 	)
+}
+
+/**
+ * The preset a `tsconfig.build.json` extends, when it passes the same check a
+ * `tsconfig.json` would (preset named, strict left on) — else null (#872).
+ */
+export function presetExtendedBy(contents: string): string | null {
+	if (!matchesTsConfig(contents)) return null
+	const ext = parseJsonc(contents)?.extends
+	const list: unknown[] = Array.isArray(ext) ? ext : [ext]
+	const preset = list.find((e): e is string => typeof e === 'string' && TS_PRESET_REF.test(e))
+	return preset ?? null
 }
 
 export const BIOME_FILE_CHECK: FileCheck = {
@@ -863,18 +876,6 @@ export async function checkSizeLimit(dir: string, pkg: Pkg | null): Promise<Chec
 export function usesChangesets(dir: string): Promise<boolean> {
 	return fs.pathExists(path.join(dir, '.changeset', 'config.json'))
 }
-
-const SEMANTIC_RELEASE_FILES = [
-	'.releaserc',
-	'.releaserc.json',
-	'.releaserc.yaml',
-	'.releaserc.yml',
-	'.releaserc.js',
-	'.releaserc.cjs',
-	'release.config.js',
-	'release.config.cjs',
-	'release.config.mjs',
-]
 
 export async function checkSemanticRelease(dir: string, pkg: Pkg | null): Promise<CheckResult> {
 	const isPrivate = pkg?.private === true
