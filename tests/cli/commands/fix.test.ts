@@ -1975,6 +1975,55 @@ describe('fix github-actions packageManager', () => {
 	})
 })
 
+// #871: a release.yml-only finding regenerated ci.yml too, dropping its jobs,
+// and rebuilt release.yml from the template, dropping its own steps.
+describe('fix github-actions on a release.yml-only finding', () => {
+	it('gates release.yml in place and leaves ci.yml alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fixCommand('github-actions', { directory: dir, yes: true })
+		const ciPath = join(dir, '.github/workflows/ci.yml')
+		const releasePath = join(dir, '.github/workflows/release.yml')
+		const ci = `${await fs.readFile(ciPath, 'utf-8')}
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm docs:build
+`
+		await fs.writeFile(ciPath, ci)
+		// The pre-#790 shape, plus a step only this repo has.
+		const generated = await fs.readFile(releasePath, 'utf-8')
+		const releaseStart = generated.indexOf('  release:\n')
+		const stale = `${generated.slice(0, generated.indexOf('jobs:\n'))}concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+${generated
+	.slice(releaseStart)
+	.replace(
+		/ {4}needs: in-flight\n(?: {4}#.*\n)? {4}concurrency:\n(?: {6}.*\n)+/,
+		''
+	)}      - name: 📘 Redeploy the docs
+        run: gh workflow run docs.yml
+`
+		await fs.writeFile(releasePath, stale)
+		const finding = (await runDoctor(dir)).find((r) => r.check === 'GitHub Actions')
+		expect(finding?.detail).toBe(
+			'workflows disagree with the preset: release.yml: a newer release request can cancel one already publishing (preset cancels only a run still waiting for approval)'
+		)
+
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		expect(await fs.readFile(ciPath, 'utf-8')).toBe(ci)
+		const release = await fs.readFile(releasePath, 'utf-8')
+		expect(release).toContain('📘 Redeploy the docs')
+		expect(release).toContain('  in-flight:\n')
+		expect(release).not.toContain('cancel-in-progress: true')
+		expect((await runDoctor(dir)).find((r) => r.check === 'GitHub Actions')?.status).toBe('ok')
+	})
+})
+
 // #761: `fix github-actions` regenerated a publishing ci.yml from the preset,
 // taking the repo's own jobs (and any required check named after one) with it.
 describe('fix github-actions release migration', () => {

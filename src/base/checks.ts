@@ -160,6 +160,25 @@ function actionPins(yaml: string): Map<string, string> {
 	return pins
 }
 
+const PRESET_DRIFT = 'workflows disagree with the preset: '
+const RELEASE_CANCELS_PUBLISH =
+	'release.yml: a newer release request can cancel one already publishing (preset cancels only a run still waiting for approval)'
+const RELEASE_NO_SUPERSEDE =
+	'release.yml: a newer release request does not supersede a waiting one (preset cancels a run still waiting for approval)'
+
+/**
+ * Is this GitHub Actions finding only about release.yml's concurrency? Then
+ * `fix github-actions` adds the gate in place instead of regenerating both
+ * workflows, which would drop each file's own jobs and steps (#871).
+ */
+export function onlyReleaseConcurrencyDrift(detail: string): boolean {
+	if (!detail.startsWith(PRESET_DRIFT)) return false
+	return detail
+		.slice(PRESET_DRIFT.length)
+		.split('; ')
+		.every((d) => d === RELEASE_CANCELS_PUBLISH || d === RELEASE_NO_SUPERSEDE)
+}
+
 /**
  * @param preset the ci.yml this repo's generator would render right now, or null
  * for a language whose CI generator isn't wired up. Supplied by the caller
@@ -253,13 +272,9 @@ export async function checkGitHubActions(
 			// `true` kills a release mid-publish, `false` leaves a stale waiting run
 			// holding the group (#753).
 			if (/^[ \t]*cancel-in-progress:[ \t]*true\b/m.test(release)) {
-				deltas.push(
-					'release.yml: a newer release request can cancel one already publishing (preset cancels only a run still waiting for approval)'
-				)
+				deltas.push(RELEASE_CANCELS_PUBLISH)
 			} else if (!/^[ \t]*cancel-in-progress:[ \t]*\$\{\{/m.test(release)) {
-				deltas.push(
-					'release.yml: a newer release request does not supersede a waiting one (preset cancels a run still waiting for approval)'
-				)
+				deltas.push(RELEASE_NO_SUPERSEDE)
 			}
 			pinDeltas('release.yml', release, presetRelease)
 		}
@@ -267,7 +282,7 @@ export async function checkGitHubActions(
 			return {
 				check: 'GitHub Actions',
 				status: 'drift',
-				detail: `workflows disagree with the preset: ${deltas.join('; ')}`,
+				detail: `${PRESET_DRIFT}${deltas.join('; ')}`,
 				hint,
 			}
 		}

@@ -1123,6 +1123,59 @@ export function migrateReleaseJob(
 	return { release: `${RELEASE_WORKFLOW_HEADER}${job.join('\n')}\n`, needs }
 }
 
+/**
+ * `release.yml` with the preset's supersede gate added in place (#871): the
+ * `in-flight` job from {@link RELEASE_WORKFLOW_HEADER} goes first under
+ * `jobs:`, the publishing job gets {@link RELEASE_JOB_GATE}, and the top-level
+ * or job-level `concurrency:` they replace goes. Every other line stays as the
+ * repo wrote it; regenerating from the template dropped its own steps.
+ *
+ * Null when there is nothing safe to patch: no publishing job, an `in-flight`
+ * job already there, or a publishing job with its own `needs:`, which the
+ * gate's `needs: in-flight` would replace.
+ *
+ * ponytail: line surgery like `migrateReleaseJob`, no YAML parser.
+ */
+export function gateReleaseWorkflow(yaml: string): string | null {
+	const id = publishingJob(yaml)
+	if (!id || workflowJobs(yaml).has('in-flight')) return null
+	const lines = yaml.split('\n')
+
+	// A top-level `concurrency:` goes with the comment lines right above it, and
+	// the blank lines after it, so `jobs:` keeps the spacing it had.
+	const top = lines.findIndex((l) => /^concurrency:/.test(l))
+	if (top !== -1) {
+		let start = top
+		while (start > 0 && /^#/.test(lines[start - 1] ?? '')) start--
+		let end = blockEnd(lines, top)
+		while (end < lines.length && lines[end]?.trim() === '') end++
+		lines.splice(start, end - start)
+	}
+
+	const span = jobSpans(lines).find((s) => s.id === id)
+	if (!span) return null
+	const job = lines.slice(span.start, span.end)
+	const keyIndent = indentOf(job.slice(1).find((l) => !isBlankOrComment(l)) ?? '')
+	const keyAt = (key: string) =>
+		job.findIndex((l, i) => i > 0 && indentOf(l) === keyIndent && l.trim().startsWith(`${key}:`))
+	if (keyAt('needs') !== -1) return null
+	const own = keyAt('concurrency')
+	if (own !== -1) job.splice(own, blockEnd(job, own) - own)
+	job.splice(1, 0, ...RELEASE_JOB_GATE.map((l) => ' '.repeat(keyIndent) + l))
+	lines.splice(span.start, span.end - span.start, ...job)
+
+	// The header's `in-flight` job, shifted to this file's job indent. Shifted, not
+	// scaled: a `- ` item's keys sit two past its dash at any indent step.
+	const jobsAt = lines.findIndex((l) => /^jobs:\s*$/.test(l))
+	const shift = indentOf(lines[span.start] ?? '') - 2
+	const inFlight = RELEASE_WORKFLOW_HEADER.slice(RELEASE_WORKFLOW_HEADER.indexOf('\njobs:\n') + 7)
+		.trimEnd()
+		.split('\n')
+		.map((l) => (!l.trim() ? l : shift >= 0 ? ' '.repeat(shift) + l : l.slice(-shift)))
+	lines.splice(jobsAt + 1, 0, ...inFlight, '')
+	return lines.join('\n')
+}
+
 /** The id of the first job in this workflow that publishes, or null. */
 export function publishingJob(yaml: string): string | null {
 	for (const [job, raw] of workflowJobs(yaml)) {
