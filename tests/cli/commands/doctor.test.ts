@@ -1720,6 +1720,20 @@ export default { ...preset, plugins: preset.plugins.filter((p) => !DROPPED.has(A
 		it('stays drift when the config throws on import', async () => {
 			expect((await repo('throw new Error("boom")\n'))?.status).toBe('drift')
 		})
+
+		it('never imports the config offline', async () => {
+			const dir = newTmpDir()
+			await seedPackageJson(dir)
+			await fs.outputFile(join(dir, '.github', 'workflows', 'release.yml'), BARE)
+			const marker = join(dir, 'imported')
+			await fs.writeFile(
+				join(dir, 'release.config.mjs'),
+				`import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, '')\nexport default { plugins: [] }\n`
+			)
+			const rt = (await runDoctor(dir, { offline: true })).find((r) => r.check === 'Release token')
+			expect(rt?.status).toBe('skipped')
+			expect(await fs.pathExists(marker)).toBe(false)
+		})
 	})
 
 	it('reports ok when the release workflow uses the RELEASE_TOKEN fallback', async () => {

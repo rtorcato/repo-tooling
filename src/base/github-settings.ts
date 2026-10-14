@@ -673,17 +673,23 @@ export async function releaseUsesGitPlugin(dir: string): Promise<boolean> {
  * keep their default.
  */
 export async function releasePlugins(dir: string): Promise<string[] | null> {
+	const file = await releaseConfigFile(dir)
+	if (!file) return null
+	try {
+		const mod = await import(pathToFileURL(file).href)
+		const plugins: unknown = mod.default?.plugins
+		if (!Array.isArray(plugins)) return null
+		return plugins.map((p) => (Array.isArray(p) ? p[0] : p))
+	} catch {
+		return null
+	}
+}
+
+/** The repo's release config path, found without importing it. `null` when there is none. */
+export async function releaseConfigFile(dir: string): Promise<string | null> {
 	for (const name of RELEASE_CONFIG_FILES) {
 		const file = path.join(dir, name)
-		if (!(await fs.pathExists(file))) continue
-		try {
-			const mod = await import(pathToFileURL(file).href)
-			const plugins: unknown = mod.default?.plugins
-			if (!Array.isArray(plugins)) return null
-			return plugins.map((p) => (Array.isArray(p) ? p[0] : p))
-		} catch {
-			return null
-		}
+		if (await fs.pathExists(file)) return file
 	}
 	return null
 }
