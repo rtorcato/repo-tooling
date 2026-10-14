@@ -54,6 +54,13 @@ interface FixerContext {
 	lock: Lockfile | null
 	/** True under `--yes` / `--json`, so a fixer knows a prompt is not available. */
 	assumeYes: boolean
+	/**
+	 * Where `.github/` and git state live: the repo root above a `-d packages/x`
+	 * (#862), matching what the checks read since #859. Resolved by the runner,
+	 * which pins it to the temp copy for a `--diff` preview, so a fixer that
+	 * follows it can never escape into the real repo. Unset means `targetDir`.
+	 */
+	root?: string
 }
 
 export type FixRiskLevel = 'destructive' | 'safe-merge' | 'safe-add'
@@ -232,7 +239,7 @@ export const BASE_FIXERS: Fixer[] = [
 		description: 'Scaffold .github/workflows/codeql.yml (security scanning)',
 		appliesTo: ['CodeQL'],
 		outputs: ['.github/workflows/codeql.yml'],
-		async run({ targetDir }) {
+		async run({ targetDir, root = targetDir }) {
 			const { codeqlLanguages, label } = await moduleFor(targetDir)
 			// Say so rather than reporting a successful fix that wrote nothing: the
 			// generator correctly emits no workflow for an empty matrix (Perl, #289),
@@ -241,7 +248,10 @@ export const BASE_FIXERS: Fixer[] = [
 				console.error(chalk.yellow(`   skipped — CodeQL has no ${label} analyzer`))
 				return { filesWritten: [] }
 			}
-			return { filesWritten: await generateCodeQLWorkflow(targetDir, codeqlLanguages) }
+			// GitHub only runs workflows from the repo root; `.github/` in a package is
+			// dead (#862). Paths stay relative to targetDir, like every other output.
+			const written = await generateCodeQLWorkflow(root, codeqlLanguages)
+			return { filesWritten: written.map((f) => path.relative(targetDir, path.join(root, f))) }
 		},
 	},
 	{
@@ -304,8 +314,10 @@ export const BASE_FIXERS: Fixer[] = [
 		riskLevel: 'safe-add',
 		explicitOnly: true,
 		canFixDrift: true,
-		async run({ targetDir }) {
-			return { filesWritten: await closeCompletedMilestones(targetDir) }
+		async run({ targetDir, root = targetDir }) {
+			// From the root, so the "does a workflow run on milestone close" guard reads
+			// the repo's real workflows, not a package dir with none (#862).
+			return { filesWritten: await closeCompletedMilestones(root) }
 		},
 	},
 	{
