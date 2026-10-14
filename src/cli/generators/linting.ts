@@ -1,4 +1,5 @@
 import fs from 'fs-extra'
+import { applyEdits, type JSONPath, modify } from 'jsonc-parser'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
 import { parseJsonc } from '../utils/jsonc.js'
@@ -86,8 +87,10 @@ export async function generateBiomeConfig(targetDir: string): Promise<string | n
 			: BIOME_CONFIG
 	const file = path.join(targetDir, name)
 	let existing: Record<string, any> = {}
+	let text: string | undefined
 	if (await fs.pathExists(file)) {
-		const parsed = parseJsonc(await fs.readFile(file, 'utf-8'))
+		text = await fs.readFile(file, 'utf-8')
+		const parsed = parseJsonc(text)
 		if (!parsed) return null
 		existing = parsed
 	}
@@ -111,6 +114,36 @@ export async function generateBiomeConfig(targetDir: string): Promise<string | n
 	// run that reported success. Rule overrides under `linter.rules` stay.
 	const nextLinter = linter && typeof linter === 'object' ? { ...linter } : undefined
 	if (nextLinter?.enabled === false) delete nextLinter.enabled
+
+	// A biome.jsonc is edited in place, touching only the keys above, so its
+	// comments and layout survive. Re-serialising it dropped every comment (#881).
+	if (name === BIOME_LEGACY_CONFIG && text !== undefined) {
+		const indent = /^[ \t]+(?=\S)/m.exec(text)?.[0] ?? '  '
+		const formattingOptions = {
+			insertSpaces: indent[0] === ' ',
+			tabSize: indent.length,
+			eol: text.includes('\r\n') ? '\r\n' : '\n',
+		}
+		let out = text
+		// jsonc-parser reformats every line an edit touches, so a removal gets no
+		// formatting options: they would reflow the sibling it is spliced after.
+		const set = (at: JSONPath, value: unknown, index?: number) => {
+			const getInsertionIndex = index === undefined ? undefined : () => index
+			const options = value === undefined ? {} : { formattingOptions, getInsertionIndex }
+			out = applyEdits(out, modify(out, at, value, { ...options, isArrayInsertion: true }))
+		}
+		if (existing.$schema !== BIOME_SCHEMA_URL) set(['$schema'], BIOME_SCHEMA_URL, 0)
+		if (Array.isArray(prevExtends)) {
+			if (extendsList !== prev) set(['extends', 0], BIOME_PRESET)
+		} else {
+			set(['extends'], extendsList, 1)
+		}
+		if (linter?.enabled === false) {
+			set(Object.keys(nextLinter ?? {}).length > 0 ? ['linter', 'enabled'] : ['linter'], undefined)
+		}
+		await fs.writeFile(file, out)
+		return name
+	}
 
 	const biomeConfig = {
 		$schema: BIOME_SCHEMA_URL,
