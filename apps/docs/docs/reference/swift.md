@@ -19,13 +19,16 @@ The standard here is the one [`swift-common`](https://github.com/rtorcato/swift-
 | SwiftLint | `missing` | `swiftlint` |
 | Periphery | `optional-missing` | `periphery` |
 | swift-format | `optional-missing` | `swift-format` |
-| Swift `.gitignore` | `missing` | `swift-gitignore` |
+| Swift .gitignore | `missing` | `swift-gitignore` |
 | Swift targets | `drift` | — (manifest edit, or delete the directory) |
 | Swift tests | `missing` | — (manifest edit, or `swift-ci`) |
 | DocC | `optional-missing` | `docc` |
 | Release automation | `optional-missing` | `swift-release` |
 | Git hooks | `optional-missing` | `swift-git-hooks` |
 | Pre-push hook | `optional-missing` | `swift-git-hooks` |
+| lockfile | `optional-missing` | `swift-lockfile` |
+
+`lockfile` is the `.repo-tooling.json` record of the tool choices. `fix swift-lockfile` writes it from the `swift-library` preset's config, since a SwiftPM repo has no `package.json` to infer them from.
 
 `Package.swift` is checked for two things SwiftPM will not infer: a `// swift-tools-version:` comment (without it the manifest doesn't parse) and an explicit `platforms:` clause (without it SwiftPM assumes its oldest supported deployment target, which rejects modern APIs at build time). There's no fixer — rewriting someone's manifest isn't safe, so `doctor` reports and you edit.
 

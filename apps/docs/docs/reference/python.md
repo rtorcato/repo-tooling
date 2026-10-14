@@ -19,7 +19,7 @@ The standard here is **Ruff for lint *and* format, mypy for types, pytest for te
 | Ruff | `missing` | `ruff` |
 | mypy | `missing` | `mypy` |
 | pytest | `missing` | `pytest` |
-| Python `.gitignore` | `missing` | `python-gitignore` |
+| Python .gitignore | `missing` | `python-gitignore` |
 | Python tests | `missing` | — (write tests, or `python-ci`) |
 | Git hooks | `optional-missing` | `python-git-hooks` |
 | Pre-push hook | `optional-missing` | `python-git-hooks` |

@@ -18,7 +18,7 @@ The standard here is **Perl::Critic for lint, perltidy for format, prove for tes
 | Perl distribution | `missing` | — (dependency metadata you write) |
 | Perl::Critic | `missing` | `perlcritic` |
 | perltidy | `missing` | `perltidy` |
-| Perl `.gitignore` | `missing` | `perl-gitignore` |
+| Perl .gitignore | `missing` | `perl-gitignore` |
 | Perl tests | `missing` | — (write tests, or `perl-ci`) |
 | Git hooks | `optional-missing` | `perl-git-hooks` |
 | Pre-push hook | `optional-missing` | `perl-git-hooks` |

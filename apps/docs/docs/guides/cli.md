@@ -88,14 +88,14 @@ Some checks read live GitHub state over `gh`: branch protection, merge and secur
 
 | Group | Checks |
 |---|---|
-| Environment | Node version (vs. minimum + LTS patch level), `engines.node` field |
-| Repo baseline | `package.json`, `.editorconfig`, `.nvmrc` / `.node-version`, `.vscode/extensions.json` |
-| Tooling presets | TypeScript, Biome, ESLint, Prettier, Vitest, Commitlint |
-| Automation | Husky, `lint-staged`, `verify` script, semantic-release, knip |
-| CI / supply chain | GitHub Actions, Dependabot, CodeQL, GitLab CI |
-| Build / docs | TypeDoc, docs site (Docusaurus), size-limit |
+| Environment | `Node` (vs. minimum + LTS patch level), `engines.node`, `Node version pin` (`.nvmrc` / `.node-version`), `Node version consistency` (the pin, `engines.node` and workflow Node versions agree on one major) |
+| Repo baseline | `package.json`, `EditorConfig`, `VS Code extensions` (`.vscode/extensions.json`), `Git identity` (`user.email` is a real address), `Git author history`, `Community health` (`CONTRIBUTING.md`, `SECURITY.md`), `Declared exceptions` (`rules.exceptions` in `.repo-tooling.json`) |
+| Tooling presets | TypeScript, Biome, ESLint, Prettier, Oxlint, Vitest, Commitlint |
+| Automation | `Git hooks`, `Pre-push hook`, `lint-staged`, `verify script`, semantic-release, knip |
+| CI / supply chain | `GitHub Actions`, `Release token` (semantic-release needs `RELEASE_TOKEN`, with `GITHUB_TOKEN` as fallback), `npm OIDC publish`, `npm trusted publisher`, Dependabot, CodeQL, `GitLab CI` |
+| Build / docs | TypeDoc, `size-limit`, `Tree-shake check` |
 | Ecosystem | Bun runtime, Turborepo / Nx, Tailwind / PostCSS |
-| GitHub (live, over `gh`) | Branch protection, merge settings, workflow permissions, code-scanning gate, security updates, release gate, release environment, release secrets, repository secrets, milestones |
+| GitHub (live, over `gh`) | `Branch protection`, `Merge settings`, `Workflow permissions`, `Code-scanning gate`, `Security updates`, `Release gate`, `Release environment`, `Release secrets`, `Repository secrets`, `Milestones` |
 
 ### Release gate
 
@@ -198,6 +198,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `tsconfig` | `tsconfig.json` |
 | `biome` | `biome.json` |
 | `eslint` | `eslint.config.mjs` |
+| `oxlint` | `.oxlintrc.json` (additive to Biome/ESLint; the `Oxlint` check) |
 | `prettier` | `prettier.config.mjs` |
 | `editorconfig` | `.editorconfig` |
 | `vscode-extensions` | `.vscode/extensions.json` (merge-friendly) |
@@ -237,7 +238,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `dependabot` | `.github/dependabot.yml` (monthly, grouped: production-minor/dev-minor/major-updates) + the `dependabot-automerge.yml` workflow — see [Dependabot strategy](./dependabot-strategy.md) |
 | `renovate` | `renovate.json` (alternative to Dependabot) |
 | `codeql` | `.github/workflows/codeql.yml` (security scanning) |
-| `github-settings` | branch protection + auto-merge + workflow permissions + a code-scanning branch ruleset (when CodeQL is on) via `gh api` (mutates the remote repo). Applies [`rules.github`](../reference/repo-tooling-json.mdx#rulesgithub--the-github-settings-this-repo-should-have) when the repo declares it |
+| `github-settings` | branch protection + auto-merge + workflow permissions + Dependabot vulnerability alerts and automated security fixes (the `Security updates` check) + a code-scanning branch ruleset (when CodeQL is on, the `Code-scanning gate` check) via `gh api` (mutates the remote repo). Applies [`rules.github`](../reference/repo-tooling-json.mdx#rulesgithub--the-github-settings-this-repo-should-have) when the repo declares it |
 | `milestones` | closes 100%-complete open milestones, then opens a rolling `next` one if none is left, via `gh api` (mutates the remote repo). Never deletes one. Explicit-only, and refuses to close anything when a workflow, in the working tree or on the default branch, runs on milestone close, since that publishes — see [milestone hygiene](./git-flow.md#milestones) |
 | `codeowners` | `.github/CODEOWNERS` with commented examples |
 | `community-health` | `CONTRIBUTING.md`, `SECURITY.md`, PR + issue templates |
