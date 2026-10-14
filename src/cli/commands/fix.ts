@@ -5,6 +5,7 @@ import { createPatch } from 'diff'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { generateConfigs } from '../generators/index.js'
+import { BIOME_CONFIG, biomeConfigNameFor } from '../generators/linting.js'
 import {
 	type Lockfile,
 	LOCKFILE_NAME,
@@ -438,7 +439,11 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			}
 			process.exit(1)
 		}
-		const files = computeFileList(resyncLock.record.config)
+		// The generator writes a lone biome.jsonc in place (#878), so name that, not biome.json (#882).
+		const biomeFile = await biomeConfigNameFor(targetDir)
+		const files = computeFileList(resyncLock.record.config).map((f) =>
+			f === BIOME_CONFIG ? biomeFile : f
+		)
 		if (!silent) {
 			console.log(
 				chalk.cyan(`\n🔄 Resync from ${LOCKFILE_NAME} (${files.length} files in scope)\n`)
