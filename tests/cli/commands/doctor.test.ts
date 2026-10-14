@@ -1684,6 +1684,58 @@ describe('nextStepSuggestions', () => {
 		expect(rt?.hint).toMatch(/RELEASE_TOKEN/)
 	})
 
+	describe('bare GITHUB_TOKEN, by what the release config pushes (#870)', () => {
+		const BARE =
+			'jobs:\n  release:\n    steps:\n      - run: npx semantic-release\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n'
+
+		async function repo(releaseConfig: string) {
+			const dir = newTmpDir()
+			await seedPackageJson(dir)
+			await fs.outputFile(join(dir, '.github', 'workflows', 'release.yml'), BARE)
+			await fs.writeFile(join(dir, 'release.config.mjs'), releaseConfig)
+			return (await runDoctor(dir)).find((r) => r.check === 'Release token')
+		}
+
+		// js-common's shape: the plugin is named only to drop it from the preset.
+		const FILTERS_GIT = `const DROPPED = new Set(['@semantic-release/git', '@semantic-release/changelog'])
+const preset = { plugins: ['@semantic-release/npm', '@semantic-release/git', '@semantic-release/github'] }
+export default { ...preset, plugins: preset.plugins.filter((p) => !DROPPED.has(Array.isArray(p) ? p[0] : p)) }
+`
+
+		it('is ok when the config filters out @semantic-release/git', async () => {
+			const rt = await repo(FILTERS_GIT)
+			expect(rt?.status).toBe('ok')
+			expect(rt?.detail).toMatch(/pushes no commit/)
+		})
+
+		it('stays drift when the config keeps @semantic-release/git', async () => {
+			const rt = await repo(`export default {
+	plugins: ['@semantic-release/npm', ['@semantic-release/git', { assets: ['package.json'] }]],
+}
+`)
+			expect(rt?.status).toBe('drift')
+			expect(rt?.hint).toMatch(/RELEASE_TOKEN/)
+		})
+
+		it('stays drift when the config throws on import', async () => {
+			expect((await repo('throw new Error("boom")\n'))?.status).toBe('drift')
+		})
+
+		it('never imports the config offline', async () => {
+			const dir = newTmpDir()
+			await seedPackageJson(dir)
+			await fs.outputFile(join(dir, '.github', 'workflows', 'release.yml'), BARE)
+			const marker = join(dir, 'imported')
+			await fs.writeFile(
+				join(dir, 'release.config.mjs'),
+				`import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, '')\nexport default { plugins: [] }\n`
+			)
+			const rt = (await runDoctor(dir, { offline: true })).find((r) => r.check === 'Release token')
+			expect(rt?.status).toBe('skipped')
+			expect(await fs.pathExists(marker)).toBe(false)
+		})
+	})
+
 	it('reports ok when the release workflow uses the RELEASE_TOKEN fallback', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
