@@ -585,7 +585,19 @@ export const FIXERS: Fixer[] = [
 		appliesTo: ['GitHub Actions', NPM_OIDC_CHECK],
 		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'package.json (packageManager field)'],
 		canFixDrift: true,
-		async run({ targetDir, pkg, result }) {
+		async run({ targetDir, pkg, result, root = targetDir }) {
+			// The workflows live at the repo root, but this would render them from one
+			// package's scripts and overwrite the root's ci.yml with it — or, before
+			// #862, write a `.github/` into the package that GitHub never runs.
+			if (path.resolve(root) !== path.resolve(targetDir)) {
+				// Relative to where the user typed `-d`, so the hint can be pasted as-is.
+				const rel = path.relative(process.cwd(), root) || '.'
+				throw new FixerAbort(
+					'github-actions-package-dir',
+					`refusing to write workflows for a package — GitHub runs them from the repo root (${rel}), and rendering them from this package's scripts would replace the root ci.yml`,
+					`run \`fix github-actions -d ${rel}\` from the repo root instead`
+				)
+			}
 			// Nothing but release.yml's concurrency drifts: add the gate in place and
 			// leave ci.yml alone (#871). Regenerating dropped both files' own jobs.
 			if (result.check === 'GitHub Actions' && onlyReleaseConcurrencyDrift(result.detail)) {

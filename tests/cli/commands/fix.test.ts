@@ -1,4 +1,5 @@
-import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { join, relative } from 'node:path'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -2254,5 +2255,71 @@ jobs:
 
 		expect(await fs.readFile(ci(dir), 'utf-8')).toBe(MIGRATED)
 		expect(await fs.pathExists(join(dir, '.github/workflows/release.yml'))).toBe(true)
+	})
+})
+
+// #862: the checks read `.github/` from the repo root under `-d packages/x` since
+// #859; the fixers wrote into the package, where GitHub never runs anything.
+describe('fix -d <package> inside a monorepo targets the repo root', () => {
+	async function monorepo() {
+		const root = newTmpDir()
+		execFileSync('git', ['init', '-q', root])
+		await fs.writeJson(join(root, 'package.json'), { name: 'root', private: true })
+		await fs.outputFile(join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n")
+		const pkg = join(root, 'packages/lib')
+		await fs.ensureDir(pkg)
+		await seedPackageJson(pkg)
+		return { root, pkg }
+	}
+
+	it('fix codeql writes the workflow at the root, not in the package', async () => {
+		const { root, pkg } = await monorepo()
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		await fixCommand('codeql', { directory: pkg, yes: true })
+
+		expect(await fs.pathExists(join(root, '.github/workflows/codeql.yml'))).toBe(true)
+		expect(await fs.pathExists(join(pkg, '.github'))).toBe(false)
+		expect(logSpy.mock.calls.flat().join('\n')).toContain('../../.github/workflows/codeql.yml')
+	})
+
+	it('fix codeql --diff previews the root path and writes nothing', async () => {
+		const { root, pkg } = await monorepo()
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		promptMock.mockResolvedValue({ confirm: false })
+		await fixCommand('codeql', { directory: pkg, diff: true })
+
+		expect(logSpy.mock.calls.flat().join('\n')).toContain('../../.github/workflows/codeql.yml')
+		expect(await fs.pathExists(join(root, '.github'))).toBe(false)
+		expect(await fs.pathExists(join(pkg, '.github'))).toBe(false)
+	})
+
+	it('fix github-actions refuses rather than write the root ci.yml from one package', async () => {
+		const { root, pkg } = await monorepo()
+		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('github-actions', { directory: pkg, yes: true })).rejects.toThrow(
+				'exit'
+			)
+			expect(exitSpy).toHaveBeenCalledWith(1)
+			expect(errSpy.mock.calls.flat().join('\n')).toContain(
+				`fix github-actions -d ${relative(process.cwd(), root) || '.'}`
+			)
+			expect(await fs.pathExists(join(root, '.github'))).toBe(false)
+			expect(await fs.pathExists(join(pkg, '.github'))).toBe(false)
+		} finally {
+			exitSpy.mockRestore()
+			errSpy.mockRestore()
+		}
+	})
+
+	it('still writes into the target outside a git repository', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		vi.spyOn(console, 'log').mockImplementation(() => {})
+		await fixCommand('codeql', { directory: dir, yes: true })
+		expect(await fs.pathExists(join(dir, '.github/workflows/codeql.yml'))).toBe(true)
 	})
 })
