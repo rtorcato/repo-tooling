@@ -176,17 +176,20 @@ export const SEMANTIC_RELEASE_DEPS: Record<string, string> = {
  *
  * semantic-release reads a package.json `release` field or any `.releaserc*`
  * before `release.config.mjs`, so writing ours next to one of those changed
- * nothing and doctor kept the same drift (#875). They are removed: the fixer
- * only reaches here for drift under `--yes`, which is the overwrite opt-in.
+ * nothing and doctor kept the same drift (#875). With `replaceShadowing` they
+ * are removed. Only the fixer passes it: it reaches here for drift under
+ * `--yes`, the overwrite opt-in, and it prints what was replaced. `setup` never
+ * deletes a repo's existing release config.
  *
  * @returns the files written, and the configs removed because they shadowed it.
  */
 export async function generateSemanticReleaseConfig(
-	targetDir: string
+	targetDir: string,
+	{ replaceShadowing = false }: { replaceShadowing?: boolean } = {}
 ): Promise<{ written: string[]; replaced: string[] }> {
 	const replaced: string[] = []
 	for (const name of SEMANTIC_RELEASE_FILES) {
-		if (name === 'release.config.mjs') continue
+		if (!replaceShadowing || name === 'release.config.mjs') continue
 		const file = path.join(targetDir, name)
 		if (await fs.pathExists(file)) {
 			await fs.remove(file)
@@ -203,7 +206,7 @@ export async function generateSemanticReleaseConfig(
 	if (await fs.pathExists(pkgPath)) {
 		const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
 		let changed = false
-		if ('release' in pkg) {
+		if (replaceShadowing && 'release' in pkg) {
 			delete pkg.release
 			replaced.push('package.json `release`')
 			changed = true

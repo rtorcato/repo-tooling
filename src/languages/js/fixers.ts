@@ -536,7 +536,9 @@ export const FIXERS: Fixer[] = [
 				console.error(chalk.gray('   skipping — package is private'))
 				return { filesWritten: [] }
 			}
-			const { written, replaced } = await generateSemanticReleaseConfig(targetDir)
+			const { written, replaced } = await generateSemanticReleaseConfig(targetDir, {
+				replaceShadowing: true,
+			})
 			if (replaced.length > 0) {
 				// The preset is not a neutral swap: refactor/revert become patch
 				// releases and it adds prerelease branches (#875). Say so.
