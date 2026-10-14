@@ -527,7 +527,7 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'semantic-release',
 		description:
-			'Scaffold release.config.mjs + install preset plugins (skipped on private packages)',
+			"Scaffold release.config.mjs (replacing any config that would shadow it) + install the preset's dependencies (skipped on private packages)",
 		appliesTo: ['semantic-release'],
 		outputs: ['release.config.mjs', 'package.json'],
 		canFixDrift: true,
@@ -536,8 +536,24 @@ export const FIXERS: Fixer[] = [
 				console.error(chalk.gray('   skipping — package is private'))
 				return { filesWritten: [] }
 			}
-			const filesWritten = await generateSemanticReleaseConfig(targetDir)
-			return { filesWritten }
+			const { written, replaced } = await generateSemanticReleaseConfig(targetDir, {
+				replaceShadowing: true,
+			})
+			if (replaced.length > 0) {
+				// The preset is not a neutral swap: refactor/revert become patch
+				// releases and it adds prerelease branches (#875). Say so.
+				console.error(
+					chalk.yellow(
+						`   replaced ${replaced.join(', ')} with release.config.mjs — the preset's release rules apply now (refactor/revert cut patches; next/beta/alpha/dev branches release); review before merging`
+					)
+				)
+			}
+			if (written.includes('package.json')) {
+				console.error(
+					chalk.dim('   reminder: run `pnpm install` to install the release dependencies')
+				)
+			}
+			return { filesWritten: written }
 		},
 	},
 	{

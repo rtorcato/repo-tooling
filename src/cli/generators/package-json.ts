@@ -4,6 +4,7 @@ import path from 'node:path'
 import packageJson from '../../../package.json' with { type: 'json' }
 import { compareVersion, rangeFloor } from '../../languages/js/checks.js'
 import type { ProjectConfig } from '../commands/setup.js'
+import { SEMANTIC_RELEASE_DEPS } from './build.js'
 import { COMMITLINT_DEPS } from './git.js'
 import { PNPM_FALLBACK_VERSION, detectPnpmVersion } from './misc.js'
 import { getToolRange } from '../utils/version.js'
@@ -473,12 +474,9 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 		deps['cz-conventional-changelog'] = '^3.3.0'
 	}
 
-	// Semantic release. The shipped github preset uses only plugins that
-	// semantic-release core bundles, plus @semantic-release/github — no
-	// changelog/git plugins (see tooling/semantic-release/github.mjs, #417).
+	// Semantic release: shared with `fix semantic-release` (#875).
 	if (config.semanticRelease) {
-		deps['semantic-release'] = '^25.0.0'
-		deps['@semantic-release/github'] = '^12.0.0'
+		Object.assign(deps, SEMANTIC_RELEASE_DEPS)
 	}
 
 	return raiseToPeerFloors(deps)

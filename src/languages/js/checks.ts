@@ -10,6 +10,7 @@ import {
 	workspaceSymlinkDirs,
 	worktreeSymlinkDirs,
 } from '../../cli/generators/agent-rules.js'
+import { SEMANTIC_RELEASE_FILES } from '../../cli/generators/build.js'
 import {
 	WORKSPACE_FILE,
 	dependsOnEsbuild,
@@ -863,18 +864,6 @@ export async function checkSizeLimit(dir: string, pkg: Pkg | null): Promise<Chec
 export function usesChangesets(dir: string): Promise<boolean> {
 	return fs.pathExists(path.join(dir, '.changeset', 'config.json'))
 }
-
-const SEMANTIC_RELEASE_FILES = [
-	'.releaserc',
-	'.releaserc.json',
-	'.releaserc.yaml',
-	'.releaserc.yml',
-	'.releaserc.js',
-	'.releaserc.cjs',
-	'release.config.js',
-	'release.config.cjs',
-	'release.config.mjs',
-]
 
 export async function checkSemanticRelease(dir: string, pkg: Pkg | null): Promise<CheckResult> {
 	const isPrivate = pkg?.private === true
