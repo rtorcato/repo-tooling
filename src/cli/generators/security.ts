@@ -44,8 +44,9 @@ export function dependabotConfig(ecosystem: string | null): string {
       # The tier that can auto-merge on green. "development" is Dependabot's
       # classification, not a safety property: a package listed in both
       # devDependencies and peerDependencies lands here, and peer deps are part
-      # of a published package's contract (#458). The auto-merge workflow
-      # re-checks every name against the manifests rather than trusting this.
+      # of a published package's contract (rtorcato/repo-tooling#458). The
+      # auto-merge workflow re-checks every name against the manifests rather than
+      # trusting this.
       dev-minor:
         dependency-type: development
         update-types:

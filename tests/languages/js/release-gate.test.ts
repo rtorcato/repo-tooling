@@ -36,8 +36,14 @@ describe('generated release workflow (#690, #740, #753)', () => {
 		expect(inFlight).toContain('      actions: read\n')
 		expect(inFlight).toContain('actions/workflows/release.yml/runs?status=in_progress')
 		expect(workflowJobs(yml).get('release')).toContain(
-			"    needs: in-flight\n    # Supersede a run still waiting for approval, never one publishing (#753, #790).\n    concurrency:\n      group: release\n      cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}\n"
+			"    needs: in-flight\n    # Supersede a run still waiting for approval, never one publishing (rtorcato/repo-tooling#753, rtorcato/repo-tooling#790).\n    concurrency:\n      group: release\n      cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}\n"
 		)
+	})
+
+	it('renders no bare #NNN refs, which link to the wrong repo in a consumer (#880)', () => {
+		const bare = /(^|[^\w/])#\d+/m
+		expect(render()).not.toMatch(bare)
+		expect(renderGitHubWorkflow(githubJobs(lib()))).not.toMatch(bare)
 	})
 
 	it('releases the dispatched branch tip', () => {
@@ -118,6 +124,13 @@ describe('doctor on the release layout (#753)', () => {
 		const r = await setup({ 'ci.yml': preset, 'release.yml': pre790 })
 		expect(r.status).toBe('drift')
 		expect(r.detail).toContain('can cancel one already publishing')
+	})
+
+	it('passes a repo still carrying the old bare #NNN comments', async () => {
+		// Files generated before the rtorcato/repo-tooling#NNN fix: comment text only.
+		const bare = (yml: string) => yml.replace(/rtorcato\/repo-tooling#/g, '#')
+		const r = await setup({ 'ci.yml': bare(preset), 'release.yml': bare(presetRelease) })
+		expect(r.status).toBe('ok')
 	})
 })
 

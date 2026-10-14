@@ -49,8 +49,8 @@ export interface CiJob {
  */
 export const RELEASE_WORKFLOW_HEADER = `name: 🚀 Release
 
-# On demand only, never per merge (#740): a dispatch (hotfix, ad hoc) or a
-# closed milestone ("ship this batch").
+# On demand only, never per merge (rtorcato/repo-tooling#740): a dispatch
+# (hotfix, ad hoc) or a closed milestone ("ship this batch").
 on:
   workflow_dispatch:
   milestone:
@@ -58,8 +58,9 @@ on:
 
 jobs:
   # Is an approved release already publishing? Then this request must queue
-  # behind it, not cancel it mid-publish (#790). One still waiting for approval
-  # has published nothing, so superseding that one is safe (#753).
+  # behind it, not cancel it mid-publish (rtorcato/repo-tooling#790). One still
+  # waiting for approval has published nothing, so superseding that one is safe
+  # (rtorcato/repo-tooling#753).
   in-flight:
     runs-on: ubuntu-latest
     permissions:
@@ -92,7 +93,7 @@ jobs:
  */
 export const RELEASE_JOB_GATE = [
 	'needs: in-flight',
-	'# Supersede a run still waiting for approval, never one publishing (#753, #790).',
+	'# Supersede a run still waiting for approval, never one publishing (rtorcato/repo-tooling#753, rtorcato/repo-tooling#790).',
 	'concurrency:',
 	'  group: release',
 	"  cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}",
@@ -118,8 +119,8 @@ on:
 
 concurrency:
   group: \${{ github.workflow }}-\${{ github.ref }}
-  # The release lives in its own workflow (#753), so a newer push can only
-  # supersede CI here, never a publish.
+  # The release lives in its own workflow (rtorcato/repo-tooling#753), so a
+  # newer push can only supersede CI here, never a publish.
   cancel-in-progress: true
 
 jobs:

@@ -356,6 +356,19 @@ describe('the auto-merge hand-off to a human', () => {
 	})
 })
 
+// A bare #NNN in a consumer's file links to that repo's own issue (#880).
+describe('rendered comments carry no bare issue refs', () => {
+	const bare = /(^|[^\w/])#\d+/m
+
+	it('auto-merge workflow', () => {
+		expect(DEPENDABOT_AUTOMERGE_WORKFLOW).not.toMatch(bare)
+	})
+
+	it('dependabot config', () => {
+		expect(DEPENDABOT_CONFIG).not.toMatch(bare)
+	})
+})
+
 describe('generateCodeQLWorkflow', () => {
 	it('writes .github/workflows/codeql.yml referencing codeql-action', async () => {
 		const dir = newTmpDir()
