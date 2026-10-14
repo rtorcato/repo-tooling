@@ -34,7 +34,7 @@ import {
 } from '../../cli/generators/misc.js'
 import { hasBin, hasCommitlint, nodeFloorOf, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
-import { usesPnpm } from './checks.js'
+import { presetExtendedBy, usesPnpm } from './checks.js'
 import {
 	SIZE_LIMIT_PRESET,
 	SIZE_LIMIT_SCRIPTS,
@@ -374,7 +374,26 @@ export const FIXERS: Fixer[] = [
 			// bunfig.toml is the signal, and without it this would strip `types: ['bun']`
 			// off a Bun repo by dropping it back onto the base preset.
 			if (await fs.pathExists(path.join(targetDir, 'bunfig.toml'))) config.bun = true
-			await generateTSConfig(config, targetDir)
+			// A repo that builds from a preset-based tsconfig.build.json already has the
+			// overrides its code needs (module, types, relaxed index access). A bare
+			// preset tsconfig.json dropped all of them, so the editor and `tsc --noEmit`
+			// reported 119 errors on code that builds (#872). Layer on it instead;
+			// naming the preset too keeps doctor's matcher, which reads this file alone.
+			const tsconfigPath = path.join(targetDir, 'tsconfig.json')
+			const buildPath = path.join(targetDir, 'tsconfig.build.json')
+			const preset =
+				!(await fs.pathExists(tsconfigPath)) && (await fs.pathExists(buildPath))
+					? presetExtendedBy(await fs.readFile(buildPath, 'utf-8'))
+					: null
+			if (preset) {
+				await fs.writeJson(
+					tsconfigPath,
+					{ extends: [preset, './tsconfig.build.json'] },
+					{ spaces: 2 }
+				)
+			} else {
+				await generateTSConfig(config, targetDir)
+			}
 			const filesWritten = ['tsconfig.json']
 			// Without `typecheck` the generated CI drops its typecheck job entirely
 			// (#377). Shared with non-JS paths, so this is a no-op when there's no
@@ -527,7 +546,7 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'semantic-release',
 		description:
-			'Scaffold release.config.mjs + install preset plugins (skipped on private packages)',
+			"Scaffold release.config.mjs (replacing any config that would shadow it) + install the preset's dependencies (skipped on private packages)",
 		appliesTo: ['semantic-release'],
 		outputs: ['release.config.mjs', 'package.json'],
 		canFixDrift: true,
@@ -536,8 +555,24 @@ export const FIXERS: Fixer[] = [
 				console.error(chalk.gray('   skipping — package is private'))
 				return { filesWritten: [] }
 			}
-			const filesWritten = await generateSemanticReleaseConfig(targetDir)
-			return { filesWritten }
+			const { written, replaced } = await generateSemanticReleaseConfig(targetDir, {
+				replaceShadowing: true,
+			})
+			if (replaced.length > 0) {
+				// The preset is not a neutral swap: refactor/revert become patch
+				// releases and it adds prerelease branches (#875). Say so.
+				console.error(
+					chalk.yellow(
+						`   replaced ${replaced.join(', ')} with release.config.mjs — the preset's release rules apply now (refactor/revert cut patches; next/beta/alpha/dev branches release); review before merging`
+					)
+				)
+			}
+			if (written.includes('package.json')) {
+				console.error(
+					chalk.dim('   reminder: run `pnpm install` to install the release dependencies')
+				)
+			}
+			return { filesWritten: written }
 		},
 	},
 	{
@@ -585,7 +620,19 @@ export const FIXERS: Fixer[] = [
 		appliesTo: ['GitHub Actions', NPM_OIDC_CHECK],
 		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'package.json (packageManager field)'],
 		canFixDrift: true,
-		async run({ targetDir, pkg, result }) {
+		async run({ targetDir, pkg, result, root = targetDir }) {
+			// The workflows live at the repo root, but this would render them from one
+			// package's scripts and overwrite the root's ci.yml with it — or, before
+			// #862, write a `.github/` into the package that GitHub never runs.
+			if (path.resolve(root) !== path.resolve(targetDir)) {
+				// Relative to where the user typed `-d`, so the hint can be pasted as-is.
+				const rel = path.relative(process.cwd(), root) || '.'
+				throw new FixerAbort(
+					'github-actions-package-dir',
+					`refusing to write workflows for a package — GitHub runs them from the repo root (${rel}), and rendering them from this package's scripts would replace the root ci.yml`,
+					`run \`fix github-actions -d ${rel}\` from the repo root instead`
+				)
+			}
 			// Nothing but release.yml's concurrency drifts: add the gate in place and
 			// leave ci.yml alone (#871). Regenerating dropped both files' own jobs.
 			if (result.check === 'GitHub Actions' && onlyReleaseConcurrencyDrift(result.detail)) {

@@ -18,6 +18,7 @@ import { declinedInLock, lockfilePatchForTarget } from './fix-targets.js'
 import { ALL_FIXERS, fixersForLanguage } from './fixers-by-language.js'
 import { computeFileList, PRESET_NAMES } from './setup-presets.js'
 import { type Fixer, FixerAbort, type FixRiskLevel, type Pkg } from '../../base/fixers.js'
+import { gitRoot } from '../../base/github-settings.js'
 import { FIXERS, readPackageJson } from '../../languages/js/fixers.js'
 import { detectAuditLanguage, isFreshDir } from '../utils/detect-language.js'
 
@@ -179,8 +180,13 @@ async function previewFixer(
 		tmpRoot = path.dirname(resolvedTarget)
 	}
 	const tmpDir = await fs.mkdtemp(path.join(tmpRoot, 'repo-tooling-fix-preview-'))
+	// Under `-d packages/x` the copy keeps its place below a stand-in root, so a
+	// fixer that writes at the repo root (#862) previews there too, at the same
+	// relative path the real run reports.
+	const realRoot = (await gitRoot(resolvedTarget)) ?? resolvedTarget
+	const tmpPkg = path.join(tmpDir, path.relative(realRoot, resolvedTarget))
 	try {
-		await fs.copy(targetDir, tmpDir, {
+		await fs.copy(targetDir, tmpPkg, {
 			filter: (src) => {
 				const rel = path.relative(targetDir, src)
 				if (!rel) return true
@@ -194,11 +200,13 @@ async function previewFixer(
 		let written: string[]
 		try {
 			;({ filesWritten: written } = await fixer.run({
-				targetDir: tmpDir,
+				targetDir: tmpPkg,
 				pkg,
 				result,
 				lock,
 				assumeYes: true,
+				// Never the real repo root: the copy has no .git, but may sit inside one.
+				root: tmpDir,
 			}))
 		} catch (err) {
 			// A fixer that refuses has nothing to preview. Swallow it here rather than
@@ -214,14 +222,15 @@ async function previewFixer(
 		// shadow run reported writing.
 		const candidates = [
 			...fixer.outputs,
-			...written.map((f) => (path.isAbsolute(f) ? path.relative(tmpDir, f) : f)),
+			...written.map((f) => (path.isAbsolute(f) ? path.relative(tmpPkg, f) : f)),
 		]
 		for (const output of candidates) {
 			const rel = outputToRelativePath(output)
-			if (seen.has(rel) || rel.startsWith('..')) continue
+			const tmpPath = path.join(tmpPkg, rel)
+			// `..` is fine up to the stand-in root, never past it.
+			if (seen.has(rel) || path.relative(tmpDir, tmpPath).startsWith('..')) continue
 			seen.add(rel)
 
-			const tmpPath = path.join(tmpDir, rel)
 			const realPath = path.join(targetDir, rel)
 			const stat = await fs.stat(tmpPath).catch(() => null)
 			if (!stat?.isFile()) continue
@@ -321,7 +330,8 @@ async function applyFixer(
 		}
 		return { filesWritten: files, dryRun: true }
 	}
-	const { filesWritten } = await fixer.run({ targetDir, pkg, result, lock, ...opts })
+	const root = (await gitRoot(targetDir)) ?? targetDir
+	const { filesWritten } = await fixer.run({ targetDir, pkg, result, lock, root, ...opts })
 	if (!silent && filesWritten.length > 0) {
 		console.log(chalk.green(`  ✅ wrote ${filesWritten.join(', ')}`))
 	}

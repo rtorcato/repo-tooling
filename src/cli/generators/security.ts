@@ -232,8 +232,8 @@ jobs:
       # in both devDependencies and peerDependencies is classified "development"
       # and lands in dev-minor, while peerDependencies ship to consumers of a
       # published package (rtorcato/repo-tooling#458). So resolve every bumped
-      # name against the tracked manifests and stand down if any of them reaches a
-      # consumer.
+      # name against the tracked manifests and stand down if any of them reaches
+      # a consumer.
       #
       # npm-specific by design. A repo with no package.json (Swift, Python) finds
       # nothing here and falls back to the group + semver gate below.
@@ -292,8 +292,8 @@ jobs:
 
       # Everything the step above declines needs a human, and a notice in the
       # Actions log is not one (rtorcato/repo-tooling#694). Assign the repo owner
-      # and say why in a single comment, edited in place on every later run rather
-      # than repeated.
+      # and say why in a single comment, edited in place on every later run
+      # rather than repeated.
       - name: Hand the PR to a human
         if: steps.merge.outcome == 'skipped'
         env:
@@ -348,6 +348,44 @@ export async function dependabotAutomergeWorkflowFor(targetDir: string): Promise
 	return renderAutomergeWorkflow('label', setting.label?.trim() || DEFAULT_DEPENDABOT_LABEL)
 }
 
+const USES = /uses:\s*([\w.-]+\/[\w./-]+)@(\S+)([ \t]*#[^\n]*)?/g
+
+/** The major a ref names: the tag itself, or for a SHA the `# vX.Y.Z` comment after it. */
+function refMajor(ref: string, comment = ''): number | null {
+	const version = /^[0-9a-f]{40}$/.test(ref) ? comment : ref
+	const major = /^\W*v?(\d+)/.exec(version.replace(/^[ \t]*#/, ''))?.[1]
+	return major === undefined ? null : Number(major)
+}
+
+/**
+ * Carry the existing workflow's action refs into a regenerated one when they are
+ * at or ahead of what the preset emits (#873). Regenerating turned
+ * `dependabot/fetch-metadata@<sha> # v3.1.0` into `@v3`: an immutable pin became a
+ * mutable tag, a security downgrade nothing reported. A SHA with no readable
+ * version is kept too, since swapping it for a tag is the downgrade either way.
+ */
+export function keepActionPins(rendered: string, existing: string): string {
+	const prev = new Map<string, RegExpMatchArray>()
+	for (const m of existing.matchAll(USES)) if (m[1]) prev.set(m[1], m)
+	return rendered.replace(USES, (line, action: string, ref: string) => {
+		const old = prev.get(action)
+		if (!old?.[2]) return line
+		const have = refMajor(old[2], old[3])
+		const want = refMajor(ref)
+		const isSha = /^[0-9a-f]{40}$/.test(old[2])
+		if ((have === null && isSha) || (have !== null && want !== null && have >= want)) return old[0]
+		return line
+	})
+}
+
+/** The automerge workflow for this repo, keeping any pins the existing one holds. */
+export async function renderAutomergeWorkflowOver(targetDir: string): Promise<string> {
+	const rendered = await dependabotAutomergeWorkflowFor(targetDir)
+	const file = path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml')
+	if (!(await fs.pathExists(file))) return rendered
+	return keepActionPins(rendered, await fs.readFile(file, 'utf-8'))
+}
+
 /** Relative paths this generator owns, in a stable order for \`filesWritten\`. */
 export const DEPENDABOT_FILES = [
 	'.github/dependabot.yml',
@@ -379,9 +417,10 @@ export async function generateDependabotConfig(
 ) {
 	await fs.ensureDir(path.join(targetDir, '.github', 'workflows'))
 	await fs.writeFile(path.join(targetDir, '.github', 'dependabot.yml'), dependabotConfig(ecosystem))
+	const workflow = await renderAutomergeWorkflowOver(targetDir)
 	await fs.writeFile(
 		path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml'),
-		await dependabotAutomergeWorkflowFor(targetDir)
+		workflow
 	)
 	return [...DEPENDABOT_FILES]
 }

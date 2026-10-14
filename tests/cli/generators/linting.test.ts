@@ -9,6 +9,7 @@ import {
 	generateBiomeConfig,
 	generateLintingConfigs,
 } from '../../../src/cli/generators/linting.js'
+import { parseJsonc } from '../../../src/cli/utils/jsonc.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -117,9 +118,83 @@ describe('generateLintingConfigs', () => {
 
 		expect(written).toBe('biome.jsonc')
 		expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(false)
-		const biome = await fs.readJson(join(dir, 'biome.jsonc'))
-		expect(biome.files).toEqual({ includes: ['src/**', '!dist'] })
-		expect(biome.extends).toEqual(['@rtorcato/repo-tooling/biome'])
+		const biome = parseJsonc(await fs.readFile(join(dir, 'biome.jsonc'), 'utf-8'))
+		expect(biome?.files).toEqual({ includes: ['src/**', '!dist'] })
+		expect(biome?.extends).toEqual(['@rtorcato/repo-tooling/biome'])
+	})
+
+	// #881: writing the merged biome.jsonc back through writeJson dropped every
+	// comment in it. It is now edited in place.
+	it('keeps line and block comments in a biome.jsonc it merges into', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(
+			join(dir, 'biome.jsonc'),
+			[
+				'{',
+				'\t// why the scope is narrow',
+				'\t"files": { "includes": ["src/**"] },',
+				'\t/* kept off until #42 lands */',
+				'\t"linter": { "enabled": false, "rules": { "style": { "noNonNullAssertion": "off" } } },',
+				'\t"extends": "./shared.json", // team base',
+				'}',
+				'',
+			].join('\n')
+		)
+
+		expect(await generateBiomeConfig(dir)).toBe('biome.jsonc')
+
+		const text = await fs.readFile(join(dir, 'biome.jsonc'), 'utf-8')
+		expect(text).toContain('// why the scope is narrow')
+		expect(text).toContain('/* kept off until #42 lands */')
+		expect(text).toContain('// team base')
+		const biome = parseJsonc(text)
+		expect(biome).toEqual({
+			$schema: 'https://biomejs.dev/schemas/latest/schema.json',
+			extends: ['@rtorcato/repo-tooling/biome', './shared.json'],
+			files: { includes: ['src/**'] },
+			linter: { rules: { style: { noNonNullAssertion: 'off' } } },
+		})
+		expect(text.indexOf('"$schema"')).toBeLessThan(text.indexOf('"files"'))
+	})
+
+	it('edits an extends array and a removed linter without reflowing their neighbours', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(
+			join(dir, 'biome.jsonc'),
+			[
+				'{',
+				'\t"extends": [',
+				'\t\t// shared team rules',
+				'\t\t"./shared.json"',
+				'\t],',
+				'\t"files": { "includes": ["src/**"] },',
+				'\t"linter": { "enabled": false }',
+				'}',
+				'',
+			].join('\n')
+		)
+
+		await generateBiomeConfig(dir)
+
+		const text = await fs.readFile(join(dir, 'biome.jsonc'), 'utf-8')
+		expect(text).toContain('// shared team rules')
+		expect(text).toContain('\t"files": { "includes": ["src/**"] }\n')
+		expect(parseJsonc(text)).toEqual({
+			$schema: 'https://biomejs.dev/schemas/latest/schema.json',
+			extends: ['@rtorcato/repo-tooling/biome', './shared.json'],
+			files: { includes: ['src/**'] },
+		})
+	})
+
+	it('leaves an already-current biome.jsonc byte-for-byte unchanged', async () => {
+		const dir = newTmpDir()
+		const original =
+			'{\n  "$schema": "https://biomejs.dev/schemas/latest/schema.json",\n  // ours\n  "extends": ["@rtorcato/repo-tooling/biome"],\n}\n'
+		await fs.writeFile(join(dir, 'biome.jsonc'), original)
+
+		await generateBiomeConfig(dir)
+
+		expect(await fs.readFile(join(dir, 'biome.jsonc'), 'utf-8')).toBe(original)
 	})
 
 	// The scaffolded config must carry the `extends` that doctor's Biome check
