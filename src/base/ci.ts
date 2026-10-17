@@ -137,8 +137,10 @@ const CHECK_SKIP_JOB = `  check-skip:
     steps:
       - name: Check for skip CI
         id: skip-check
+        env:
+          COMMIT_MSG: \${{ github.event.head_commit.message }}
         run: |
-          if [[ "\${{ github.event.head_commit.message }}" =~ \\[(ci skip|skip ci)\\] ]]; then
+          if [[ "$COMMIT_MSG" =~ \\[(ci skip|skip ci)\\] ]]; then
             echo "should-skip=true" >> $GITHUB_OUTPUT
           else
             echo "should-skip=false" >> $GITHUB_OUTPUT
