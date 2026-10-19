@@ -1027,6 +1027,40 @@ describe('applyGithubSettings', () => {
 		).toBe(false)
 	})
 
+	// #865: GitHub reports a matrix job only as its legs, and a named job only by
+	// its name, so neither job id may satisfy the "some job reports it" guard.
+	it.each([
+		['a matrix job', 'strategy:\n      matrix:\n        node: [22, 24]\n'],
+		['a flow-style matrix', 'strategy: { matrix: { node: [22, 24] } }\n'],
+		['a templated name', 'name: test (node ${{ inputs.node }})\n'],
+		['a static name', 'name: Unit tests\n'],
+	])('will not require `test` when its only job is %s (#865)', async (_, extra) => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const dir = gitRepo()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/ci.yml'),
+			`jobs:\n  test:\n    runs-on: ubuntu-latest\n    ${extra}`
+		)
+		const { exec, calls } = recordingGh({ protection: fail('gh: Not Found (HTTP 404)') })
+		const labels = await applyGithubSettings(dir, exec, { requiredChecks: ['test'] })
+		expect(labels).not.toContain('branch protection on main')
+		expect(
+			calls.some((c) => c.args.includes('--input') && c.args[3]?.endsWith('/protection'))
+		).toBe(false)
+	})
+
+	it('still requires a plain job by its id (#865)', async () => {
+		const dir = gitRepo()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/ci.yml'),
+			'jobs:\n  test:\n    runs-on: ubuntu-latest\n'
+		)
+		const { exec } = recordingGh({ protection: fail('gh: Not Found (HTTP 404)') })
+		expect(await applyGithubSettings(dir, exec, { requiredChecks: ['test'] })).toContain(
+			'branch protection on main'
+		)
+	})
+
 	it('is a no-op on a compliant repo', async () => {
 		const { exec } = recordingGh()
 		expect(await applyGithubSettings(gitRepo(), exec)).toEqual([])

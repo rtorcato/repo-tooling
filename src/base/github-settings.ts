@@ -372,12 +372,14 @@ export async function requiredContextDeltas(
 }
 
 /**
- * Every check name the repo's workflows can report: each job's id, and its
- * `name:` when that is static. Null when there are no workflows to read, so a
- * repo whose CI we can't see is never told its checks are orphaned.
+ * Every bare check name the repo's workflows can report. A job reports its
+ * `name:` when it has one and its id otherwise; a matrix job reports only its
+ * legs (`test (node 22)`), never the bare id or name (#865). Null when there are
+ * no workflows to read, so a repo whose CI we can't see is never told its checks
+ * are orphaned.
  *
- * ponytail: a templated `name:` (`test (\${{ matrix.node }})`) is skipped, not
- * expanded; those are matrix legs, which `requiredContextDeltas` flags anyway.
+ * ponytail: legs and templated names (`test (\${{ matrix.node }})`) are skipped,
+ * not expanded; those are matrix legs, which `requiredContextDeltas` flags anyway.
  */
 async function workflowCheckNames(dir: string): Promise<Set<string> | null> {
 	const workflowsDir = path.join(dir, '.github', 'workflows')
@@ -392,16 +394,31 @@ async function workflowCheckNames(dir: string): Promise<Set<string> | null> {
 	for (const file of files) {
 		const yaml = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
 		for (const [id, body] of workflowJobs(yaml)) {
-			names.add(id)
 			const jobIndent = body.split('\n').find((l) => l.trim() !== '' && !l.trim().startsWith('#'))
 			const indent = jobIndent ? jobIndent.length - jobIndent.trimStart().length : 0
+			if (hasMatrix(body, indent)) continue
 			const name = new RegExp(`^ {${indent}}name:[ \\t]*(.+?)[ \\t]*(?:[ \\t]#.*)?$`, 'm').exec(
 				body
 			)?.[1]
-			if (name && !name.includes('${{')) names.add(name.replace(/^(['"])(.*)\1$/, '$2'))
+			if (!name) names.add(id)
+			else if (!name.includes('${{')) names.add(name.replace(/^(['"])(.*)\1$/, '$2'))
 		}
 	}
 	return names
+}
+
+/** Whether a job body (its keys at `indent`) sets `strategy.matrix`. */
+function hasMatrix(body: string, indent: number): boolean {
+	const lines = body.split('\n')
+	const at = lines.findIndex((l) => new RegExp(`^ {${indent}}strategy:`).test(l))
+	if (at === -1) return false
+	if (/\bmatrix\b/.test(lines[at] ?? '')) return true // flow style: `strategy: { matrix: ... }`
+	for (const l of lines.slice(at + 1)) {
+		if (l.trim() === '' || l.trim().startsWith('#')) continue
+		if (indentOf(l) <= indent) return false
+		if (/^\s+matrix:/.test(l)) return true
+	}
+	return false
 }
 
 /**

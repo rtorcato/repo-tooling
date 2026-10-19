@@ -82,7 +82,7 @@ export type DependabotOnPr = 'automerge' | 'label'
  * for the reviewers.
  */
 export interface GithubRules {
-	/** Required status contexts on the default branch. Standard: lint, typecheck, build, test. */
+	/** Required status contexts on the default branch, matched exactly. Standard: ci. */
 	requiredChecks?: string[]
 	/** Require branches to be up to date before merging. Standard: false. */
 	strict?: boolean
@@ -313,7 +313,7 @@ export function lockfileSchema() {
 								type: 'array',
 								items: { type: 'string', minLength: 1 },
 								description:
-									'Required status checks on the default branch, exhaustive: a live check not listed here is drift too. `test` also covers matrix legs like `test (node 22)`. Standard: lint, typecheck, build, test (a floor, extras allowed).',
+									'Required status checks on the default branch, exhaustive: a live check not listed here is drift too. Names match exactly, so `test` does not cover matrix legs like `test (node 22)`: require the `ci` gate job instead. Standard: ci (a floor, extras allowed).',
 							},
 							strict: {
 								type: 'boolean',

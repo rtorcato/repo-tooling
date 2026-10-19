@@ -209,7 +209,8 @@ standard". A declared field differs from the standard in three ways:
 - **Drift names the field.** For example, `auto-merge enabled (rules.github.autoMerge: false)`.
 - **`requiredChecks` is exhaustive.** The standard list is a floor and extra live checks pass.
   A declared list is the whole set, so a required check added in the dashboard is drift too.
-  A bare name still covers matrix legs: `test` matches `test (node 22)`.
+  Names match exactly, so `test` does not cover a matrix leg like `test (node 22)`. Require the
+  `ci` gate job instead of the legs.
 - **`false` is applied as off.** `fix github-settings` turns a feature off when the rules say
   `false`, and does not only turn missing ones on.
 
