@@ -8,6 +8,7 @@ import { SEMANTIC_RELEASE_DEPS } from './build.js'
 import { COMMITLINT_DEPS } from './git.js'
 import { PNPM_FALLBACK_VERSION, detectPnpmVersion } from './misc.js'
 import { getToolRange } from '../utils/version.js'
+import { VITE_PLUS_NODE } from './vite-plus.js'
 
 export async function generatePackageJson(config: ProjectConfig, targetDir: string) {
 	const packageJsonPath = path.join(targetDir, 'package.json')
@@ -36,6 +37,8 @@ export async function generatePackageJson(config: ProjectConfig, targetDir: stri
 			!config.semanticRelease &&
 			!config.changesets &&
 			!config.releasePlease && { private: true }),
+		// Vite+ refuses a Node outside its own range, so the repo declares it (#897).
+		...(config.vitePlus && { engines: { node: VITE_PLUS_NODE } }),
 		...existingPackageJson,
 		scripts: resolveScripts(config, generatedScripts, existingScripts),
 		dependencies: {
@@ -141,6 +144,8 @@ function getRuntimeDependencies(config: ProjectConfig): Record<string, string> {
 function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record<string, string> {
 	const scripts: Record<string, string> = {}
 
+	if (config.vitePlus) return getVitePlusScripts(config, opts)
+
 	// TypeScript scripts
 	if (config.typescript.enabled) {
 		scripts['typecheck'] = 'tsc --noEmit'
@@ -243,6 +248,45 @@ function getScripts(config: ProjectConfig, opts: GetScriptsOptions = {}): Record
 }
 
 /**
+ * The scripts of a Vite+ repo (#897). `vp check` already type-checks (the
+ * `lint.options.typeCheck` key of vite.config.ts), so there is no `typecheck`
+ * script, and `vp test` takes the place of the vitest scripts. A library builds
+ * with `vp pack` (tsdown); `vp build` is the app builder and fails on a library
+ * for want of an index.html.
+ */
+function getVitePlusScripts(
+	config: ProjectConfig,
+	opts: GetScriptsOptions
+): Record<string, string> {
+	const scripts: Record<string, string> = {
+		check: 'vp check',
+		'check:fix': 'vp check --fix',
+		test: 'vp test',
+	}
+	if (config.projectType === 'library') {
+		scripts['build'] = 'vp pack'
+		scripts['build:watch'] = 'vp pack --watch'
+	} else {
+		scripts['build'] = 'vp build'
+		scripts['dev'] = 'vp dev'
+		scripts['preview'] = 'vp preview'
+	}
+	if (config.commitLint) scripts['commit'] = 'cz'
+	scripts['knip'] = 'knip'
+	if (config.publint) scripts['publint'] = 'publint --strict'
+	if (config.projectType === 'library') {
+		scripts['attw'] = 'attw --pack'
+		Object.assign(scripts, SIZE_LIMIT_SCRIPTS)
+	}
+	// `vp config` installs the hooks (.vite-hooks/), as `husky` does for .husky/.
+	if (config.gitHooks) scripts['prepare'] = 'vp config'
+	if (config.semanticRelease) scripts['release'] = 'semantic-release'
+	const verify = composeVerifyScript(config, opts)
+	if (verify) scripts['verify'] = verify
+	return scripts
+}
+
+/**
  * Add any of `scripts` the package.json doesn't already define, leaving every
  * existing value alone. Returns true when something was written.
  *
@@ -296,6 +340,14 @@ export function composeVerifyScript(
 	opts: { includeTreeshake?: boolean } = {}
 ): string | null {
 	const cmds: string[] = []
+	if (config.vitePlus) {
+		// `vp test run` is a single pass; bare `vp test` watches in a terminal.
+		cmds.push('pnpm check', 'pnpm exec vp test run')
+		if (config.projectType === 'library' || config.publint) cmds.push('pnpm build')
+		if (config.publint) cmds.push('pnpm publint')
+		if (config.projectType === 'library') cmds.push('pnpm attw')
+		return cmds.join(' && ')
+	}
 	if (config.typescript.enabled) cmds.push('pnpm typecheck')
 	if (config.linting.tool === 'biome' || config.linting.tool === 'both') {
 		cmds.push('pnpm check')
@@ -337,6 +389,13 @@ export function composeVerifyScriptFromPkg(
 		...((pkg.devDependencies as Record<string, string> | undefined) ?? {}),
 	}
 	const cmds: string[] = []
+	// Vite+ type-checks inside `vp check`, and `vp test run` is its single-pass test (#897).
+	if (deps['vite-plus']) {
+		if (scripts.check) cmds.push('pnpm check')
+		cmds.push('pnpm exec vp test run')
+		if (scripts.build && (deps.publint || scripts.publint)) cmds.push('pnpm build', 'pnpm publint')
+		return cmds.length >= 2 ? cmds.join(' && ') : null
+	}
 	if (scripts.typecheck || deps.typescript) cmds.push('pnpm typecheck')
 	if (scripts.check) cmds.push('pnpm check')
 	else if (scripts.lint && !scripts.check) cmds.push('pnpm lint')
@@ -357,6 +416,11 @@ export function composeVerifyScriptFromPkg(
 function getDependencies(config: ProjectConfig): Record<string, string> {
 	// knip is part of the universal baseline (knip.json + `knip` script).
 	const deps: Record<string, string> = { knip: '^6.0.0' }
+
+	// Vite+ brings Oxlint, Oxfmt, Vitest, tsdown and Vite with it, and its
+	// version lives in the pnpm-workspace.yaml catalog (#897). TypeScript stays
+	// ours so the tsconfig preset and the Vite+ type check agree on a version.
+	if (config.vitePlus) return getVitePlusDependencies(config)
 
 	// TypeScript
 	if (config.typescript.enabled) {
@@ -479,6 +543,29 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 		Object.assign(deps, SEMANTIC_RELEASE_DEPS)
 	}
 
+	return raiseToPeerFloors(deps)
+}
+
+function getVitePlusDependencies(config: ProjectConfig): Record<string, string> {
+	const deps: Record<string, string> = {
+		knip: '^6.0.0',
+		'vite-plus': 'catalog:',
+		typescript: '^5.9.3',
+		'@types/node': '^26.0.1',
+	}
+	if (config.publint) deps['publint'] = '^0.3.0'
+	// Hooks come from `vp config` and `vp staged`, so no husky or lint-staged.
+	if (config.projectType === 'library') {
+		deps['@arethetypeswrong/cli'] = '^0.18.2'
+		deps['size-limit'] = SIZE_LIMIT_VERSION
+		deps[SIZE_LIMIT_PRESET] = SIZE_LIMIT_VERSION
+	}
+	if (config.commitLint) {
+		Object.assign(deps, COMMITLINT_DEPS)
+		deps['commitizen'] = '^4.3.1'
+		deps['cz-conventional-changelog'] = '^3.3.0'
+	}
+	if (config.semanticRelease) Object.assign(deps, SEMANTIC_RELEASE_DEPS)
 	return raiseToPeerFloors(deps)
 }
 

@@ -48,10 +48,26 @@ const NEXT: Record<string, string> = {
  */
 export function starterFiles(config: ProjectConfig): Record<string, string> {
 	if (!config.typescript.enabled || config.testing.framework !== 'vitest') return {}
+	if (config.vitePlus) return vitePlusStarter(config)
 	if (config.projectType === 'nextjs-app') return NEXT
 	if (config.projectType === 'react-app') return REACT
 	if (config.bundler === 'vite') return WEB
 	return NODE
+}
+
+/**
+ * Vite+ bundles Vitest and re-exports it as `vite-plus/test`, which is the
+ * import its `prefer-vite-plus-imports` lint rule wants (#897). A library
+ * needs no index.html; an app does, for `vp build`.
+ */
+function vitePlusStarter(config: ProjectConfig): Record<string, string> {
+	const files = config.projectType === 'library' ? NODE : WEB
+	return Object.fromEntries(
+		Object.entries(files).map(([rel, body]) => [
+			rel,
+			body.replace("from 'vitest'", "from 'vite-plus/test'"),
+		])
+	)
 }
 
 /** True when the directory already holds source, so no starter is written. */

@@ -23,6 +23,7 @@ import { generateTestingConfigs } from './testing.js'
 import { generateTreeshakeCheck, inferSubpathsFromExports } from './treeshake.js'
 import { generateTSConfig } from './tsconfig.js'
 import { generateTailwind } from './tailwind.js'
+import { ensureVitePlusWorkspace } from './vite-plus.js'
 import { generateTurborepo } from './turborepo.js'
 import { generateNx } from './nx.js'
 import { generateBun } from './bun.js'
@@ -69,8 +70,9 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 		await generateLintingConfigs(config, targetDir)
 	}
 
-	// Generate testing configurations
-	if (config.testing.framework !== 'none') {
+	// Generate testing configurations. Under Vite+ the Vitest config is the
+	// `test` key of vite.config.ts, so there is no vitest.config.ts to write.
+	if (config.testing.framework !== 'none' && !config.vitePlus) {
 		await generateTestingConfigs(config, targetDir)
 	}
 
@@ -110,6 +112,9 @@ export async function generateConfigs(config: ProjectConfig, targetDir: string) 
 			await generateKnipConfig(targetDir)
 		}
 	}
+
+	// The catalog that package.json's `catalog:` vite-plus spec resolves against.
+	if (config.vitePlus) await ensureVitePlusWorkspace(targetDir)
 
 	// Approve esbuild's build script for pnpm 11 via pnpm-workspace.yaml. Runs
 	// after the treeshake-check path so its richer workspace file (if written)

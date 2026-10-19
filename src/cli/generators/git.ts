@@ -2,6 +2,7 @@ import fs from 'fs-extra'
 import path from 'node:path'
 import { hookHasUncommented } from '../../base/checks.js'
 import type { ProjectConfig } from '../commands/setup.js'
+import { VITE_HOOKS_DIR } from './vite-plus.js'
 
 export const PRE_PUSH_HOOK_CONTENT = `echo "🔍 Running pre-push verify..."
 pnpm verify
@@ -15,7 +16,8 @@ echo "✅ Verify passed — pushing."
 
 export async function generateGitConfigs(config: ProjectConfig, targetDir: string) {
 	if (config.gitHooks) {
-		await generateHuskyConfig(config, targetDir)
+		if (config.vitePlus) await generateViteHooks(targetDir)
+		else await generateHuskyConfig(config, targetDir)
 	}
 
 	if (config.commitLint) {
@@ -71,6 +73,31 @@ export async function generateHuskyConfig(config: ProjectConfig, targetDir: stri
 	await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 })
 }
 
+/**
+ * The hooks `vp config` (the `prepare` script) wires git to (#897), in place of
+ * husky's. Committed like `.husky/`; `vp config` adds the untracked `_`
+ * dispatcher beside them. pre-commit runs the `staged` block of vite.config.ts
+ * rather than lint-staged. commit-msg belongs to generateCommitlintConfig.
+ */
+export async function generateViteHooks(targetDir: string) {
+	const dir = path.join(targetDir, VITE_HOOKS_DIR)
+	await fs.ensureDir(dir)
+	await ensureHookRuns(path.join(dir, 'pre-commit'), /\bvp\s+staged\b/, 'vp staged\n')
+
+	const pkgPath = path.join(targetDir, 'package.json')
+	if (await fs.pathExists(pkgPath)) {
+		const pkg = (await fs.readJson(pkgPath)) as { scripts?: Record<string, string> }
+		if (pkg.scripts?.verify) {
+			await ensureHookRuns(
+				path.join(dir, 'pre-push'),
+				/\bpnpm\s+verify\b/,
+				PRE_PUSH_HOOK_CONTENT,
+				'pnpm verify\n'
+			)
+		}
+	}
+}
+
 export async function generatePrePushHook(targetDir: string) {
 	const huskyDir = path.join(targetDir, '.husky')
 	await fs.ensureDir(huskyDir)
@@ -108,17 +135,23 @@ export const COMMITLINT_DEPS: Record<string, string> = {
 	'@commitlint/config-conventional': '^21.2.3',
 }
 
-/** True when husky owns this repo's hooks — the only case where .husky/commit-msg runs. */
-async function usesHusky(targetDir: string): Promise<boolean> {
-	if (await fs.pathExists(path.join(targetDir, '.husky'))) return true
+/**
+ * The committed hooks directory whose commit-msg hook actually runs: `.husky`
+ * when husky owns the repo's hooks, `.vite-hooks` when `vp config` does (#897),
+ * else null.
+ */
+async function hooksDirOf(targetDir: string): Promise<string | null> {
+	if (await fs.pathExists(path.join(targetDir, '.husky'))) return '.husky'
+	if (await fs.pathExists(path.join(targetDir, VITE_HOOKS_DIR))) return VITE_HOOKS_DIR
 	const pkgPath = path.join(targetDir, 'package.json')
-	if (!(await fs.pathExists(pkgPath))) return false
+	if (!(await fs.pathExists(pkgPath))) return null
 	const pkg = (await fs.readJson(pkgPath)) as Record<string, unknown>
 	const deps = {
 		...((pkg.dependencies as Record<string, string> | undefined) ?? {}),
 		...((pkg.devDependencies as Record<string, string> | undefined) ?? {}),
 	}
-	return 'husky' in deps
+	if ('husky' in deps) return '.husky'
+	return 'vite-plus' in deps ? VITE_HOOKS_DIR : null
 }
 
 /**
@@ -131,7 +164,7 @@ async function usesHusky(targetDir: string): Promise<boolean> {
  * every `git commit` rejected — discovered at the worst possible moment, and
  * looking like a broken repo rather than a missing opt-in.
  *
- * The hook is only written when husky owns the repo's hooks. The Swift path
+ * The hook is only written when husky or `vp config` owns the repo's hooks. The Swift path
  * uses `core.hooksPath` and deliberately wires no commit-msg hook, so a
  * `.husky/` file there would simply never run.
  *
@@ -144,15 +177,16 @@ export async function generateCommitlintConfig(targetDir: string): Promise<strin
 		`export { default } from '@rtorcato/repo-tooling/commitlint/config'\n`
 	)
 
-	if (await usesHusky(targetDir)) {
+	const hooksDir = await hooksDirOf(targetDir)
+	if (hooksDir) {
 		// husky v10 format — no v9 bootstrap. $1 is the commit-message file path
-		// git passes through.
-		const huskyDir = path.join(targetDir, '.husky')
-		await fs.ensureDir(huskyDir)
-		const commitMsgPath = path.join(huskyDir, 'commit-msg')
+		// git passes through. `vp config`'s dispatcher takes the same hook files.
+		const dir = path.join(targetDir, hooksDir)
+		await fs.ensureDir(dir)
+		const commitMsgPath = path.join(dir, 'commit-msg')
 		await fs.writeFile(commitMsgPath, 'npx --no -- commitlint --edit $1\n')
 		await fs.chmod(commitMsgPath, 0o755)
-		filesWritten.push('.husky/commit-msg')
+		filesWritten.push(`${hooksDir}/commit-msg`)
 	}
 
 	// @commitlint/cli is an *optional* peer of repo-tooling, so it never arrives

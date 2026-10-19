@@ -119,7 +119,8 @@ export function recommendedExtensions(config: ProjectConfig): string[] {
 	}
 	if (lint === 'eslint' || lint === 'both') ids.add('dbaeumer.vscode-eslint')
 	if (config.formatting.tool === 'prettier') ids.add('esbenp.prettier-vscode')
-	if (config.oxlint) ids.add('oxc.oxc-vscode')
+	// Vite+ runs Oxlint and Oxfmt under `vp check`, so the Oxc extension is the editor side (#897).
+	if (config.oxlint || config.vitePlus) ids.add('oxc.oxc-vscode')
 	if (config.testing.framework === 'vitest') ids.add('vitest.explorer')
 	if (config.testing.framework === 'playwright') ids.add('ms-playwright.playwright')
 	return [...ids]

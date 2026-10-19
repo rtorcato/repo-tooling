@@ -31,6 +31,10 @@ export async function generateTSConfig(config: ProjectConfig, targetDir: string)
 		tsconfig.compilerOptions.lib = ['ES2022', 'DOM', 'DOM.Iterable']
 	}
 
+	// The base preset lists `vitest` in `types`, which a Vite+ repo doesn't install:
+	// its tests import the runner from `vite-plus/test` instead (#897).
+	if (config.vitePlus) tsconfig.compilerOptions.types = ['node']
+
 	if (config.projectType === 'nextjs-app') {
 		tsconfig.include = ['next-env.d.ts', 'src', 'app', 'pages', 'components', 'reset.d.ts']
 		tsconfig.exclude.push('.next')

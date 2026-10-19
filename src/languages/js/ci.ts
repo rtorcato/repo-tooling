@@ -16,12 +16,16 @@ import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 /** CI runs the tests with coverage when Vitest is the test runner. */
 export function usesCoverage(config: ProjectConfig): boolean {
-	return config.testing.framework === 'vitest'
+	// Vite+ ships no coverage provider; `pnpm test` is its one test command (#897).
+	return config.testing.framework === 'vitest' && !config.vitePlus
 }
 
 /** The package.json script the lint job runs — `check` under Biome, else `lint`. */
 function lintScript(config: ProjectConfig): string {
-	return config.linting.tool === 'biome' || config.linting.tool === 'both' ? 'check' : 'lint'
+	// `vp check` is Vite+'s lint, format and type check in one (#897).
+	return config.vitePlus || config.linting.tool === 'biome' || config.linting.tool === 'both'
+		? 'check'
+		: 'lint'
 }
 
 function lintCommand(config: ProjectConfig): string {
@@ -220,7 +224,8 @@ function jobSteps(steps: (string | null)[]): string | null {
  * not one of them — it is its own workflow, `renderReleaseWorkflow` (#753).
  */
 export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[] {
-	const hasTypeScript = config.typescript.enabled
+	// `vp check` already type-checks, so a Vite+ repo has no separate typecheck job.
+	const hasTypeScript = config.typescript.enabled && !config.vitePlus
 	const hasTests = config.testing.framework !== 'none'
 	const hasBuild = buildsSomething(config, opts)
 	const isLibrary = config.projectType === 'library'

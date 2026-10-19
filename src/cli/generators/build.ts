@@ -1,6 +1,7 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
+import { generateVitePlusConfig } from './vite-plus.js'
 
 // tsup, esbuild, and vite all pull in esbuild, whose install-time build script
 // pnpm 11 refuses to run until it's approved — otherwise `pnpm install` fails
@@ -46,7 +47,8 @@ export async function generateBuildConfigs(config: ProjectConfig, targetDir: str
 	} else if (config.bundler === 'rolldown') {
 		await generateRolldownConfig(targetDir)
 	} else if (config.bundler === 'vite') {
-		await generateViteConfig(config, targetDir)
+		if (config.vitePlus) await generateVitePlusConfig(config, targetDir)
+		else await generateViteConfig(config, targetDir)
 	}
 
 	// Generate semantic-release config for GitHub

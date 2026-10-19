@@ -11,6 +11,8 @@ export type PresetName =
 	| 'nextjs-app'
 	| 'react-app'
 	| 'swift-library'
+	| 'vite-plus'
+	| 'vite-plus-app'
 
 export const PRESET_NAMES: readonly PresetName[] = [
 	'minimal',
@@ -20,6 +22,8 @@ export const PRESET_NAMES: readonly PresetName[] = [
 	'nextjs-app',
 	'react-app',
 	'swift-library',
+	'vite-plus',
+	'vite-plus-app',
 ] as const
 
 const BASE: Omit<ProjectConfig, 'projectName' | 'projectType' | 'typescript' | 'bundler'> = {
@@ -31,6 +35,23 @@ const BASE: Omit<ProjectConfig, 'projectName' | 'projectType' | 'typescript' | '
 	commitLint: true,
 	semanticRelease: false,
 	securityAutomation: true,
+	badges: true,
+	aiSetup: true,
+}
+
+// Not spread from BASE: BASE names Biome and a tsup-era bundler.
+const VITE_PLUS_BASE: Omit<ProjectConfig, 'projectName' | 'projectType'> = {
+	language: 'js',
+	typescript: { enabled: true, config: 'base' },
+	linting: { tool: 'none' },
+	formatting: { tool: 'none' },
+	testing: { framework: 'vitest', environment: 'node' },
+	gitHooks: true,
+	commitLint: true,
+	semanticRelease: false,
+	securityAutomation: true,
+	bundler: 'vite',
+	vitePlus: true,
 	badges: true,
 	aiSetup: true,
 }
@@ -146,6 +167,18 @@ export function buildPresetConfig(name: PresetName, projectName: string): Projec
 				badges: false,
 				aiSetup: true,
 			}
+		// Opt-in Vite+ (#897). Linting and formatting are 'none' because `vp check`
+		// does both: the toolchain is the `vitePlus` flag, which doctor reads.
+		case 'vite-plus':
+			return {
+				...VITE_PLUS_BASE,
+				projectName,
+				projectType: 'library',
+				semanticRelease: true,
+				publint: true,
+			}
+		case 'vite-plus-app':
+			return { ...VITE_PLUS_BASE, projectName, projectType: 'web-app' }
 	}
 }
 
@@ -215,6 +248,7 @@ export const CONFIG_SCHEMA = {
 		changesets: { type: 'boolean' },
 		releasePlease: { type: 'boolean' },
 		oxlint: { type: 'boolean' },
+		vitePlus: { type: 'boolean' },
 		securityAutomation: { type: 'boolean' },
 		bundler: { type: 'string', enum: ['tsup', 'esbuild', 'rollup', 'rolldown', 'vite', 'none'] },
 		treeshakeCheck: { type: 'boolean' },
@@ -262,7 +296,48 @@ export function validateProjectConfig(input: unknown): ConfigValidationResult {
 		if (!(required in obj)) errors.push(`Missing required field: ${required}`)
 	}
 	if ('docs' in obj) errors.push(...validateDocs(obj.docs))
+	if (obj.vitePlus === true) errors.push(...vitePlusConflicts(obj))
 	return { valid: errors.length === 0, errors }
+}
+
+/**
+ * `vitePlus` owns lint, format, type-check, test and build, so a config that
+ * also picks one of those tools would run two formatters over the same files or
+ * keep a second source of truth for lint rules (#897). Refused outright rather
+ * than given a silent precedence.
+ */
+function vitePlusConflicts(obj: Record<string, unknown>): string[] {
+	const tool = (key: string, field: string) =>
+		(obj[key] as Record<string, unknown> | undefined)?.[field]
+	const errors: string[] = []
+	const linting = tool('linting', 'tool')
+	if (linting !== undefined && linting !== 'none') {
+		errors.push(`vitePlus replaces linting; linting.tool must be 'none', not '${String(linting)}'`)
+	}
+	const formatting = tool('formatting', 'tool')
+	if (formatting !== undefined && formatting !== 'none') {
+		errors.push(
+			`vitePlus replaces formatting; formatting.tool must be 'none', not '${String(formatting)}'`
+		)
+	}
+	if (obj.oxlint === true) {
+		errors.push('vitePlus pins its own Oxlint; the oxlint add-on would be a second config')
+	}
+	const framework = tool('testing', 'framework')
+	if (framework !== undefined && framework !== 'vitest' && framework !== 'none') {
+		errors.push(`vitePlus runs Vitest; testing.framework must be 'vitest' or 'none'`)
+	}
+	if (obj.bundler !== undefined && obj.bundler !== 'vite') {
+		errors.push(`vitePlus builds with its own bundler; bundler must be 'vite'`)
+	}
+	if (
+		obj.projectType !== undefined &&
+		obj.projectType !== 'library' &&
+		obj.projectType !== 'web-app'
+	) {
+		errors.push(`vitePlus supports projectType 'library' and 'web-app'`)
+	}
+	return errors
 }
 
 function validateDocs(docs: unknown): string[] {
@@ -305,7 +380,8 @@ export function computeFileList(config: ProjectConfig): string[] {
 	if (config.linting.tool === 'eslint') {
 		files.push('prettier.config.mjs')
 	}
-	if (config.testing.framework === 'vitest') {
+	// Under Vite+ the test config is the `test` key of vite.config.ts.
+	if (config.testing.framework === 'vitest' && !config.vitePlus) {
 		files.push('vitest.config.ts', 'vitest.setup.ts')
 	}
 	if (config.testing.framework === 'jest') {
@@ -322,11 +398,13 @@ export function computeFileList(config: ProjectConfig): string[] {
 			'tests/e2e/example.cy.ts'
 		)
 	}
+	// Vite+ installs its hooks with `vp config`, into .vite-hooks rather than .husky.
+	const hooksDir = config.vitePlus ? '.vite-hooks' : '.husky'
 	if (config.gitHooks) {
-		files.push('.husky/pre-commit')
+		files.push(`${hooksDir}/pre-commit`)
 	}
 	if (config.commitLint) {
-		files.push('.husky/commit-msg', 'commitlint.config.mjs')
+		files.push(`${hooksDir}/commit-msg`, 'commitlint.config.mjs')
 	}
 	files.push('.github/workflows/ci.yml')
 	if (config.projectType === 'library' && config.semanticRelease) {

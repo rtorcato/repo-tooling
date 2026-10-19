@@ -57,6 +57,10 @@ const PRESETS = {
 	// bundler: 'none' — the preset emits no build script, so there is nothing to
 	// run here. Wiring up `next build` would be testing Next.js, not the scaffold.
 	'nextjs-app': { build: false },
+	// Opt-in Vite+ (#897). A library builds with `vp pack`, an app with `vp build`;
+	// both end in `pnpm verify`, which runs `vp check` and `vp test run`.
+	'vite-plus': { build: true },
+	'vite-plus-app': { build: true },
 	// The whole JS lifecycle is inapplicable: no package.json to repoint, no
 	// pnpm, no biome, no `pnpm verify`. See swiftLifecycle below (#312).
 	'swift-library': { swift: true },

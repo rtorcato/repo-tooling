@@ -14,9 +14,11 @@ npx @rtorcato/repo-tooling setup --skip-install  # skip npm/pnpm install
 ```
 
 Add `--preset <name>` to skip the wizard: `minimal`, `library`, `web-app`,
-`node-api`, `nextjs-app`, `react-app`, or `swift-library`. `minimal` is tsconfig
-+ Biome + Vitest and nothing else. The Swift preset scaffolds a SwiftPM package
-rather than an npm one — see the [Swift guide](./swift.md).
+`node-api`, `nextjs-app`, `react-app`, `swift-library`, `vite-plus`, or
+`vite-plus-app`. `minimal` is tsconfig + Biome + Vitest and nothing else. The
+Swift preset scaffolds a SwiftPM package rather than an npm one — see the
+[Swift guide](./swift.md). The two Vite+ presets are opt-in and replace Biome,
+tsup and a separate Vitest — see the [Vite+ guide](./vite-plus.md).
 
 In a terminal, `--preset` prints the file list it resolved and lets you uncheck
 the extras (git hooks, commitlint, releases, Dependabot/CodeQL, badges, AI agent

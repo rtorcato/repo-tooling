@@ -8,7 +8,11 @@ import {
 	generateRollupConfig,
 	generateSemanticReleaseConfig,
 } from '../../cli/generators/build.js'
-import { generateHuskyConfig, generatePrePushHook } from '../../cli/generators/git.js'
+import {
+	generateHuskyConfig,
+	generatePrePushHook,
+	generateViteHooks,
+} from '../../cli/generators/git.js'
 import {
 	CI_WORKFLOW,
 	generateGitHubActions,
@@ -34,7 +38,7 @@ import {
 } from '../../cli/generators/misc.js'
 import { hasBin, hasCommitlint, nodeFloorOf, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
-import { presetExtendedBy, usesPnpm } from './checks.js'
+import { allDeps, presetExtendedBy, usesPnpm } from './checks.js'
 import {
 	SIZE_LIMIT_PRESET,
 	SIZE_LIMIT_SCRIPTS,
@@ -174,9 +178,14 @@ export function inferProjectConfig(pkg: Pkg, dir?: string): ProjectConfig {
 	if (deps.next) projectType = 'nextjs-app'
 	else if (deps['react-dom']) projectType = 'react-app'
 
+	// Vite+ replaces Biome, so the preset workflow it is compared against names
+	// `pnpm check` and no typecheck job (#897).
+	const vitePlus = 'vite-plus' in deps
+
 	return {
 		projectName: (pkg?.name as string) ?? 'project',
 		language: 'js',
+		...(vitePlus && { vitePlus }),
 		projectType,
 		typescript: {
 			enabled: true,
@@ -186,10 +195,10 @@ export function inferProjectConfig(pkg: Pkg, dir?: string): ProjectConfig {
 				projectType === 'nextjs-app' ? 'next' : projectType === 'react-app' ? 'react' : 'base',
 		},
 		linting: {
-			tool: 'biome',
+			tool: vitePlus ? 'none' : 'biome',
 			eslintConfig: projectType === 'nextjs-app' ? 'nextjs' : 'base',
 		},
-		formatting: { tool: 'biome' },
+		formatting: { tool: vitePlus ? 'none' : 'biome' },
 		testing: { framework: 'vitest', environment: 'node' },
 		gitHooks: true,
 		commitLint: true,
@@ -489,6 +498,14 @@ export const FIXERS: Fixer[] = [
 					'no readable package.json — husky needs one for lint-staged',
 					'add a package.json, then re-run'
 				)
+			}
+			// A Vite+ repo's hooks are `vp config`'s, not husky's (#897).
+			if ('vite-plus' in allDeps(pkg)) {
+				await generateViteHooks(targetDir)
+				const verify = (pkg.scripts as Record<string, string> | undefined)?.verify
+				return {
+					filesWritten: ['.vite-hooks/pre-commit', ...(verify ? ['.vite-hooks/pre-push'] : [])],
+				}
 			}
 			const existingLintStaged = (pkg?.['lint-staged'] as Record<string, unknown> | undefined) ?? {}
 			await generateHuskyConfig(inferProjectConfig(pkg), targetDir)

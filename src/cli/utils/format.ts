@@ -24,6 +24,13 @@ export async function formatGeneratedFiles(
 	const usesBiome = config.linting.tool === 'biome' || config.linting.tool === 'both'
 	const usesEslint = config.linting.tool === 'eslint' || config.linting.tool === 'both'
 
+	// Vite+ formats and fixes lint through its one command (#897).
+	if (config.vitePlus) {
+		await run('pnpm', ['exec', 'vp', 'check', '--fix'], targetDir)
+		console.log(chalk.green('✨ Formatted generated files'))
+		return
+	}
+
 	if (usesBiome) {
 		await run('pnpm', ['exec', 'biome', 'check', '--write', '.'], targetDir)
 	}

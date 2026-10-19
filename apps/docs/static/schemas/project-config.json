@@ -153,6 +153,9 @@
 		"oxlint": {
 			"type": "boolean"
 		},
+		"vitePlus": {
+			"type": "boolean"
+		},
 		"securityAutomation": {
 			"type": "boolean"
 		},

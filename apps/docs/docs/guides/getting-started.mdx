@@ -125,13 +125,15 @@ npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --y
 npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes --no-ai-setup
 ```
 
-Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.
+Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `vite-plus`, `vite-plus-app`.
 
 `minimal` is tsconfig + Biome + Vitest and nothing else — no git hooks, no commitlint, no release pipeline, no Dependabot/CodeQL, no AI agent files.
 
 When stdin and stdout are both a terminal, `--preset` first prints every file it would write and lets you uncheck the parts you don't want. Piped or redirected — CI — it writes everything in one shot. `--yes` forces the one-shot path in a terminal too.
 
 `swift-library` scaffolds a SwiftPM package instead of an npm one — no `package.json`, no install step. See the [Swift guide](./swift.md) for the full file list.
+
+`vite-plus` and `vite-plus-app` are opt-in: they use [Vite+](./vite-plus.md) (`vp check`, `vp test`, `vp pack` / `vp build`) in place of Biome, tsup and a separate Vitest.
 
 For full control, drive setup from a `ProjectConfig` JSON file — print the schema, write a config, preview, then scaffold:
 
