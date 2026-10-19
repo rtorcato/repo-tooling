@@ -429,6 +429,9 @@ const EXTENSION_SIGNALS: Array<{ candidates: string[]; ext: string }> = [
 
 export async function checkVscodeExtensions(dir: string): Promise<CheckResult> {
 	const wanted: string[] = []
+	// Vite+ keeps its lint config in vite.config.ts, so no .oxlintrc.json signals
+	// the Oxc extension; the dependency does (#897).
+	if ('vite-plus' in allDeps(await readPackageJson(dir))) wanted.push('oxc.oxc-vscode')
 	for (const { candidates, ext } of EXTENSION_SIGNALS) {
 		for (const c of candidates) {
 			if (await fs.pathExists(path.join(dir, c))) {
@@ -671,6 +674,15 @@ export async function checkNodeTestMatrix(dir: string, pkg: Pkg | null): Promise
  */
 export function jsGitHooksProfile(pkg: Pkg | null): GitHooksProfile {
 	const scripts = (pkg?.scripts as Record<string, string> | undefined) ?? {}
+	// Vite+ installs its hooks with `vp config` into .vite-hooks/ (#897).
+	if (/\bvp\s+config\b/.test(scripts.prepare ?? '')) {
+		return {
+			dir: '.vite-hooks',
+			install: { present: true, label: '`prepare: vp config` script' },
+			verifyCommand: 'pnpm verify',
+			fixTarget: 'husky',
+		}
+	}
 	return {
 		dir: '.husky',
 		install: {
@@ -711,7 +723,10 @@ export async function checkVerifyScript(dir: string, pkg: Pkg | null): Promise<C
 	if ((scripts.check || deps['@biomejs/biome']) && !/\b(check|biome|lint)\b/.test(body)) {
 		missing.push('lint/check')
 	}
-	if ((deps.vitest || scripts.test) && !/(vitest|jest|test:e2e|pnpm\s+test)/.test(body)) {
+	if (
+		(deps.vitest || scripts.test) &&
+		!/(vitest|jest|test:e2e|pnpm\s+test|\bvp\s+test\b)/.test(body)
+	) {
 		missing.push('tests')
 	}
 	const hasTreeshakeApp = await fs.pathExists(
@@ -765,6 +780,26 @@ async function huskyHookCallsLintStaged(dir: string): Promise<boolean> {
 }
 
 export async function checkLintStaged(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+	// Vite+ stages through `vp staged` (the `staged` key of vite.config.ts), run by
+	// the pre-commit hook `vp config` wires up, so there is no lint-staged (#897).
+	if (/\bvp\s+config\b/.test(((pkg?.scripts as Record<string, string>) ?? {}).prepare ?? '')) {
+		const hook = path.join(dir, '.vite-hooks', 'pre-commit')
+		const wired =
+			(await fs.pathExists(hook)) &&
+			hookHasUncommented(await fs.readFile(hook, 'utf-8'), /\bvp\s+staged\b/)
+		return wired
+			? {
+					check: 'lint-staged',
+					status: 'ok',
+					detail: '`vp staged` runs from .vite-hooks/pre-commit',
+				}
+			: {
+					check: 'lint-staged',
+					status: 'drift',
+					detail: '`prepare: vp config` is set but .vite-hooks/pre-commit does not run `vp staged`',
+					hint: 'Run `npx @rtorcato/repo-tooling fix husky` to write the pre-commit hook',
+				}
+	}
 	const inPkg = pkg ? 'lint-staged' in pkg : false
 	let inFile: string | null = null
 	for (const candidate of LINT_STAGED_FILES) {
@@ -1142,6 +1177,9 @@ const BUILD_EMITS: Record<string, readonly string[]> = {
 	// only from .cts sources, which is why a repo that has any stands the check
 	// down below.
 	tsc: ['.js', '.d.ts'],
+	// `vp pack` is tsdown, whose output is whatever the `pack` block of
+	// vite.config.ts says (#897): the same broadest-set reasoning as tsup.
+	vp: ['.js', '.cjs', '.mjs', '.d.ts', '.d.cts', '.d.mts'],
 	// tsup's real set is whatever `format`/`dts` say in a config file this does
 	// not parse, so it claims the broadest set tsup could emit. A tsup build is
 	// therefore passed rather than guessed at, while `rimraf dist && tsup` still

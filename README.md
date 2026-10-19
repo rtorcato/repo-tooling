@@ -36,14 +36,16 @@ questions, start from a preset:
 
 ```bash
 npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --yes
-# presets: minimal | library | web-app | node-api | nextjs-app | react-app | swift-library
+# presets: minimal | library | web-app | node-api | nextjs-app | react-app | swift-library | vite-plus | vite-plus-app
 
 # The same, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
 npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --yes --no-ai-setup
 ```
 
 `minimal` is tsconfig + Biome + Vitest and nothing else. `swift-library`
-scaffolds a SwiftPM package instead of an npm one. Without `--yes` in a terminal,
+scaffolds a SwiftPM package instead of an npm one. `vite-plus` and `vite-plus-app`
+put the repo on [Vite+](https://docs.torcato.dev/repo-tooling/docs/guides/vite-plus/)
+instead of Biome, tsup and a separate Vitest. Without `--yes` in a terminal,
 a preset first lists every file it would write and lets you uncheck parts.
 
 ## Already have a project?

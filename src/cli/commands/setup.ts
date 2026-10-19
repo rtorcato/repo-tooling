@@ -56,6 +56,14 @@ export interface ProjectConfig {
 	changesets?: boolean
 	releasePlease?: boolean
 	oxlint?: boolean
+	/**
+	 * Vite+ (`vite-plus`, the `vp` CLI) owns the toolchain (#897): lint, format and
+	 * type-check through `vp check`, tests through `vp test`, builds through
+	 * `vp pack` / `vp build`, all configured from `vite.config.ts`. It replaces
+	 * Biome, ESLint, Prettier and the Oxlint add-on, so setup rejects the mixes
+	 * and doctor stands those checks down. Opt-in: no existing preset sets it.
+	 */
+	vitePlus?: boolean
 	securityAutomation: boolean
 	bundler: 'tsup' | 'esbuild' | 'rollup' | 'rolldown' | 'vite' | 'none'
 	treeshakeCheck?: boolean
@@ -152,7 +160,11 @@ async function reviewPresetConfig(config: ProjectConfig): Promise<ProjectConfig>
 			name: 'features',
 			message: '🧹 Uncheck anything you do not want:',
 			choices: enabled.map((feature) => ({
-				name: feature.label,
+				// Vite+ has no husky or lint-staged: `vp config` installs the hooks (#897).
+				name:
+					feature.key === 'gitHooks' && config.vitePlus
+						? 'Git hooks (vp config + vp staged)'
+						: feature.label,
 				value: feature.key,
 				checked: true,
 			})),

@@ -32,7 +32,7 @@ npx @rtorcato/repo-tooling setup --config-schema > project-config.schema.json
 npx @rtorcato/repo-tooling setup --preset library --dry-run
 ```
 
-Available presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`.
+Available presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `vite-plus`, `vite-plus-app`.
 
 `minimal` is tsconfig + Biome + Vitest and nothing else. Pass `--yes` whenever a
 human might be at the terminal: without it, `--preset` prints its file list and
@@ -40,6 +40,8 @@ opens a deselection prompt. A piped or redirected stream is treated as CI and
 never prompts.
 
 `swift-library` scaffolds a SwiftPM package — no `package.json`, no install step, and the file list is entirely different. See the [Swift guide](./swift.md).
+
+`vite-plus` (a library) and `vite-plus-app` are opt-in and put the repo on Vite+ (`vp check`, `vp test`, `vp pack` / `vp build`) instead of Biome, tsup and a separate Vitest. Set `vitePlus: true` with `linting`/`formatting` `none` to get the same from `--config`; it is rejected alongside Biome, ESLint, Prettier or `oxlint`. See the [Vite+ guide](./vite-plus.md).
 
 **`--dry-run` output:**
 

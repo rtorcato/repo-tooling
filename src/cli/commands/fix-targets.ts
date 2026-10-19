@@ -142,8 +142,12 @@ export function declinedInLock(lock: Lockfile | null, checkName: string): boolea
 			return c.linting?.tool !== 'eslint' && c.linting?.tool !== 'both'
 		case 'Prettier':
 			return c.formatting?.tool !== 'prettier'
+		// Under Vite+ the Vitest config is the `test` key of vite.config.ts (#897).
 		case 'Vitest':
-			return c.testing?.framework !== 'vitest'
+			return c.testing?.framework !== 'vitest' || c.vitePlus === true
+		// Its lint config is the `lint` key, and it pins its own Oxlint.
+		case 'Oxlint':
+			return c.vitePlus === true
 		case 'Commitlint':
 			return c.commitLint === false
 		case 'Git hooks':
@@ -181,8 +185,9 @@ export function declinedInLock(lock: Lockfile | null, checkName: string): boolea
 		// `fix ai` writes, so a repo that declined AI setup declined them too.
 		case 'Claude worktree settings':
 			return c.aiSetup === false
+		// `vp run` is Vite+'s task runner; its pnpm-workspace.yaml only holds the catalog.
 		case 'Turborepo':
-			return c.turborepo === false
+			return c.turborepo === false || c.vitePlus === true
 		case 'Tailwind':
 			return c.tailwind === false
 		default:

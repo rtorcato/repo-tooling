@@ -28,6 +28,7 @@ const sidebars: SidebarsConfig = {
 				'guides/ai-issue-loop',
 				'guides/library-style',
 				'guides/swift',
+				'guides/vite-plus',
 				'guides/dependabot-strategy',
 				'guides/git-flow',
 				'guides/public-repo-issue-safety',
