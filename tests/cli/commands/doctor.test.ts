@@ -1232,6 +1232,26 @@ describe('doctor security checks', () => {
 		expect((await dep())?.status).toBe('ok')
 	})
 
+	// #886: `fix dependabot` keeps a SHA pin behind the preset, so doctor names it.
+	it('reports a SHA pin behind the preset as drift that fix dependabot leaves alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await generateDependabotConfig(dir)
+		const wf = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+		const pinned = (await fs.readFile(wf, 'utf8')).replace(
+			/uses: actions\/checkout@v\d+/,
+			`uses: actions/checkout@${'c'.repeat(40)} # v1.0.0`
+		)
+		await fs.writeFile(wf, pinned)
+		const dep = async () => (await runDoctor(dir)).find((r) => r.check === 'Dependabot')
+		const r = await dep()
+		expect(r?.status).toBe('drift')
+		expect(r?.detail).toMatch(/SHA pins behind the preset: actions\/checkout \(v1\.0\.0 < v\d+\)/)
+		expect(r?.hint).toMatch(/keeps SHA pins/)
+		await generateDependabotConfig(dir)
+		expect(await fs.readFile(wf, 'utf8')).toBe(pinned)
+	})
+
 	it('reports Dependabot ok with the canonical config + auto-merge workflow', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

@@ -9,7 +9,7 @@ import {
 	dependabotIgnoreRules,
 } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
-import { dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
+import { behindShaPins, dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
 import { CI_GATE_JOB } from './ci.js'
 import {
@@ -319,6 +319,7 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 			const content = await fs.readFile(candidatePath, 'utf8')
 			const deltas = dependabotConfigDeltas(content, await dependabotEcosystemFor(dir))
 			const automergePath = path.join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
+			let behind: string[] = []
 			if (await fs.pathExists(automergePath)) {
 				// Pre-#423 workflows gated on the semver type alone, so production
 				// bumps of a published package merged with nobody in the loop. The
@@ -354,6 +355,13 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 				if (mergeStep(automerge) !== mergeStep(expected)) {
 					deltas.push('auto-merge workflow does not match rules.dependabot.onPr')
 				}
+				// #886: `fix dependabot` keeps a SHA pin rather than trade it for the
+				// preset's mutable tag, so a pin behind the preset is reported here
+				// instead, for Dependabot (or a hand re-pin) to move.
+				behind = behindShaPins(expected, automerge)
+				if (behind.length > 0) {
+					deltas.push(`auto-merge workflow SHA pins behind the preset: ${behind.join(', ')}`)
+				}
 				// #819: label mode never writes repo contents, so a `contents: write`
 				// grant left over from before it is surplus token scope.
 				if (!/contents: write/.test(expected) && /^\s*contents:\s*write\b/m.test(automerge)) {
@@ -378,7 +386,9 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 					hint:
 						ignored.length > 0
 							? 'Run `npx @rtorcato/repo-tooling fix dependabot --diff` — it will refuse until the `ignore:` block is dealt with by hand'
-							: 'Run `npx @rtorcato/repo-tooling fix dependabot` to apply the canonical grouping + auto-merge workflow',
+							: behind.length === deltas.length
+								? "Merge Dependabot's github-actions bump, or re-pin each action to a commit of the preset's major by hand. `fix dependabot` keeps SHA pins, so it won't change them"
+								: 'Run `npx @rtorcato/repo-tooling fix dependabot` to apply the canonical grouping + auto-merge workflow',
 				}
 			}
 			return {
