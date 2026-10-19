@@ -14,6 +14,7 @@ import {
 import { generateCommitlintConfig } from '../../src/cli/generators/git.js'
 import { generateConfigs } from '../../src/cli/generators/index.js'
 import { composeVerifyScriptFromPkg } from '../../src/cli/generators/package-json.js'
+import { mergeVitePlusWorkspace } from '../../src/cli/generators/vite-plus.js'
 import { readLockfile } from '../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
@@ -351,5 +352,47 @@ describe('re-running the generators', () => {
 		}
 		const yaml = await fs.readFile(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
 		expect(yaml.match(/^catalog:/gm)).toHaveLength(1)
+	})
+})
+
+// #903: a repo's own overrides / peer rules are extended, never duplicated as a
+// second top-level key that a last-key-wins parser would read instead.
+describe('merging into an existing pnpm-workspace.yaml', () => {
+	const topLevel = (yaml: string, key: string) =>
+		yaml.match(new RegExp(`^${key}:`, 'gm'))?.length ?? 0
+
+	it('adds to an existing overrides block and keeps its pins', () => {
+		const yaml = mergeVitePlusWorkspace("overrides:\n  braces: '>=3.0.3'\n")
+		expect(topLevel(yaml, 'overrides')).toBe(1)
+		expect(yaml).toContain("overrides:\n  vite@*: 'catalog:'\n  braces: '>=3.0.3'\n")
+		expect(topLevel(yaml, 'catalog')).toBe(1)
+	})
+
+	it('adds the missing peerDependencyRules children at the indent already used', () => {
+		const yaml = mergeVitePlusWorkspace('peerDependencyRules:\n    ignoreMissing:\n      - react\n')
+		expect(topLevel(yaml, 'peerDependencyRules')).toBe(1)
+		expect(yaml).toContain('    allowAny:\n      - vite\n')
+		expect(yaml).toContain("    allowedVersions:\n      vite: '*'\n")
+		expect(yaml).toContain('    ignoreMissing:\n      - react\n')
+	})
+
+	it('leaves entries the repo already sets alone', () => {
+		const current =
+			"overrides:\n  vite@*: '6.0.0'\npeerDependencyRules:\n  allowAny:\n  - vite\n  allowedVersions:\n    vite: '5'\n"
+		const yaml = mergeVitePlusWorkspace(current)
+		expect(yaml.startsWith(current)).toBe(true)
+		expect(yaml.slice(current.length)).not.toMatch(/overrides|peerDependencyRules|allowAny/)
+	})
+
+	it('does not edit a flow-style overrides map, and says so', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+		try {
+			const yaml = mergeVitePlusWorkspace('overrides: {}\n')
+			expect(topLevel(yaml, 'overrides')).toBe(1)
+			expect(yaml).toContain('overrides: {}\n')
+			expect(warn).toHaveBeenCalledOnce()
+		} finally {
+			warn.mockRestore()
+		}
 	})
 })
