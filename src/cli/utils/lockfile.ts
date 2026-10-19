@@ -94,6 +94,8 @@ export interface GithubRules {
 	vulnerabilityAlerts?: boolean
 	/** Dependabot automated security fixes. Standard: true. */
 	automatedSecurityFixes?: boolean
+	/** Private vulnerability reporting (the "Report a vulnerability" button). Standard: true. */
+	privateVulnerabilityReporting?: boolean
 	/** GitHub user logins required to approve the `release` environment. No standard: unchecked when absent. */
 	releaseReviewers?: string[]
 }
@@ -329,6 +331,11 @@ export function lockfileSchema() {
 							automatedSecurityFixes: {
 								type: 'boolean',
 								description: 'Dependabot automated security fixes. Standard: true.',
+							},
+							privateVulnerabilityReporting: {
+								type: 'boolean',
+								description:
+									'Private vulnerability reporting (the "Report a vulnerability" button). Standard: true.',
 							},
 							releaseReviewers: {
 								type: 'array',

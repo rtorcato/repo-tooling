@@ -484,11 +484,15 @@ async function checkWorkflowPermissions(exec: GhExec, nwo: string): Promise<Chec
  * `dependabot.yml` only schedules version bumps; these two repo toggles are what
  * surface and patch advisories, and both default off on a new repo. Neither
  * endpoint has a body worth reading for alerts: 204 is on, 404 is off.
+ *
+ * Private vulnerability reporting (#904) rides along: it is what makes the
+ * generated SECURITY.md's "Report a vulnerability" button exist. `reporting` is
+ * undefined when it can't be read, which leaves it unchecked rather than off.
  */
 async function readSecurityUpdates(
 	exec: GhExec,
 	nwo: string
-): Promise<{ alerts: boolean; fixes: boolean } | { skip: string }> {
+): Promise<{ alerts: boolean; fixes: boolean; reporting?: boolean } | { skip: string }> {
 	const enabled = async (endpoint: string): Promise<boolean | { skip: string }> => {
 		const r = await exec(['api', `repos/${nwo}/${endpoint}`])
 		if (!r.ok) {
@@ -507,7 +511,15 @@ async function readSecurityUpdates(
 	if (typeof alerts !== 'boolean') return alerts
 	const fixes = await enabled('automated-security-fixes')
 	if (typeof fixes !== 'boolean') return fixes
-	return { alerts, fixes }
+	// ponytail: any failure leaves it unchecked. 404 covers private repos, where
+	// GitHub doesn't offer the feature, and 403 a token without admin.
+	const pvr = await exec(['api', `repos/${nwo}/private-vulnerability-reporting`])
+	let reporting: boolean | undefined
+	if (pvr.ok)
+		try {
+			reporting = JSON.parse(pvr.stdout).enabled === true
+		} catch {}
+	return { alerts, fixes, reporting }
 }
 
 async function checkSecurityUpdates(
@@ -531,6 +543,8 @@ async function checkSecurityUpdates(
 	}
 	toggle(s.alerts, 'vulnerabilityAlerts', 'vulnerability alerts')
 	toggle(s.fixes, 'automatedSecurityFixes', 'automated security fixes')
+	if (s.reporting !== undefined)
+		toggle(s.reporting, 'privateVulnerabilityReporting', 'private vulnerability reporting')
 	// A declared value the repo doesn't match is drift outright (#817).
 	if (declared.length)
 		return {
@@ -546,14 +560,22 @@ async function checkSecurityUpdates(
 			check,
 			status: 'optional-missing',
 			detail: deltas.join('; '),
-			hint: 'Run `npx @rtorcato/repo-tooling fix github-settings` to enable Dependabot alerts and security updates',
+			hint: 'Run `npx @rtorcato/repo-tooling fix github-settings` to enable Dependabot alerts, security updates and private vulnerability reporting',
 		}
-	if (s.alerts && s.fixes)
-		return { check, status: 'ok', detail: 'vulnerability alerts and automated security fixes on' }
+	if (s.alerts && s.fixes && s.reporting !== false)
+		return {
+			check,
+			status: 'ok',
+			detail: s.reporting
+				? 'vulnerability alerts, automated security fixes and private vulnerability reporting on'
+				: 'vulnerability alerts and automated security fixes on',
+		}
+	const reporting =
+		s.reporting === undefined ? '' : `, private vulnerability reporting ${onOff(s.reporting)}`
 	return {
 		check,
 		status: 'ok',
-		detail: `vulnerability alerts ${onOff(s.alerts)}, automated security fixes ${onOff(s.fixes)} per rules.github`,
+		detail: `vulnerability alerts ${onOff(s.alerts)}, automated security fixes ${onOff(s.fixes)}${reporting} per rules.github`,
 	}
 }
 
@@ -1554,6 +1576,8 @@ export interface GhApplyState {
 	alerts?: boolean
 	/** Automated security fixes off (#692). */
 	securityFixes?: boolean
+	/** Private vulnerability reporting off (#904). */
+	reporting?: boolean
 	/**
 	 * The repo's declared settings (#817). Sets the values the commands write,
 	 * so a flagged `alerts`/`securityFixes` turns the feature *off* when the
@@ -1672,6 +1696,13 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 			'automated security fixes',
 			'automated-security-fixes'
 		)
+	// Independent of alerts, so the reverse below can't misorder it.
+	if (state.reporting)
+		toggle(
+			rules.privateVulnerabilityReporting ?? true,
+			'private vulnerability reporting',
+			'private-vulnerability-reporting'
+		)
 	if (rules.vulnerabilityAlerts === false) security.reverse()
 	commands.push(...security)
 	return commands
@@ -1735,6 +1766,10 @@ export async function applyGithubSettings(
 		alerts: !('skip' in sec) && sec.alerts !== (rules.vulnerabilityAlerts ?? true),
 		securityFixes:
 			!('skip' in sec) && sec.fixes !== (withDerivedDefaults(rules).automatedSecurityFixes ?? true),
+		reporting:
+			!('skip' in sec) &&
+			sec.reporting !== undefined &&
+			sec.reporting !== (rules.privateVulnerabilityReporting ?? true),
 		rules,
 	})
 

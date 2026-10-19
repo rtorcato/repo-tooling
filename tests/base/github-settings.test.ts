@@ -116,6 +116,8 @@ interface GhOverrides {
 	environments?: GhResult
 	alerts?: GhResult
 	securityFixes?: GhResult
+	/** `private-vulnerability-reporting`; unreadable (so unchecked) by default (#904). */
+	reporting?: GhResult
 	repoSecrets?: GhResult
 	releaseSecrets?: GhResult
 }
@@ -145,6 +147,8 @@ function fakeGh(overrides: GhOverrides = {}): GhExec {
 			return overrides.releaseSecrets ?? fail('gh: Not Found (HTTP 404)')
 		if (p?.endsWith('/vulnerability-alerts')) return overrides.alerts ?? ok('')
 		if (p?.endsWith('/automated-security-fixes')) return overrides.securityFixes ?? ok(FIXES_ON)
+		if (p?.endsWith('/private-vulnerability-reporting') && overrides.reporting)
+			return overrides.reporting
 		return fail('unexpected call')
 	})
 }
@@ -786,6 +790,100 @@ describe('checkGitHubSettings — security updates (#692)', () => {
 		)
 		expect(byName(results, 'Security updates')?.status).toBe('skipped')
 		expect(byName(results, 'Security updates')?.detail).toContain('skipped')
+	})
+})
+
+describe('private vulnerability reporting (#904)', () => {
+	const ON = ok(JSON.stringify({ enabled: true }))
+	const OFF = ok(JSON.stringify({ enabled: false }))
+	const security = (results: { check: string }[]) =>
+		byName(results, 'Security updates') as { status: string; detail: string; hint?: string }
+
+	it('flags it off as optional-missing with a fix github-settings hint', async () => {
+		const r = security(await checkGitHubSettings(gitRepo(), fakeGh({ reporting: OFF })))
+		expect(r.status).toBe('optional-missing')
+		expect(r.detail).toBe('private vulnerability reporting disabled')
+		expect(r.hint).toContain('fix github-settings')
+	})
+
+	it('reports ok with all three on', async () => {
+		const r = security(await checkGitHubSettings(gitRepo(), fakeGh({ reporting: ON })))
+		expect(r.status).toBe('ok')
+		expect(r.detail).toBe(
+			'vulnerability alerts, automated security fixes and private vulnerability reporting on'
+		)
+	})
+
+	it('leaves it unchecked when the endpoint 404s (private repo) or 403s', async () => {
+		for (const reporting of [fail('gh: Not Found (HTTP 404)'), fail('gh: Forbidden (HTTP 403)')]) {
+			const r = security(await checkGitHubSettings(gitRepo(), fakeGh({ reporting })))
+			expect(r.status).toBe('ok')
+			expect(r.detail).toBe('vulnerability alerts and automated security fixes on')
+		}
+	})
+
+	it('respects a declared false and flags a repo that does not match it', async () => {
+		const rules = { privateVulnerabilityReporting: false }
+		const off = security(await checkGitHubSettings(gitRepo(), fakeGh({ reporting: OFF }), rules))
+		expect(off.status).toBe('ok')
+		expect(off.detail).toContain('private vulnerability reporting off per rules.github')
+		const on = security(await checkGitHubSettings(gitRepo(), fakeGh({ reporting: ON }), rules))
+		expect(on.status).toBe('drift')
+		expect(on.detail).toBe(
+			'private vulnerability reporting enabled (rules.github.privateVulnerabilityReporting: false)'
+		)
+	})
+
+	it('builds a PUT to enable and a DELETE when the rules say false', () => {
+		const base = {
+			nwo: 'owner/repo',
+			branch: 'main',
+			merge: false,
+			protection: false,
+			workflow: false,
+		}
+		expect(buildGhApplyCommands({ ...base, reporting: true }).map((c) => c.args)).toEqual([
+			['api', '-X', 'PUT', 'repos/owner/repo/private-vulnerability-reporting'],
+		])
+		const off = buildGhApplyCommands({
+			...base,
+			reporting: true,
+			rules: { privateVulnerabilityReporting: false },
+		})
+		expect(off.map((c) => [c.label, ...c.args])).toEqual([
+			[
+				'private vulnerability reporting off (rules.github)',
+				'api',
+				'-X',
+				'DELETE',
+				'repos/owner/repo/private-vulnerability-reporting',
+			],
+		])
+	})
+
+	it('fix github-settings enables it only when it is off', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const run = async (reporting: GhResult, rules = {}) => {
+			const calls: string[][] = []
+			const fallback = fakeGh({ reporting })
+			const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+				if (args.includes('-X')) {
+					calls.push(args)
+					return ok('')
+				}
+				return fallback(args, stdin)
+			})
+			return { applied: await applyGithubSettings(gitRepo(), exec, rules), calls }
+		}
+		expect(await run(OFF)).toEqual({
+			applied: ['private vulnerability reporting'],
+			calls: [['api', '-X', 'PUT', 'repos/owner/repo/private-vulnerability-reporting']],
+		})
+		expect(await run(ON)).toEqual({ applied: [], calls: [] })
+		expect(await run(OFF, { privateVulnerabilityReporting: false })).toEqual({
+			applied: [],
+			calls: [],
+		})
 	})
 })
 

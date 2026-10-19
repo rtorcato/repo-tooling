@@ -257,7 +257,7 @@ export const BASE_FIXERS: Fixer[] = [
 	{
 		target: 'github-settings',
 		description:
-			'Apply branch protection + auto-merge + workflow permissions + Dependabot security updates + code-scanning ruleset on GitHub via gh api (mutates the remote repo, not files)',
+			'Apply branch protection + auto-merge + workflow permissions + Dependabot security updates + private vulnerability reporting + code-scanning ruleset on GitHub via gh api (mutates the remote repo, not files)',
 		appliesTo: [
 			'Branch protection',
 			'Merge settings',
