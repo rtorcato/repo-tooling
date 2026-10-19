@@ -10,6 +10,7 @@ import {
 	generateCodeQLWorkflow,
 	generateDependabotConfig,
 	generateSecurityConfigs,
+	behindShaPins,
 	keepActionPins,
 } from '../../../src/cli/generators/security.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -451,14 +452,34 @@ describe('keepActionPins', () => {
 		)
 	})
 
-	it('moves a pin or tag that is behind the preset up to it', () => {
-		const existing = `uses: actions/checkout@${sha} # v6.0.0\nuses: dependabot/fetch-metadata@v2\n`
-		expect(keepActionPins(rendered, existing)).toBe(rendered)
+	it('keeps a SHA pin behind the preset rather than swap it for a tag (#886)', () => {
+		const existing = `uses: actions/checkout@${sha} # v6.0.0\n`
+		expect(keepActionPins(rendered, existing)).toContain(`uses: actions/checkout@${sha} # v6.0.0\n`)
+	})
+
+	it('moves a tag that is behind the preset up to it', () => {
+		expect(keepActionPins(rendered, 'uses: dependabot/fetch-metadata@v2\n')).toBe(rendered)
 	})
 
 	it('keeps a tag ahead of the preset', () => {
 		expect(keepActionPins(rendered, 'uses: actions/checkout@v8\n')).toContain(
 			'uses: actions/checkout@v8\n'
 		)
+	})
+})
+
+describe('behindShaPins (#886)', () => {
+	const sha = 'c'.repeat(40)
+	const rendered = 'steps:\n  - uses: actions/checkout@v7\n  - uses: dependabot/fetch-metadata@v3\n'
+
+	it('names a SHA pin behind the preset', () => {
+		const existing = `uses: actions/checkout@${sha} # v6.0.0\nuses: dependabot/fetch-metadata@${sha} # v3.1.0\n`
+		expect(behindShaPins(rendered, existing)).toEqual(['actions/checkout (v6.0.0 < v7)'])
+	})
+
+	it('ignores tags, unreadable SHAs and pins at or ahead of the preset', () => {
+		const existing = `uses: actions/checkout@v6\nuses: dependabot/fetch-metadata@${sha}\n`
+		expect(behindShaPins(rendered, existing)).toEqual([])
+		expect(behindShaPins(rendered, `uses: actions/checkout@${sha} # v7.0.1\n`)).toEqual([])
 	})
 })

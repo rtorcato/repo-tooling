@@ -357,25 +357,52 @@ function refMajor(ref: string, comment = ''): number | null {
 	return major === undefined ? null : Number(major)
 }
 
+const isSha = (ref: string) => /^[0-9a-f]{40}$/.test(ref)
+
+/** The existing workflow's `uses:` matches, keyed by action. */
+const usesByAction = (workflow: string) => {
+	const prev = new Map<string, RegExpMatchArray>()
+	for (const m of workflow.matchAll(USES)) if (m[1]) prev.set(m[1], m)
+	return prev
+}
+
 /**
- * Carry the existing workflow's action refs into a regenerated one when they are
- * at or ahead of what the preset emits (#873). Regenerating turned
- * `dependabot/fetch-metadata@<sha> # v3.1.0` into `@v3`: an immutable pin became a
- * mutable tag, a security downgrade nothing reported. A SHA with no readable
- * version is kept too, since swapping it for a tag is the downgrade either way.
+ * Carry the existing workflow's action refs into a regenerated one (#873).
+ * Regenerating turned `dependabot/fetch-metadata@<sha> # v3.1.0` into `@v3`: an
+ * immutable pin became a mutable tag, a security downgrade nothing reported. So
+ * a SHA pin is always kept, even one behind the preset (#886): doctor reports
+ * that as drift and Dependabot bumps it, still as a SHA. A tag is kept when it
+ * is at or ahead of the preset's.
  */
 export function keepActionPins(rendered: string, existing: string): string {
-	const prev = new Map<string, RegExpMatchArray>()
-	for (const m of existing.matchAll(USES)) if (m[1]) prev.set(m[1], m)
+	const prev = usesByAction(existing)
 	return rendered.replace(USES, (line, action: string, ref: string) => {
 		const old = prev.get(action)
 		if (!old?.[2]) return line
+		if (isSha(old[2])) return old[0]
+		const have = refMajor(old[2])
+		const want = refMajor(ref)
+		return have !== null && want !== null && have >= want ? old[0] : line
+	})
+}
+
+/**
+ * SHA pins in `existing` whose `# vX.Y.Z` major is behind the preset's tag, as
+ * `action (vX.Y.Z < vN)` (#886). `keepActionPins` keeps them, so this is how
+ * doctor still says they are behind.
+ */
+export function behindShaPins(rendered: string, existing: string): string[] {
+	const prev = usesByAction(existing)
+	const behind: string[] = []
+	for (const [, action, ref] of rendered.matchAll(USES)) {
+		const old = action && prev.get(action)
+		if (!old?.[2] || !ref || !isSha(old[2])) continue
 		const have = refMajor(old[2], old[3])
 		const want = refMajor(ref)
-		const isSha = /^[0-9a-f]{40}$/.test(old[2])
-		if ((have === null && isSha) || (have !== null && want !== null && have >= want)) return old[0]
-		return line
-	})
+		if (have !== null && want !== null && have < want)
+			behind.push(`${action} (${old[3]?.replace(/^[ \t]*#\s*/, '').trim()} < v${want})`)
+	}
+	return behind
 }
 
 /** The automerge workflow for this repo, keeping any pins the existing one holds. */
