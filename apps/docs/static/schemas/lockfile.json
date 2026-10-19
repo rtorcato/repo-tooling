@@ -318,7 +318,7 @@
 								"type": "string",
 								"minLength": 1
 							},
-							"description": "Required status checks on the default branch, exhaustive: a live check not listed here is drift too. `test` also covers matrix legs like `test (node 22)`. Standard: lint, typecheck, build, test (a floor, extras allowed)."
+							"description": "Required status checks on the default branch, exhaustive: a live check not listed here is drift too. Names match exactly, so `test` does not cover matrix legs like `test (node 22)`: require the `ci` gate job instead. Standard: ci (a floor, extras allowed)."
 						},
 						"strict": {
 							"type": "boolean",
