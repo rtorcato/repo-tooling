@@ -292,7 +292,7 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
       fail-fast: false
       matrix:
         node: [${nodeMatrix(opts.nodeFloor).join(', ')}]`,
-				steps: steps.replace('node-version-file: .nvmrc', 'node-version: \${{ matrix.node }}'),
+				steps: steps.replace('node-version-file: .nvmrc', 'node-version: ${{ matrix.node }}'),
 			})
 		}
 	}

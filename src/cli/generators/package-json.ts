@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import path from 'node:path'
 import packageJson from '../../../package.json' with { type: 'json' }
 import { compareVersion, rangeFloor } from '../../languages/js/checks.js'

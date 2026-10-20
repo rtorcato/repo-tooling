@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
 import { buildBadgeBlock, parseRepository } from './badges.js'

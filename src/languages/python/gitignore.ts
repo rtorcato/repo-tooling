@@ -4,7 +4,7 @@
  * nothing else in the module has to import from `fixers.ts` to reuse it.
  */
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * The Python artefacts that must stay out of git. Appended to an existing

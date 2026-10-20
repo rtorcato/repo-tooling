@@ -1,5 +1,5 @@
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * Scaffold a starter turbo.json for a pnpm-workspace monorepo. Turborepo 2.x

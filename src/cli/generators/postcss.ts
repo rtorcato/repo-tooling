@@ -1,5 +1,5 @@
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * Scaffold a minimal PostCSS config for non-Tailwind CSS pipelines (autoprefixer

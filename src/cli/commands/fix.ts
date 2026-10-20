@@ -2,7 +2,7 @@ import path from 'node:path'
 import os from 'node:os'
 import chalk from 'chalk'
 import { createPatch } from 'diff'
-import fs from 'fs-extra'
+import fs, { setWriteRoot } from '../../base/safe-fs.js'
 import inquirer from 'inquirer'
 import { generateConfigs } from '../generators/index.js'
 import { BIOME_CONFIG, biomeConfigNameFor } from '../generators/linting.js'
@@ -199,6 +199,8 @@ async function previewFixer(
 		})
 		// assumeYes: a preview must never prompt.
 		let written: string[]
+		// The copy keeps the repo's symlinks, so guard the shadow run against the copy.
+		const outerRoot = setWriteRoot(tmpDir)
 		try {
 			;({ filesWritten: written } = await fixer.run({
 				targetDir: tmpPkg,
@@ -215,6 +217,8 @@ async function previewFixer(
 			// what the caller prints.
 			if (!(err instanceof FixerAbort)) throw err
 			return []
+		} finally {
+			setWriteRoot(outerRoot)
 		}
 
 		const previews: PreviewEntry[] = []
@@ -402,6 +406,8 @@ function recordFor(
 
 export async function fixCommand(target: string | undefined, options: FixOptions = {}) {
 	const targetDir = path.resolve(options.directory ?? process.cwd())
+	// Every write below must land inside the repo, never through a committed symlink (#908).
+	setWriteRoot((await gitRoot(targetDir)) ?? targetDir)
 	const dryRun = options.dryRun === true
 	const json = options.json === true
 	// JSON mode implies --yes so prompts don't corrupt the output stream.

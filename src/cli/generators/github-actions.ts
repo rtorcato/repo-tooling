@@ -1,4 +1,4 @@
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import path from 'node:path'
 import { renderGitHubWorkflow } from '../../base/ci.js'
 import { FixerAbort } from '../../base/fixers.js'

@@ -10,7 +10,7 @@
  */
 import path from 'node:path'
 import chalk from 'chalk'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import type { Fixer } from '../../base/fixers.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { readPerlProject, renderPerlGitLabCI, renderPerlWorkflow } from './ci.js'

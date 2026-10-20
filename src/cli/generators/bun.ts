@@ -1,5 +1,5 @@
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * Scaffold Bun toolchain files: a bunfig.toml and — only when no tsconfig.json

@@ -1,5 +1,5 @@
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import { renderGitLabCI } from '../../base/ci.js'
 import { gitlabSpec } from '../../languages/js/ci.js'
 import type { ProjectConfig } from '../commands/setup.js'

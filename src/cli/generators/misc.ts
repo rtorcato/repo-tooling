@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 /**
