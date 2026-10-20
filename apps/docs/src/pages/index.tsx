@@ -6,6 +6,7 @@ import TabItem from '@theme/TabItem'
 import Tabs from '@theme/Tabs'
 import ThemedImage from '@theme/ThemedImage'
 import { siblings } from '@rtorcato/shared-docs'
+import UseWithAI from '@rtorcato/shared-docs/components/UseWithAI'
 import clsx from 'clsx'
 import type { ReactElement } from 'react'
 import InstallTabs from '@site/src/components/InstallTabs'
@@ -443,6 +444,12 @@ export default function Home(): ReactElement {
 		>
 			<main>
 				<Hero />
+				<UseWithAI
+					repo="rtorcato/repo-tooling"
+					plugin="repo-tooling"
+					skill="repo-tooling"
+					pkg="@rtorcato/repo-tooling"
+				/>
 				<Pillars />
 				<Categories />
 				<Siblings />
