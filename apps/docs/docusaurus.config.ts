@@ -1,6 +1,6 @@
 import type * as Preset from '@docusaurus/preset-classic'
 import type { Config } from '@docusaurus/types'
-import { GITHUB_PROFILE, projectFamilyItems } from '@rtorcato/shared-docs'
+import { footerCopyright, GITHUB_PROFILE, projectFamilyItems } from '@rtorcato/shared-docs'
 import { themes as prismThemes } from 'prism-react-renderer'
 
 // The @rtorcato open-source family, from the shared single source of truth
@@ -68,6 +68,9 @@ const config: Config = {
 	],
 
 	plugins: [
+		// `torcato.dev /` navbar breadcrumb + `← torcato.dev` drawer row. The footer
+		// row comes from footerCopyright() below.
+		'@rtorcato/shared-docs/docusaurus',
 		[
 			'@easyops-cn/docusaurus-search-local',
 			{
@@ -155,7 +158,7 @@ const config: Config = {
 					],
 				},
 			],
-			copyright: `Copyright © ${new Date().getFullYear()} Richard Torcato. Built with Docusaurus.`,
+			copyright: footerCopyright(),
 		},
 		// `theme` is the LIGHT-mode Prism theme, `darkTheme` the dark one (#324).
 		prism: {
