@@ -1,5 +1,5 @@
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * Since pnpm 10, repo-wide settings live in `pnpm-workspace.yaml` rather than

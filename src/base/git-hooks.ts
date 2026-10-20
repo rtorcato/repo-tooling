@@ -9,7 +9,7 @@
  */
 import { execFile } from 'node:child_process'
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from './safe-fs.js'
 
 /** The hook bodies a language module supplies. Both are `#!/bin/sh` scripts. */
 export interface HookScripts {

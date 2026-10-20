@@ -4,7 +4,7 @@
  * (#286, #290): nothing else in the module has to import from `fixers.ts`.
  */
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * The Perl build artefacts that must stay out of git. Appended to an existing

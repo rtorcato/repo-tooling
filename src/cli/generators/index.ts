@@ -1,4 +1,4 @@
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { generateSwiftProject } from '../../languages/swift/scaffold.js'

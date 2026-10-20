@@ -12,7 +12,7 @@
  * platform matrix reads the `platforms:` clause we just emitted.
  */
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 import { installAiSetup } from '../../cli/generators/agent-rules.js'
 import { generateEditorConfig } from '../../cli/generators/misc.js'

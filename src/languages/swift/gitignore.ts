@@ -5,7 +5,7 @@
  * reading the lockfile (lockfile → setup-presets → scaffold → fixers → lockfile).
  */
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * The Swift build artefacts that must stay out of git. Appended to an existing

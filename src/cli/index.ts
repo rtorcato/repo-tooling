@@ -2,6 +2,8 @@
 
 import chalk from 'chalk'
 import { Command } from 'commander'
+import { gitRoot } from '../base/github-settings.js'
+import { setWriteRoot } from '../base/safe-fs.js'
 import { doctorCommand } from './commands/doctor.js'
 import { fixCommand, printFixTargets } from './commands/fix.js'
 import { setupProject } from './commands/setup.js'
@@ -61,6 +63,7 @@ program
 		}
 
 		try {
+			setWriteRoot((await gitRoot(process.cwd())) ?? process.cwd())
 			const result = await copyPreset(config as PresetName)
 			console.log(chalk.green(`\n✅ Copied ${result.desc}`))
 			console.log(chalk.gray(`   From: ${result.source}`))

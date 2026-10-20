@@ -1,6 +1,6 @@
 import { glob } from 'node:fs/promises'
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import { copyPreset, getPackageRoot } from '../utils/copy-preset.js'
 import { LEGACY_TOOL_NAME } from '../utils/lockfile.js'
 import { parseWorkspacePackages } from './misc.js'

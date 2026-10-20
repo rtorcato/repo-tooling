@@ -3,6 +3,8 @@ import chalk from 'chalk'
 import fs from 'fs-extra'
 import inquirer from 'inquirer'
 import { classifyGitEmail, realGitExec } from '../../base/git-identity.js'
+import { gitRoot } from '../../base/github-settings.js'
+import { setWriteRoot } from '../../base/safe-fs.js'
 import { collectSecretUses, requiredSecrets, secretHints } from '../../base/secrets.js'
 import {
 	formatNpmPublishGuide,
@@ -282,6 +284,8 @@ export async function setupProject(options: SetupOptions) {
 	}
 
 	try {
+		// A scaffold into an existing clone must not write through its committed symlinks (#908).
+		setWriteRoot((await gitRoot(targetDir)) ?? targetDir)
 		await fs.ensureDir(targetDir)
 		const config = await resolveConfig(options)
 		// The language picker bails out for a language whose module hasn't landed

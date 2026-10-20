@@ -1,5 +1,5 @@
 import path from 'node:path'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 
 /**
  * Scaffold Tailwind CSS v4. v4 is CSS-first — there is no `tailwind.config.js`

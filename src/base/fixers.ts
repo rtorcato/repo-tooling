@@ -13,7 +13,7 @@
  */
 import path from 'node:path'
 import chalk from 'chalk'
-import fs from 'fs-extra'
+import fs from './safe-fs.js'
 import { installAgentRules, installAiSetup } from '../cli/generators/agent-rules.js'
 import { generateCommunityHealth } from '../cli/generators/community-health.js'
 import { generateCommitlintConfig } from '../cli/generators/git.js'
@@ -39,6 +39,7 @@ import {
 	RELEASE_ENV_CHECK,
 	RELEASE_GATE_CHECK,
 } from './github-settings.js'
+import { FixerAbort } from './fixer-abort.js'
 import { closeCompletedMilestones } from './milestones.js'
 import type { CheckResult } from './types.js'
 
@@ -101,23 +102,7 @@ export interface Fixer {
 	run(ctx: FixerContext): Promise<{ filesWritten: string[] }>
 }
 
-/**
- * A fixer giving up on something the user has to resolve — a wrong flag, not a
- * crash. Thrown rather than printed-and-exited because a fixer runs underneath
- * `--json`: only the command layer knows whether the failure should surface as
- * an error payload on stdout or a red line on stderr. `code` joins the same
- * vocabulary as the command's own `no-lockfile` / `unknown-target` errors.
- */
-export class FixerAbort extends Error {
-	constructor(
-		readonly code: string,
-		message: string,
-		readonly hint?: string
-	) {
-		super(message)
-		this.name = 'FixerAbort'
-	}
-}
+export { FixerAbort }
 
 /**
  * The repo's language module, resolved from its marker files. No marker → no

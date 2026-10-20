@@ -1,6 +1,6 @@
 import path from 'node:path'
 import chalk from 'chalk'
-import fs from 'fs-extra'
+import fs from '../../base/safe-fs.js'
 import { buildBadgeBlock, parseRepository, upsertBadges } from '../../cli/generators/badges.js'
 import {
 	generateReleasePleaseConfig,
