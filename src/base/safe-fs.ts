@@ -1,5 +1,5 @@
 /**
- * fs-extra with every file write, mkdir and delete guarded against committed
+ * fs-extra with every file write, mkdir, chmod and delete guarded against committed
  * symlinks (#908).
  *
  * `setup` and `fix` write into a repo the user may have just cloned. A clone can
@@ -79,6 +79,8 @@ function guarded<F extends (...args: never[]) => Promise<unknown>>(fn: F, destIn
 export default {
 	...fs,
 	appendFile: guarded(fs.appendFile),
+	// chmod follows a symlinked hook out of the repo even when nothing is written (#911).
+	chmod: guarded(fs.chmod),
 	copy: guarded(fs.copy, 1),
 	ensureDir: guarded(fs.ensureDir),
 	outputFile: guarded(fs.outputFile),
