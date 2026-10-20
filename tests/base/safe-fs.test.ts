@@ -43,6 +43,16 @@ describe('safe-fs', () => {
 		expect(await fs.readdir(outside)).toEqual([])
 	})
 
+	it('refuses a chmod through a hook symlinked outside the repo', async () => {
+		await fs.writeFile(path.join(outside, 'script'), 'lint-staged\n', { mode: 0o644 })
+		await fs.ensureDir(path.join(repo, '.husky'))
+		await fs.symlink(path.join(outside, 'script'), path.join(repo, '.husky', 'pre-commit'))
+		await expect(safeFs.chmod(path.join(repo, '.husky', 'pre-commit'), 0o755)).rejects.toThrow(
+			FixerAbort
+		)
+		expect((await fs.stat(path.join(outside, 'script'))).mode & 0o777).toBe(0o644)
+	})
+
 	it('refuses a dangling symlink, which a write would otherwise create', async () => {
 		await fs.symlink(path.join(outside, 'new'), path.join(repo, '.nvmrc'))
 		await expect(safeFs.writeJson(path.join(repo, '.nvmrc'), {})).rejects.toThrow(FixerAbort)
