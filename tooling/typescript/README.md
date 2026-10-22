@@ -46,6 +46,17 @@ These are base shared `tsconfig.json` files from which all other `tsconfig.json`
 }
 ```
 
+## Next.js
+
+`tsconfig.next.json` ships no `~/*` / `@/*` aliases: the other presets anchor `paths` with `${configDir}`, but Turbopack doesn't expand it, so `next build` fails with "Can't resolve '@/…'". Declare the aliases in your own tsconfig, where `./src/*` resolves against your project:
+
+```jsonc
+{
+  "extends": "../tooling/typescript/tsconfig.next.json",
+  "compilerOptions": { "paths": { "@/*": ["./src/*"], "~/*": ["./src/*"] } }
+}
+```
+
 ## Notes
 - These configs are meant to be shared and extended, not used directly.
 - Pick the config that matches your project type for best results.

@@ -74,5 +74,15 @@ describe('generateTSConfig', () => {
 		])
 		expect(tsconfig.exclude).toContain('.next')
 		expect(tsconfig.compilerOptions.outDir).toBeUndefined()
+		// The next preset clears `paths` (#922), so the app declares its own aliases.
+		expect(tsconfig.compilerOptions.paths).toEqual({ '~/*': ['./src/*'], '@/*': ['./src/*'] })
+	})
+
+	it('keeps ${configDir} out of the next preset paths, which Turbopack cannot expand (#922)', async () => {
+		const preset = await fs.readFile(
+			join(__dirname, '../../../tooling/typescript/tsconfig.next.json'),
+			'utf8'
+		)
+		expect(preset).toMatch(/"paths":\s*\{\}/)
 	})
 })

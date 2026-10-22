@@ -35,6 +35,13 @@ export async function generateTSConfig(config: ProjectConfig, targetDir: string)
 	// its tests import the runner from `vite-plus/test` instead (#897).
 	if (config.vitePlus) tsconfig.compilerOptions.types = ['node']
 
+	// The next preset clears `paths` (Turbopack doesn't expand ${configDir}, #922),
+	// so the aliases the other presets inherit are declared here, relative to
+	// this tsconfig.
+	if (preset === 'next') {
+		tsconfig.compilerOptions.paths = { '~/*': ['./src/*'], '@/*': ['./src/*'] }
+	}
+
 	if (config.projectType === 'nextjs-app') {
 		tsconfig.include = ['next-env.d.ts', 'src', 'app', 'pages', 'components', 'reset.d.ts']
 		tsconfig.exclude.push('.next')
