@@ -16,11 +16,11 @@
     // project without Tailwind installed.
     "types": ["react", "vitest"],
     "plugins": [ { "name": "next" } ], // Next.js plugin for TypeScript
-    // ${configDir} anchors paths to the consuming project (drops deprecated baseUrl)
-    "paths": {
-      "~/*": ["${configDir}/src/*"],
-      "@/*": ["${configDir}/src/*"]
-    }
+    // Cleared on purpose: the base anchors `paths` with ${configDir}, and Turbopack
+    // does not expand it (`next build` fails with "Can't resolve '@/...'"). A
+    // relative target would resolve against this file inside node_modules, so the
+    // alias has to live in the app's own tsconfig: "paths": { "@/*": ["./src/*"] }.
+    "paths": {}
   },
   "include": ["next-env.d.ts", "src", "pages", "app", "components", "types", "index.d.ts"],
   "exclude": ["node_modules", "dist", ".next", "build", "out"]

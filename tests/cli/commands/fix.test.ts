@@ -243,6 +243,7 @@ describe('fix tsconfig', () => {
 		expect(tsconfig.extends).toBe('@rtorcato/repo-tooling/typescript/next')
 		expect(tsconfig.include).toContain('next-env.d.ts')
 		expect(tsconfig.exclude).toContain('.next')
+		expect(tsconfig.compilerOptions.paths).toEqual({ '~/*': ['./src/*'], '@/*': ['./src/*'] })
 	})
 
 	it('uses the react preset on a React app, for the DOM libs', async () => {

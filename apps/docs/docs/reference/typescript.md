@@ -24,6 +24,17 @@ Extend a preset in your `tsconfig.json`:
 | `typescript/node` | Node.js servers and scripts |
 | `typescript/express` | Express.js APIs |
 
+### `next` and path aliases
+
+`typescript/next` sets no `~/*` or `@/*` alias. The other presets anchor `paths` with `${configDir}`, which Turbopack doesn't expand, so `next build` failed with `Can't resolve '@/…'`. Declare the aliases in your own `tsconfig.json`, where `./src/*` resolves against your project (`setup` and `fix tsconfig` write this for you):
+
+```json
+{
+  "extends": "@rtorcato/repo-tooling/typescript/next",
+  "compilerOptions": { "paths": { "@/*": ["./src/*"], "~/*": ["./src/*"] } }
+}
+```
+
 ### `react` vs `vite-app`
 
 `typescript/react` is library-shaped: its `types` omit `vite/client`, and it excludes
