@@ -1,6 +1,6 @@
 {
   "name": "repo-tooling",
-  "description": "AI skills for the @rtorcato/repo-tooling family: drive the tooling CLI and follow the shared semantic-release publishing rules.",
+  "description": "AI skills for @rtorcato/repo-tooling: drive the tooling CLI and follow the shared semantic-release publishing rules.",
   "owner": {
     "name": "Richard Torcato",
     "url": "https://github.com/rtorcato"

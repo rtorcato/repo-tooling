@@ -73,7 +73,7 @@ deprecated here and removed in the next major.
 and X. One image serves all of them.
 
 - **1200×630** is the canonical Open Graph size (1.91:1).
-- **1280×640** (2:1) is what this family uses, because it *also* satisfies
+- **1280×640** (2:1) is what the torcato.dev repos use, because it *also* satisfies
   GitHub's repo social preview. The 3% aspect difference is invisible in
   practice, and one file beats two.
 - Keep everything important inside a **safe area inset ~8% from every edge.**
@@ -137,7 +137,7 @@ composes with the viewport query:
 ```
 
 A banner designed on a dark background with transparent padding usually works in
-both, which is why this family ships one banner rather than two.
+both, which is why the torcato.dev repos ship one banner rather than two.
 
 ## Favicons and app icons
 

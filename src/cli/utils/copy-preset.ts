@@ -102,7 +102,7 @@ export const PRESETS: Record<PresetName, PresetDefinition> = {
 	perlcritic: {
 		source: 'tooling/perl/perlcriticrc',
 		target: '.perlcriticrc',
-		desc: 'Perl::Critic configuration (severity 3, with the family rule exceptions)',
+		desc: 'Perl::Critic configuration (severity 3, with the shared rule exceptions)',
 	},
 	perltidy: {
 		source: 'tooling/perl/perltidyrc',

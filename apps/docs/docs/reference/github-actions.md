@@ -243,7 +243,7 @@ One source of truth, upgrades landing automatically. It was rejected:
 
 - **It only works on GitHub.** repo-tooling also generates GitLab CI, which has
   no equivalent — so those repos would need the generated file regardless, and
-  the family would run two different models.
+  the torcato.dev repos would run two different models.
 - **The consumer stops owning its CI.** Adding a job, a matrix entry or a deploy
   step means either abandoning the shared workflow or growing an input for every
   knob anyone might want.

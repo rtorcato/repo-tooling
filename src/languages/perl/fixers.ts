@@ -20,7 +20,7 @@ import { ensurePerlGitignore } from './gitignore.js'
 export const PERL_FIXERS: Fixer[] = [
 	{
 		target: 'perlcritic',
-		description: 'Scaffold .perlcriticrc (Perl::Critic at severity 3, with the family exceptions)',
+		description: 'Scaffold .perlcriticrc (Perl::Critic at severity 3, with the shared exceptions)',
 		appliesTo: ['Perl::Critic'],
 		outputs: ['.perlcriticrc'],
 		canFixDrift: true,
