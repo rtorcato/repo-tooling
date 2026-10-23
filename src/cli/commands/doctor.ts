@@ -71,6 +71,7 @@ import {
 	checkConfigSchemaVersions,
 	checkEnginesNode,
 	checkExportsBuildable,
+	checkFileFromRoot,
 	checkGitDependencies,
 	checkKnip,
 	checkLintStaged,
@@ -576,6 +577,9 @@ export async function runDoctor(
 	// JS-shaped checks are listed here — re-listing the base suite is what made
 	// any new base check silently skip JS repos (#309).
 	const pkg = await readPackageJson(targetDir)
+	// Monorepo (#861): Changesets, lint-staged and semantic-release config may sit at
+	// the git/workspace root. The package dir wins; the root is the fallback.
+	const root = (await gitRoot(targetDir)) ?? targetDir
 	const results: CheckResult[] = []
 
 	results.push(evaluateNodeVersion(process.version))
@@ -593,13 +597,17 @@ export async function runDoctor(
 		// Biome is the one spec that needs the directory as well as the file
 		// contents — it compares the `$schema` version against the installed
 		// CLI (#424). Dispatched here so it keeps its place in the output.
-		results.push(
-			spec.check === 'Biome' ? await checkBiome(targetDir) : await checkFile(targetDir, spec)
-		)
+		if (spec.check === 'Biome') {
+			results.push(await checkBiome(targetDir))
+		} else if (spec.check === 'Changesets') {
+			results.push(await checkFileFromRoot(targetDir, root, spec))
+		} else {
+			results.push(await checkFile(targetDir, spec))
+		}
 	}
-	results.push(await checkLintStaged(targetDir, pkg))
+	results.push(await checkLintStaged(targetDir, pkg, root))
 	results.push(await checkVerifyScript(targetDir, pkg))
-	results.push(await checkSemanticRelease(targetDir, pkg))
+	results.push(await checkSemanticRelease(targetDir, pkg, root))
 	results.push(await checkKnip(targetDir, pkg))
 	results.push(await checkSizeLimit(targetDir, pkg))
 	results.push(await checkReleaseToken(targetDir, offline))
