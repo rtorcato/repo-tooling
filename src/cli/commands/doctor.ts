@@ -27,17 +27,25 @@ import { readSwiftPackage, renderSwiftWorkflow } from '../../languages/swift/ci.
 import { type DetectedLanguage, detectAuditLanguage, isFreshDir } from '../utils/detect-language.js'
 import {
 	checkGitHubSettings,
+	departuresFromStandard,
 	GITHUB_SETTINGS_CHECKS,
 	gitRoot,
 	isPrivatePackage,
 	releaseConfigFile,
+	readGithubSnapshot,
 	releasePlugins,
 } from '../../base/github-settings.js'
+import { setWriteRoot } from '../../base/safe-fs.js'
 import { checkRepositorySecrets, SECRETS_CHECK } from '../../base/secrets.js'
 import { checkMilestones, MILESTONES_CHECK } from '../../base/milestones.js'
 import { checkGitIdentity, checkGitIdentityHistory } from '../../base/git-identity.js'
 import { checkCopiedAssets } from '../utils/copied-assets.js'
-import { type Lockfile, LOCKFILE_VERSION, readLockfile } from '../utils/lockfile.js'
+import {
+	type Lockfile,
+	LOCKFILE_VERSION,
+	readLockfile,
+	writeGithubRules,
+} from '../utils/lockfile.js'
 import { compareRulesWithReference, type RulesComparison } from '../utils/reference-rules.js'
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import { fixersForLanguage } from './fixers-by-language.js'
@@ -109,6 +117,8 @@ export interface DoctorOptions {
 	rulesFrom?: string
 	/** `--offline`: skip every check that reads live GitHub state via `gh` (#755). */
 	offline?: boolean
+	/** `--snapshot`: write the live GitHub settings into `rules.github` instead of auditing (#863). */
+	snapshot?: boolean
 }
 
 export interface RunDoctorOptions {
@@ -764,8 +774,67 @@ function printRulesComparison(comparison: RulesComparison) {
 	console.log(chalk.gray(`\n  ${differences.length} difference(s).\n`))
 }
 
+/**
+ * `doctor --snapshot` (#863): read the live GitHub settings and merge them into
+ * `rules.github`, for the human to review and commit. Runs no checks.
+ */
+async function snapshotCommand(dir: string, options: DoctorOptions) {
+	const fail = (error: string) => {
+		if (options.json) console.log(JSON.stringify({ error }, null, 2))
+		else console.error(chalk.red(`\n❌ ${error}\n`))
+		process.exitCode = 1
+	}
+	if (options.offline) return fail('--snapshot reads live GitHub state, so it cannot run --offline')
+	const target = path.resolve(dir)
+	const snap = await readGithubSnapshot(target)
+	if ('skip' in snap) return fail(`could not read GitHub settings: ${snap.skip}`)
+	setWriteRoot((await gitRoot(target)) ?? target)
+	let file: string
+	try {
+		file = await writeGithubRules(target, snap.github)
+	} catch (error) {
+		return fail(error instanceof Error ? error.message : String(error))
+	}
+	const departures = departuresFromStandard(snap.github)
+	if (options.json) {
+		console.log(
+			JSON.stringify(
+				{
+					directory: target,
+					file,
+					repo: snap.nwo,
+					github: snap.github,
+					omitted: snap.omitted,
+					departures,
+				},
+				null,
+				2
+			)
+		)
+		return
+	}
+	console.log(
+		chalk.cyan(`\n📸 Wrote ${snap.nwo}'s live GitHub settings to rules.github in ${file}\n`)
+	)
+	for (const line of JSON.stringify(snap.github, null, 2).split('\n')) console.log(`  ${line}`)
+	if (snap.omitted.length) {
+		console.log(chalk.gray('\n  Not written (a declared value stays as it was):'))
+		for (const o of snap.omitted) console.log(chalk.gray(`    - ${o}`))
+	}
+	if (departures.length) {
+		console.log(
+			chalk.yellow(
+				'\n  Differs from the standard. Committing it declares it, and doctor stops flagging it:'
+			)
+		)
+		for (const d of departures) console.log(chalk.yellow(`    - ${d}`))
+	}
+	console.log(chalk.gray('\n  Review the diff, then commit it.\n'))
+}
+
 export async function doctorCommand(options: DoctorOptions = {}) {
 	const dir = options.directory ?? process.cwd()
+	if (options.snapshot) return snapshotCommand(dir, options)
 	const results = await runDoctor(dir, { offline: options.offline })
 	const comparison = options.rulesFrom
 		? await compareRulesWithReference(dir, options.rulesFrom)

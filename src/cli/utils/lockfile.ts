@@ -558,6 +558,25 @@ export async function writeLockfile(
 }
 
 /**
+ * Merge `github` into `rules.github` (#863) and leave the rest of the file as
+ * it is: no restamp, since `rules` is the human's half. Fields not in `github`
+ * keep their declared value. Only a current-format file: rewriting an older or
+ * legacy-named one here would migrate it as a side effect.
+ */
+export async function writeGithubRules(dir: string, github: GithubRules): Promise<string> {
+	const filepath = path.join(dir, LOCKFILE_NAME)
+	const redo = 'run `npx @rtorcato/repo-tooling fix lockfile` first'
+	if (!(await fs.pathExists(filepath))) throw new Error(`no ${LOCKFILE_NAME} in ${dir}; ${redo}`)
+	const raw = (await fs.readJson(filepath)) as Record<string, any>
+	if (!parseLockfile(raw) || raw.version < LOCKFILE_VERSION)
+		throw new Error(`${LOCKFILE_NAME} is not a v${LOCKFILE_VERSION} lockfile; ${redo}`)
+	const rules: LockfileRules = raw.rules ?? DEFAULT_RULES
+	raw.rules = { ...rules, github: { ...rules.github, ...github } }
+	await fs.writeJson(filepath, raw, { spaces: 2 })
+	return filepath
+}
+
+/**
  * Patch a subset of a lockfile's config in place, preserving everything else.
  * Returns true when the file was rewritten, false when no lockfile exists.
  */

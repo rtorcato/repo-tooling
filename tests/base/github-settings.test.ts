@@ -7,9 +7,11 @@ import {
 	applyReleaseEnvironment,
 	buildGhApplyCommands,
 	checkGitHubSettings,
+	departuresFromStandard,
 	type GhExec,
 	type GhResult,
 	jobEnvironment,
+	readGithubSnapshot,
 	releaseUsesGitPlugin,
 	removeWorkflowJob,
 	workflowJobs,
@@ -1658,5 +1660,121 @@ describe('rules.github review fixes (#817)', () => {
 			{ vulnerabilityAlerts: false }
 		)
 		expect(byName(results, 'Security updates')?.status).toBe('ok')
+	})
+})
+
+describe('readGithubSnapshot (#863)', () => {
+	it('reads every field rules.github declares from a fully readable repo', async () => {
+		const exec = fakeGh({
+			repo: ok(JSON.stringify({ ...JSON.parse(COMPLIANT_REPO), permissions: { admin: true } })),
+			reporting: ok(JSON.stringify({ enabled: true })),
+			environments: ok(
+				JSON.stringify({
+					environments: [
+						{
+							name: 'release',
+							protection_rules: [
+								{
+									type: 'required_reviewers',
+									reviewers: [
+										{ type: 'User', reviewer: { login: 'Rtorcato' } },
+										{ type: 'Team', reviewer: { slug: 'maintainers' } },
+									],
+								},
+							],
+						},
+					],
+				})
+			),
+		})
+		expect(await readGithubSnapshot(gitRepo(), exec)).toEqual({
+			nwo: 'owner/repo',
+			github: {
+				requiredChecks: ['ci'],
+				strict: false,
+				autoMerge: true,
+				deleteOnMerge: true,
+				vulnerabilityAlerts: true,
+				automatedSecurityFixes: true,
+				privateVulnerabilityReporting: true,
+				// Users only, lowercased: a team slug isn't a login the fixer can apply.
+				releaseReviewers: ['rtorcato'],
+			},
+			omitted: [],
+		})
+	})
+
+	it('omits what the token cannot read instead of writing it as off', async () => {
+		const repo = JSON.parse(COMPLIANT_REPO)
+		delete repo.allow_auto_merge
+		const exec = fakeGh({
+			repo: ok(JSON.stringify(repo)),
+			protection: fail('gh: Not Found (HTTP 404)'),
+			branch: ok(
+				JSON.stringify({
+					protected: true,
+					protection: { required_status_checks: { contexts: ['ci', 'lint'] } },
+				})
+			),
+			alerts: fail('gh: (HTTP 403)'),
+		})
+		const snap = await readGithubSnapshot(gitRepo(), exec)
+		if ('skip' in snap) throw new Error(snap.skip)
+		expect(snap.github).toEqual({ requiredChecks: ['ci', 'lint'] })
+		expect(snap.omitted.join('\n')).toMatch(/strict: needs admin/)
+		expect(snap.omitted.join('\n')).toMatch(/autoMerge, deleteOnMerge/)
+		expect(snap.omitted.join('\n')).toMatch(/vulnerabilityAlerts.*needs admin/)
+		expect(snap.omitted.join('\n')).toMatch(/releaseReviewers/)
+	})
+
+	it('never writes the security toggles a non-admin read as off', async () => {
+		// The default fakeGh answers alerts and fixes, but the repo grants no admin.
+		const exec = fakeGh({ alerts: fail('gh: Not Found (HTTP 404)') })
+		const snap = await readGithubSnapshot(gitRepo(), exec)
+		if ('skip' in snap) throw new Error(snap.skip)
+		expect(snap.github.vulnerabilityAlerts).toBeUndefined()
+		expect(snap.github.automatedSecurityFixes).toBeUndefined()
+		expect(vi.mocked(exec).mock.calls.some(([a]) => a[1]?.endsWith('/vulnerability-alerts'))).toBe(
+			false
+		)
+	})
+
+	it('leaves out required checks on an unprotected branch', async () => {
+		const exec = fakeGh({ protection: fail('gh: Not Found (HTTP 404)') })
+		const snap = await readGithubSnapshot(gitRepo(), exec)
+		if ('skip' in snap) throw new Error(snap.skip)
+		expect(snap.github.requiredChecks).toBeUndefined()
+		expect(snap.omitted[0]).toBe('requiredChecks, strict: main is unprotected')
+	})
+
+	it('skips outside a git repo and when gh is missing', async () => {
+		expect(await readGithubSnapshot(newTmpDir(), fakeGh())).toEqual({
+			skip: 'not a git repository',
+		})
+		expect(
+			await readGithubSnapshot(gitRepo(), fakeGh({ repo: fail('spawn gh ENOENT', null) }))
+		).toEqual({ skip: 'gh not installed' })
+	})
+})
+
+describe('departuresFromStandard (#863)', () => {
+	it('names each value that differs from the standard', () => {
+		expect(
+			departuresFromStandard({
+				requiredChecks: ['test (22)'],
+				strict: true,
+				autoMerge: true,
+				vulnerabilityAlerts: false,
+			})
+		).toEqual([
+			'requiredChecks leaves out ci',
+			'strict: true (standard: false)',
+			'vulnerabilityAlerts: false (standard: true)',
+		])
+	})
+
+	it('is empty for the standard, and for absent fields', () => {
+		expect(departuresFromStandard({})).toEqual([])
+		expect(departuresFromStandard({ requiredChecks: ['ci', 'lint'], strict: false })).toEqual([])
 	})
 })

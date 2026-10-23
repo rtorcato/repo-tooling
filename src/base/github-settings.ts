@@ -180,6 +180,8 @@ interface RepoInfo {
 	// A read/write token (e.g. CI's default GITHUB_TOKEN) omits them entirely, so
 	// we track visibility to skip the check rather than read `undefined` as "off".
 	mergeVisible: boolean
+	/** The token is a repo admin. Absent `permissions` reads as no. */
+	admin: boolean
 }
 
 /**
@@ -216,6 +218,7 @@ async function probeRepo(exec: GhExec): Promise<{ info: RepoInfo } | { skip: str
 				'allow_merge_commit',
 				'allow_rebase_merge',
 			].every((k) => typeof d[k] === 'boolean'),
+			admin: d.permissions?.admin === true,
 		},
 	}
 }
@@ -245,10 +248,144 @@ export async function checkGitHubSettings(
 	]
 }
 
+/** What `doctor --snapshot` writes (#863). */
+export interface GithubSnapshot {
+	nwo: string
+	/** The live settings, in the shape `rules.github` declares them. */
+	github: GithubRules
+	/** Fields left out, each with why. A field already declared keeps its value. */
+	omitted: string[]
+}
+
+/**
+ * Read the repo's live GitHub settings as `rules.github` (#863), so declaring
+ * them doesn't mean typing them out. Read-only. A field the token can't see is
+ * omitted, never guessed: writing `false` for an unreadable toggle would
+ * declare it off.
+ */
+export async function readGithubSnapshot(
+	target: string,
+	exec?: GhExec
+): Promise<GithubSnapshot | { skip: string }> {
+	const dir = await gitRoot(target)
+	if (!dir) return { skip: 'not a git repository' }
+	const gh: GhExec = exec ?? ((args, stdin) => realGhExec(args, stdin, dir))
+	const probe = await probeRepo(gh)
+	if ('skip' in probe) return probe
+	const { info } = probe
+	const github: GithubRules = {}
+	const omitted: string[] = []
+
+	const prot = await readProtection(gh, info.nwo, info.branch)
+	if (prot === 'unprotected') omitted.push(`requiredChecks, strict: ${info.branch} is unprotected`)
+	else if ('skip' in prot) omitted.push(`requiredChecks, strict: ${prot.skip}`)
+	else {
+		github.requiredChecks = prot.p.required_status_checks?.contexts ?? []
+		if (prot.partial) omitted.push('strict: needs admin to read')
+		else github.strict = prot.p.required_status_checks?.strict === true
+	}
+
+	if (info.mergeVisible) {
+		github.autoMerge = info.autoMerge
+		github.deleteOnMerge = info.deleteOnMerge
+	} else omitted.push('autoMerge, deleteOnMerge: token lacks admin:read for merge settings')
+
+	// GitHub answers a non-admin 404 on the alerts and fixes endpoints, the same
+	// as "off", so only an admin's read is written. Otherwise a snapshot would
+	// declare them false and the next `fix github-settings` would turn them off.
+	const sec = info.admin
+		? await readSecurityUpdates(gh, info.nwo)
+		: { skip: 'needs admin to read (a non-admin gets 404, which reads as off)' }
+	if ('skip' in sec)
+		omitted.push(
+			`vulnerabilityAlerts, automatedSecurityFixes, privateVulnerabilityReporting: ${sec.skip}`
+		)
+	else {
+		github.vulnerabilityAlerts = sec.alerts
+		github.automatedSecurityFixes = sec.fixes
+		if (sec.reporting === undefined)
+			omitted.push('privateVulnerabilityReporting: unreadable (private repo, or no admin)')
+		else github.privateVulnerabilityReporting = sec.reporting
+	}
+
+	const envs = await readEnvironments(gh, info.nwo)
+	const users = envs === 'skip' ? [] : (envs.get(RELEASE_ENVIRONMENT)?.users ?? [])
+	if (envs === 'skip') omitted.push('releaseReviewers: could not read environments')
+	else if (users.length) github.releaseReviewers = users
+	else
+		omitted.push(`releaseReviewers: no \`${RELEASE_ENVIRONMENT}\` environment with user reviewers`)
+
+	return { nwo: info.nwo, github, omitted }
+}
+
+/** The standard's value for each toggle `rules.github` can declare. */
+const STANDARD_TOGGLES = {
+	strict: false,
+	autoMerge: true,
+	deleteOnMerge: true,
+	vulnerabilityAlerts: true,
+	automatedSecurityFixes: true,
+	privateVulnerabilityReporting: true,
+} as const
+
+/**
+ * Where declared settings depart from the standard. Declaring a value is what
+ * stops doctor flagging it, so `--snapshot` names these rather than quietly
+ * freezing a weakened repo as its stated rules.
+ */
+export function departuresFromStandard(rules: GithubRules): string[] {
+	const out: string[] = []
+	const missing = GITHUB_STANDARD.requiredContexts.filter((c) => !rules.requiredChecks?.includes(c))
+	if (rules.requiredChecks && missing.length)
+		out.push(`requiredChecks leaves out ${missing.join(', ')}`)
+	for (const [field, standard] of Object.entries(STANDARD_TOGGLES) as [
+		keyof typeof STANDARD_TOGGLES,
+		boolean,
+	][]) {
+		const value = rules[field]
+		if (value !== undefined && value !== standard)
+			out.push(`${field}: ${value} (standard: ${standard})`)
+	}
+	return out
+}
+
 function probeFailureReason(probe: GhResult): string {
 	if (probe.code === null) return 'gh not installed'
 	if (/not logged|gh auth login|authentication/i.test(probe.stderr)) return 'gh not authenticated'
 	return 'not a GitHub repo or gh unavailable'
+}
+
+/**
+ * The default branch's protection. `partial` means a non-admin token read it
+ * from the branch endpoint, which carries the required checks but not `strict`.
+ */
+async function readProtection(
+	exec: GhExec,
+	nwo: string,
+	branch: string
+): Promise<{ p: Record<string, any>; partial: boolean } | 'unprotected' | { skip: string }> {
+	const r = await exec(['api', `repos/${nwo}/branches/${branch}/protection`])
+	if (r.ok) {
+		try {
+			return { p: JSON.parse(r.stdout), partial: false }
+		} catch {
+			return { skip: 'could not parse protection response' }
+		}
+	}
+	if (/403|forbidden/i.test(r.stderr)) return { skip: 'token lacks admin access' }
+	if (!/404|not found/i.test(r.stderr)) return { skip: 'could not read branch protection' }
+	// A non-admin token gets a 404 here even on a protected branch, which read
+	// as "unprotected" and hid js-common#364's stale required check (#816). The
+	// branch endpoint shows any reader whether it is protected, and its checks.
+	const b = await exec(['api', `repos/${nwo}/branches/${branch}`])
+	if (!b.ok) return { skip: 'could not read branch protection' }
+	try {
+		const branchInfo = JSON.parse(b.stdout)
+		if (branchInfo.protected !== true) return 'unprotected'
+		return { p: branchInfo.protection ?? {}, partial: true }
+	} catch {
+		return { skip: 'could not parse branch response' }
+	}
 }
 
 async function checkBranchProtection(
@@ -267,33 +404,10 @@ async function checkBranchProtection(
 		detail: `${branch} is unprotected`,
 		hint: `Protect ${branch}: require checks ${required.join(', ')}, no force-push/deletions`,
 	}
-	const r = await exec(['api', `repos/${nwo}/branches/${branch}/protection`])
-	let p: Record<string, any>
-	// Only the required checks are visible without admin; the rest goes unchecked.
-	let partial = false
-	if (!r.ok) {
-		if (/403|forbidden/i.test(r.stderr)) return skip(check, 'token lacks admin access')
-		if (!/404|not found/i.test(r.stderr)) return skip(check, 'could not read branch protection')
-		// A non-admin token gets a 404 here even on a protected branch, which read
-		// as "unprotected" and hid js-common#364's stale required check (#816). The
-		// branch endpoint shows any reader whether it is protected, and its checks.
-		const b = await exec(['api', `repos/${nwo}/branches/${branch}`])
-		if (!b.ok) return skip(check, 'could not read branch protection')
-		try {
-			const branchInfo = JSON.parse(b.stdout)
-			if (branchInfo.protected !== true) return unprotected
-			p = branchInfo.protection ?? {}
-			partial = true
-		} catch {
-			return skip(check, 'could not parse branch response')
-		}
-	} else {
-		try {
-			p = JSON.parse(r.stdout)
-		} catch {
-			return skip(check, 'could not parse protection response')
-		}
-	}
+	const read = await readProtection(exec, nwo, branch)
+	if (read === 'unprotected') return unprotected
+	if ('skip' in read) return skip(check, read.skip)
+	const { p, partial } = read
 
 	const deltas: string[] = []
 	const contexts: string[] = p.required_status_checks?.contexts ?? []
@@ -1339,6 +1453,8 @@ interface Environment {
 	gated: boolean
 	/** Reviewer logins (users) or slugs (teams), lowercased, sorted. */
 	reviewers: string[]
+	/** Just the user logins, as `rules.github.releaseReviewers` holds them (#863). */
+	users: string[]
 }
 type Environments = Map<string, Environment>
 
@@ -1364,6 +1480,7 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 				reviewers: normalizeReviewers(
 					(rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? x.reviewer?.slug ?? '')
 				),
+				users: normalizeReviewers((rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? '')),
 			})
 		}
 		return envs

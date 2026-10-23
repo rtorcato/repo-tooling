@@ -18,7 +18,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 	return { ...real, spawn }
 })
 
-const { runDoctor } = await import('../../../src/cli/commands/doctor.js')
+const { doctorCommand, runDoctor } = await import('../../../src/cli/commands/doctor.js')
 
 const newTmpDir = useTmpDir()
 
@@ -57,5 +57,21 @@ describe('doctor --offline (#755)', () => {
 		for (const r of results.filter((r) => r.status === 'skipped' && !r.check.startsWith('Git '))) {
 			expect(r.detail).toMatch(/^offline/)
 		}
+	})
+
+	it('--snapshot refuses --offline before calling gh or writing (#863)', async () => {
+		const dir = newTmpDir()
+		await seedRepo(dir)
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await doctorCommand({ directory: dir, snapshot: true, offline: true, json: true })
+			expect(JSON.parse(String(log.mock.calls[0]?.[0])).error).toMatch(/--offline/)
+		} finally {
+			log.mockRestore()
+		}
+		expect(process.exitCode).toBe(1)
+		process.exitCode = 0
+		expect(ghCalls).toEqual([])
+		expect(await fs.pathExists(join(dir, '.repo-tooling.json'))).toBe(false)
 	})
 })
