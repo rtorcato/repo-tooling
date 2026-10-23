@@ -429,15 +429,6 @@
 		}
 	},
 	"knip": {
-		"entry": [
-			"src/cli/index.ts",
-			"src/cli/commands/doctor.ts",
-			"tooling/**/*.{mjs,ts}"
-		],
-		"project": [
-			"src/**/*.ts",
-			"tooling/**/*.{mjs,ts}"
-		],
 		"ignoreDependencies": [
 			"ts-jest",
 			"@semantic-release/commit-analyzer",
@@ -445,8 +436,35 @@
 			"@semantic-release/github",
 			"@semantic-release/npm",
 			"@semantic-release/release-notes-generator",
-			"conventional-changelog-conventionalcommits"
-		]
+			"conventional-changelog-conventionalcommits",
+			"@infrazero/repo-ai"
+		],
+		"ignore": [
+			"tooling/**"
+		],
+		"workspaces": {
+			".": {
+				"entry": [
+					"src/cli/index.ts",
+					"src/cli/commands/doctor.ts",
+					"tooling/**/*.{mjs,ts}"
+				],
+				"project": [
+					"src/**/*.ts",
+					"tooling/**/*.{mjs,ts}"
+				]
+			},
+			"apps/docs": {
+				"entry": [
+					"src/theme/**/*.{ts,tsx}"
+				],
+				"ignoreDependencies": [
+					"@easyops-cn/docusaurus-search-local",
+					"@rtorcato/docusaurus-plugin-shared-docs",
+					"@easyops-cn/docusaurus-plugin-docusaurus-search-local"
+				]
+			}
+		}
 	},
 	"bin": {
 		"repo-tooling": "./dist/cli/index.js"
