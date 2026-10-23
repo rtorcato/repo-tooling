@@ -26,6 +26,10 @@ npx @rtorcato/repo-tooling setup --preset vite-plus-app -d ./my-app --yes
 Without a git repo the install still succeeds, but `vp config` reports
 `.git can't be found` and the hooks stay off until you run `pnpm install` again.
 
+The interactive wizard (`setup` with no preset) offers it too: pick `library` or
+`web-app` and it asks "Use Vite+?". Answer yes and it skips the lint, format,
+test-framework and bundler questions, because Vite+ owns all four.
+
 `--config` works too. Set `"vitePlus": true`, `"linting": { "tool": "none" }`,
 `"formatting": { "tool": "none" }` and `"bundler": "vite"`; `projectType` is
 `library` or `web-app`.

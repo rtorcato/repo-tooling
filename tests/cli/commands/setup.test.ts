@@ -1037,6 +1037,94 @@ describe('setup language prompt', () => {
 			asked.filter((q) => q.type && !registered.has(q.type)).map((q) => `${q.name}: ${q.type}`)
 		).toEqual([])
 	})
+
+	// #902: the wizard offers Vite+ and, like validateProjectConfig, refuses the mixes.
+	describe('Vite+ (#902)', () => {
+		type Question = {
+			name: string
+			default?: unknown
+			when?: (a: Record<string, unknown>) => boolean
+		}
+
+		async function runWizard(answers: Record<string, unknown>, extra: Partial<SetupOptions> = {}) {
+			const dir = newTmpDir()
+			const spy = mockPrompt({ language: 'js' }, answers)
+			const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+			try {
+				await setupProject({ directory: dir, skipInstall: true, ...extra })
+			} finally {
+				logSpy.mockRestore()
+			}
+			const [questions] = spy.mock.calls[1] as [Question[]]
+			return { dir, questions }
+		}
+
+		it('only asks for library and web-app, and stands the conflicting questions down', async () => {
+			const { questions } = await runWizard(JS_ANSWERS)
+			const q = (name: string) => questions.find((x) => x.name === name)
+			expect(q('vitePlus')?.when?.({ projectType: 'library' })).toBe(true)
+			expect(q('vitePlus')?.when?.({ projectType: 'web-app' })).toBe(true)
+			for (const type of ['node-api', 'nextjs-app', 'react-app']) {
+				expect(q('vitePlus')?.when?.({ projectType: type }), type).toBe(false)
+			}
+			const yes = { projectType: 'library', vitePlus: true, lintingTool: 'biome' }
+			for (const name of ['lintingTool', 'oxlint', 'testingFramework', 'bundler']) {
+				expect(q(name)?.when?.(yes), name).toBe(false)
+			}
+			// ...and they stay on for everyone else.
+			const no = { projectType: 'library', vitePlus: false, lintingTool: 'biome' }
+			for (const name of ['lintingTool', 'oxlint', 'testingFramework', 'bundler']) {
+				expect(q(name)?.when?.(no), name).toBe(true)
+			}
+		})
+
+		it('seeds the default from a reference repo that already uses Vite+', async () => {
+			vi.mocked(fetchReferenceLockfile).mockResolvedValue({
+				ok: true,
+				lockfile: {
+					version: 4,
+					record: { config: buildPresetConfig('vite-plus', 'reference-repo') },
+					rules: {},
+				},
+			} as never)
+			const { questions } = await runWizard(JS_ANSWERS, { from: 'someone/theirs' })
+			expect(questions.find((x) => x.name === 'vitePlus')?.default).toBe(true)
+		})
+
+		it.each(['library', 'web-app'])(
+			'records a valid %s config, even with stale answers',
+			async (projectType) => {
+				// Stale lint/test/bundler answers: a real run skips those questions, but
+				// the config must not depend on that.
+				const { dir } = await runWizard({
+					...JS_ANSWERS,
+					projectType,
+					vitePlus: true,
+					oxlint: true,
+					testingFramework: 'jest',
+					bundler: 'tsup',
+				})
+				const { config } = (await fs.readJson(join(dir, '.repo-tooling.json'))).record
+				expect(validateProjectConfig(config)).toEqual({ valid: true, errors: [] })
+				expect(config).toMatchObject({
+					vitePlus: true,
+					linting: { tool: 'none' },
+					formatting: { tool: 'none' },
+					testing: { framework: 'vitest' },
+					bundler: 'vite',
+				})
+				expect(config.oxlint).toBeFalsy()
+				expect(await fs.pathExists(join(dir, 'biome.json'))).toBe(false)
+			}
+		)
+
+		it('leaves vitePlus off the config when declined', async () => {
+			const { dir } = await runWizard({ ...JS_ANSWERS, vitePlus: false })
+			const { config } = (await fs.readJson(join(dir, '.repo-tooling.json'))).record
+			expect(config.vitePlus).toBeUndefined()
+			expect(config.linting.tool).toBe('biome')
+		})
+	})
 })
 
 // #825: three first-run failures that used to end in a success message, a
