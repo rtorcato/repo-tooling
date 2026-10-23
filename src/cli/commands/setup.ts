@@ -516,6 +516,15 @@ async function promptForConfig(
 		},
 		{
 			type: 'confirm',
+			name: 'vitePlus',
+			message: '⚡ Use Vite+ (one `vp` toolchain for lint, format, test and build)?',
+			default: seed?.vitePlus ?? false,
+			// Same two types validateProjectConfig accepts for vitePlus (#897).
+			when: (answers: any) =>
+				answers.projectType === 'library' || answers.projectType === 'web-app',
+		},
+		{
+			type: 'confirm',
 			name: 'useTypeScript',
 			message: '📘 Do you want to use TypeScript?',
 			default: seed?.typescript.enabled ?? true,
@@ -565,6 +574,8 @@ async function promptForConfig(
 				{ name: '❌ None', value: 'none' },
 			],
 			default: seed?.linting.tool ?? 'biome',
+			// Vite+ owns lint and format, so Biome/ESLint/Prettier are never offered.
+			when: (answers: any) => !answers.vitePlus,
 		},
 		{
 			type: 'select',
@@ -585,7 +596,7 @@ async function promptForConfig(
 			name: 'oxlint',
 			message: '🦀 Also run Oxlint alongside (50–100× faster than ESLint)?',
 			default: seed?.oxlint ?? false,
-			when: (answers: any) => answers.lintingTool !== 'none',
+			when: (answers: any) => !answers.vitePlus && answers.lintingTool !== 'none',
 		},
 		{
 			type: 'select',
@@ -599,6 +610,8 @@ async function promptForConfig(
 				{ name: '❌ None', value: 'none' },
 			],
 			default: seed?.testing.framework ?? 'vitest',
+			// Vite+ runs Vitest, so there is nothing to pick.
+			when: (answers: any) => !answers.vitePlus,
 		},
 		{
 			type: 'select',
@@ -615,7 +628,10 @@ async function promptForConfig(
 		{
 			type: 'confirm',
 			name: 'gitHooks',
-			message: '🪝 Set up Git hooks (Husky + lint-staged)?',
+			message: (answers: any) =>
+				answers.vitePlus
+					? '🪝 Set up Git hooks (vp config + vp staged)?'
+					: '🪝 Set up Git hooks (Husky + lint-staged)?',
 			default: seed?.gitHooks ?? true,
 		},
 		{
@@ -714,7 +730,8 @@ async function promptForConfig(
 				return choices
 			},
 			default: seed?.bundler,
-			when: (answers: any) => answers.projectType !== 'nextjs-app', // Next.js has its own bundler
+			// Next.js has its own bundler, and Vite+ builds with Vite.
+			when: (answers: any) => answers.projectType !== 'nextjs-app' && !answers.vitePlus,
 		},
 		{
 			type: 'confirm',
@@ -728,6 +745,10 @@ async function promptForConfig(
 		},
 	])
 
+	// Answered, not inferred: with Vite+ the skipped questions leave nothing in
+	// `answers`, and the config must still say what validateProjectConfig wants.
+	const vitePlus = answers.vitePlus === true
+
 	return {
 		projectName: answers.projectName,
 		// The real answer from the language question above, not a hardcoded 'js'
@@ -739,29 +760,33 @@ async function promptForConfig(
 			config: answers.tsConfig || 'base',
 		},
 		linting: {
-			tool: answers.lintingTool || 'none',
-			eslintConfig: answers.eslintConfig,
+			tool: vitePlus ? 'none' : answers.lintingTool || 'none',
+			eslintConfig: vitePlus ? undefined : answers.eslintConfig,
 		},
 		formatting: {
-			tool:
-				answers.lintingTool === 'biome' || answers.lintingTool === 'both'
+			tool: vitePlus
+				? 'none'
+				: answers.lintingTool === 'biome' || answers.lintingTool === 'both'
 					? 'biome'
 					: answers.lintingTool === 'eslint'
 						? 'prettier'
 						: 'none',
 		},
-		testing: {
-			framework: answers.testingFramework || 'none',
-			environment: answers.testEnvironment,
-		},
+		testing: vitePlus
+			? { framework: 'vitest', environment: 'node' }
+			: {
+					framework: answers.testingFramework || 'none',
+					environment: answers.testEnvironment,
+				},
 		gitHooks: answers.gitHooks || false,
 		commitLint: answers.commitLint || false,
 		semanticRelease: answers.releaseTool === 'semantic-release',
 		changesets: answers.releaseTool === 'changesets',
 		releasePlease: answers.releaseTool === 'release-please',
-		oxlint: answers.oxlint || false,
+		oxlint: !vitePlus && (answers.oxlint || false),
 		securityAutomation: answers.securityAutomation ?? false,
-		bundler: answers.bundler || 'none',
+		bundler: vitePlus ? 'vite' : answers.bundler || 'none',
+		...(vitePlus && { vitePlus }),
 		treeshakeCheck: answers.treeshakeCheck || false,
 		publint: answers.publint ?? false,
 		badges: answers.badges ?? false,
