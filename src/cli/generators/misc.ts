@@ -388,7 +388,7 @@ export function parseWorkspacePackages(yaml: string): string[] {
 	return globs
 }
 
-export async function buildKnipConfig(targetDir: string) {
+async function buildKnipConfig(targetDir: string) {
 	const pkgPath = path.join(targetDir, 'package.json')
 	let multiEntry = false
 	if (await fs.pathExists(pkgPath)) {

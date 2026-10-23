@@ -26,7 +26,7 @@ export async function generateLintingConfigs(config: ProjectConfig, targetDir: s
 	}
 }
 
-export async function generateOxlintConfig(targetDir: string) {
+async function generateOxlintConfig(targetDir: string) {
 	// Oxlint's `extends` resolution from npm packages isn't reliably supported,
 	// so we copy the full preset rather than write a thin pointer file.
 	const { copyPreset } = await import('../utils/copy-preset.js')
@@ -44,7 +44,7 @@ export const BIOME_CONFIG = 'biome.json'
  * into BIOME_CONFIG and this one is deleted, so the ambiguity can't persist.
  * When it is the only config, it is the live one and is merged in place (#878).
  */
-export const BIOME_LEGACY_CONFIG = 'biome.jsonc'
+const BIOME_LEGACY_CONFIG = 'biome.jsonc'
 
 /**
  * Unversioned on purpose (#468). A `$schema` naming an exact version is only

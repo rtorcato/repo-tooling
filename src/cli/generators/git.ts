@@ -4,7 +4,7 @@ import { hookHasUncommented } from '../../base/checks.js'
 import type { ProjectConfig } from '../commands/setup.js'
 import { VITE_HOOKS_DIR } from './vite-plus.js'
 
-export const PRE_PUSH_HOOK_CONTENT = `echo "🔍 Running pre-push verify..."
+const PRE_PUSH_HOOK_CONTENT = `echo "🔍 Running pre-push verify..."
 pnpm verify
 STATUS=$?
 if [ $STATUS -ne 0 ]; then

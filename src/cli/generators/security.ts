@@ -12,7 +12,7 @@ import { type DependabotOnPr, readLockfile } from '../utils/lockfile.js'
  * for a language Dependabot doesn't support, which drops the manifest block and
  * leaves only the github-actions one.
  */
-export function dependabotConfig(ecosystem: string | null): string {
+function dependabotConfig(ecosystem: string | null): string {
 	const manifest =
 		ecosystem === null
 			? ''
@@ -336,7 +336,7 @@ jobs:
 /** The default workflow: auto-merge (\`dependabot.onPr\` unset). */
 export const DEPENDABOT_AUTOMERGE_WORKFLOW = renderAutomergeWorkflow('automerge', '')
 
-export const DEFAULT_DEPENDABOT_LABEL = 'needs-review'
+const DEFAULT_DEPENDABOT_LABEL = 'needs-review'
 
 /**
  * The workflow for this repo's \`rules.dependabot\` setting (#746). Absent or
@@ -414,7 +414,7 @@ export async function renderAutomergeWorkflowOver(targetDir: string): Promise<st
 }
 
 /** Relative paths this generator owns, in a stable order for \`filesWritten\`. */
-export const DEPENDABOT_FILES = [
+const DEPENDABOT_FILES = [
 	'.github/dependabot.yml',
 	'.github/workflows/dependabot-automerge.yml',
 ] as const

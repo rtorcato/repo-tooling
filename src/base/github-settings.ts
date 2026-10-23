@@ -80,7 +80,7 @@ export const realGhExec = (
 	})
 
 /** The standard doctor checks these settings against. */
-export const GITHUB_STANDARD = {
+const GITHUB_STANDARD = {
 	// Required status contexts on the default branch (strict off — see below).
 	// Only the `ci` gate job, which needs every other job (#816): requiring a
 	// matrix leg such as `test (22)` strands every PR at BLOCKED the day the leg
@@ -114,7 +114,7 @@ const normalizeReviewers = (logins: string[]) =>
 const CODE_SCANNING_CHECK = 'Code-scanning gate'
 export const RELEASE_GATE_CHECK = 'Release gate'
 export const RELEASE_ENV_CHECK = 'Release environment'
-export const RELEASE_SECRETS_CHECK = 'Release secrets'
+const RELEASE_SECRETS_CHECK = 'Release secrets'
 const SECURITY_UPDATES_CHECK = 'Security updates'
 export const GITHUB_SETTINGS_CHECKS = [
 	'Branch protection',
@@ -458,7 +458,7 @@ const MATRIX_LEG = /^\S.* \(.+\)$/
  * last two are the js-common#364 trap: a required context that never reports
  * leaves every PR BLOCKED while every check is green.
  */
-export async function requiredContextDeltas(
+async function requiredContextDeltas(
 	contexts: string[],
 	dir: string,
 	required: readonly string[] = GITHUB_STANDARD.requiredContexts

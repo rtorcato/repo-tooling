@@ -43,7 +43,7 @@ function isInside(root: string, target: string): boolean {
  */
 // ponytail: check-then-write, so a symlink swapped in between the two still wins.
 // Fine for a CLI the user runs by hand; open with O_NOFOLLOW per path segment if that changes.
-export async function assertInsideWriteRoot(dest: string): Promise<void> {
+async function assertInsideWriteRoot(dest: string): Promise<void> {
 	if (writeRoot === undefined) return
 	const target = path.resolve(dest)
 	if (!isInside(writeRoot, target)) return

@@ -133,10 +133,7 @@ export async function writeReadmeUnlessPresent(readmePath: string, content: stri
  * target's package.json (name + repository); visibility falls back to the
  * project type (libraries are public, apps private) when `private` is unset.
  */
-export async function buildReadmeBadgeBlock(
-	config: ProjectConfig,
-	targetDir: string
-): Promise<string> {
+async function buildReadmeBadgeBlock(config: ProjectConfig, targetDir: string): Promise<string> {
 	let repository: unknown
 	let isPrivate = config.projectType !== 'library'
 	const pkgPath = path.join(targetDir, 'package.json')

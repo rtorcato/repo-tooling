@@ -1,7 +1,7 @@
 import type { Lockfile } from '../utils/lockfile.js'
 import type { ProjectConfig } from './setup.js'
 
-export const FIX_TARGETS: Record<string, string> = {
+const FIX_TARGETS: Record<string, string> = {
 	'package.json': 'package-json',
 	'engines.node': 'engines',
 	packageManager: 'engines',

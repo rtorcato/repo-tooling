@@ -184,7 +184,7 @@ export function presetExtendedBy(contents: string): string | null {
 	return preset ?? null
 }
 
-export const BIOME_FILE_CHECK: FileCheck = {
+const BIOME_FILE_CHECK: FileCheck = {
 	check: 'Biome',
 	candidates: ['biome.json', 'biome.jsonc'],
 	expected: `extends "${PACKAGE}/biome" or inlines the preset, with the linter on`,
@@ -914,7 +914,7 @@ export async function checkSizeLimit(dir: string, pkg: Pkg | null): Promise<Chec
 }
 
 /** Changesets is in use when its config file is present. */
-export function usesChangesets(dir: string): Promise<boolean> {
+function usesChangesets(dir: string): Promise<boolean> {
 	return fs.pathExists(path.join(dir, '.changeset', 'config.json'))
 }
 
@@ -1528,7 +1528,7 @@ const BUILD_LIFECYCLE_SCRIPTS = ['preinstall', 'install', 'postinstall'] as cons
  * `onlyBuiltDependencies` / `ignoredBuiltDependencies` lists are still read so
  * a repo that hasn't migrated isn't nagged about choices it already made.
  */
-export function decidedBuilds(yaml: string): Set<string> {
+function decidedBuilds(yaml: string): Set<string> {
 	const decided = new Set<string>()
 	const lines = yaml.split('\n')
 	let inBlock = false

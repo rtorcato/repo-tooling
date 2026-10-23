@@ -28,7 +28,7 @@ export type NpmExec = (args: string[]) => Promise<GhResult>
 const NPM_TIMEOUT_MS = 15_000
 
 /** Real `npm` runner — never rejects. Args are derived, never free text, and execFile runs no shell. */
-export const realNpmExec: NpmExec = (args) =>
+const realNpmExec: NpmExec = (args) =>
 	new Promise((resolve) => {
 		execFile('npm', args, { timeout: NPM_TIMEOUT_MS }, (err, stdout, stderr) => {
 			const code = err ? (typeof err.code === 'number' ? err.code : null) : 0
@@ -37,14 +37,14 @@ export const realNpmExec: NpmExec = (args) =>
 	})
 
 export const NPM_OIDC_CHECK = 'npm OIDC publish'
-export const NPM_TRUST_CHECK = 'npm trusted publisher'
-export const NPM_TRUST_FIX = 'npm-trusted-publisher'
+const NPM_TRUST_CHECK = 'npm trusted publisher'
+const NPM_TRUST_FIX = 'npm-trusted-publisher'
 
 /** OIDC publish needs npm ≥ 11.5.1 — Node 22 bundles npm 10. */
-export const NPM_OIDC_MIN = '11.5.1'
+const NPM_OIDC_MIN = '11.5.1'
 /** `npm trust` landed in npm 11.15.0. */
-export const NPM_TRUST_MIN = '11.15.0'
-export const NPM_UPGRADE_CMD = `npm install -g npm@^${NPM_OIDC_MIN}`
+const NPM_TRUST_MIN = '11.15.0'
+const NPM_UPGRADE_CMD = `npm install -g npm@^${NPM_OIDC_MIN}`
 
 const NPM_UPGRADE = /\bnpm\s+(?:install|i)\s+(?:-g|--global)\s+npm@/
 
@@ -219,7 +219,7 @@ function trustEntries(json: unknown): unknown[] {
  * ponytail: matches on string leaves rather than a fixed schema — npm's JSON
  * shape isn't pinned in its docs; tighten once it is.
  */
-export function trustMismatch(
+function trustMismatch(
 	entries: unknown[],
 	want: { nwo: string; file: string; environment: string | null }
 ): string | null {

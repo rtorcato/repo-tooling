@@ -15,7 +15,7 @@ import {
 import type { ProjectConfig } from '../../cli/commands/setup.js'
 
 /** CI runs the tests with coverage when Vitest is the test runner. */
-export function usesCoverage(config: ProjectConfig): boolean {
+function usesCoverage(config: ProjectConfig): boolean {
 	// Vite+ ships no coverage provider; `pnpm test` is its one test command (#897).
 	return config.testing.framework === 'vitest' && !config.vitePlus
 }
@@ -133,7 +133,7 @@ export interface JobOptions {
 export const NEWEST_NODE = 26
 
 /** The floor `setup` writes into `engines.node`, assumed when a repo declares none. */
-export const DEFAULT_NODE_FLOOR = 22
+const DEFAULT_NODE_FLOOR = 22
 
 /** `JobOptions.nodeFloor` for a real repo: the first integer in `engines.node`. */
 export function nodeFloorOf(pkg: Record<string, unknown> | null): number | undefined {

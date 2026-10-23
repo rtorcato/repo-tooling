@@ -102,7 +102,7 @@ export async function fetchReferenceLockfile(
 	return parseReference(reference, fetched.text)
 }
 
-export interface RuleDifference {
+interface RuleDifference {
 	/** Dotted path within the rules view, e.g. `config.bundler`. */
 	path: string
 	/** `undefined` means the path is absent on that side. */
@@ -137,7 +137,7 @@ function flatten(
 	return out
 }
 
-export function diffRules(local: Lockfile | null, reference: Lockfile): RuleDifference[] {
+function diffRules(local: Lockfile | null, reference: Lockfile): RuleDifference[] {
 	const mine = local ? flatten(rulesView(local)) : new Map<string, unknown>()
 	const theirs = flatten(rulesView(reference))
 	return [...new Set([...mine.keys(), ...theirs.keys()])]

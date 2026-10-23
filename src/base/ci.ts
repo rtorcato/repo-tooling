@@ -101,7 +101,7 @@ export const RELEASE_JOB_GATE = [
 
 /** Header through `jobs:` — triggers and concurrency are language-independent. */
 /** The generated CI workflow's `name:` — the docs workflow's `workflow_run` must match it. */
-export const CI_WORKFLOW_NAME = '🚀 CI/CD Pipeline'
+const CI_WORKFLOW_NAME = '🚀 CI/CD Pipeline'
 
 /**
  * A `commitlint` job lints the PR title, so a title edit must re-run it (#777).
