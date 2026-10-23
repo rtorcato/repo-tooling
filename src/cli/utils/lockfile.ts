@@ -28,8 +28,8 @@ const LOCKFILE_SCHEMA_URL = 'https://docs.torcato.dev/repo-tooling/schemas/lockf
  * Signals priority to a human reading the file, and nothing more — no code
  * branches on it beyond printing it.
  */
-export const MCP_IMPORTANCE = ['nice-to-have', 'important', 'critical'] as const
-export type McpImportance = (typeof MCP_IMPORTANCE)[number]
+const MCP_IMPORTANCE = ['nice-to-have', 'important', 'critical'] as const
+type McpImportance = (typeof MCP_IMPORTANCE)[number]
 
 /**
  * One advisory MCP entry. Deliberately has no `command`, `args` or `env`: the
@@ -51,7 +51,7 @@ export interface McpRecommendation {
  * are provenance claims about exactly this subtree and nothing else — a hand
  * edit to `rules` no longer makes the stamp a lie.
  */
-export interface LockfileRecord {
+interface LockfileRecord {
 	config: ProjectConfig
 	/**
 	 * Preset name → sha256 of the asset's *pristine* content at copy time (#428).
@@ -171,7 +171,7 @@ export interface LockfileRules {
 }
 
 /** One sibling-project link for the docs site (`rules.docs.siblings`). */
-export interface DocsSibling {
+interface DocsSibling {
 	label: string
 	href: string
 }

@@ -146,7 +146,7 @@ async function generateJestConfig(config: ProjectConfig, targetDir: string) {
 	await fs.writeFile(jestConfigPath, jestConfig)
 }
 
-export async function generatePlaywrightConfig(targetDir: string) {
+async function generatePlaywrightConfig(targetDir: string) {
 	const playwrightConfigPath = path.join(targetDir, 'playwright.config.ts')
 	const playwrightConfig = `export { default } from '@rtorcato/repo-tooling/playwright'
 `

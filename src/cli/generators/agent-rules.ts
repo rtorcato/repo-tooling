@@ -15,7 +15,7 @@ const SOURCE = 'tooling/claude/repo-tooling.md'
 // The markers keep the pre-rename text on purpose: changing them would orphan
 // every block already written and append a second one on the next fix.
 export const BLOCK_START = '<!-- js-tooling:start -->'
-export const BLOCK_END = '<!-- js-tooling:end -->'
+const BLOCK_END = '<!-- js-tooling:end -->'
 
 /**
  * True when a managed block still names the pre-rename package or bin — a repo
@@ -41,7 +41,7 @@ export const CLAUDE_SETTINGS_FILE = path.join('.claude', 'settings.json')
  * working a per-issue worktree can typecheck immediately rather than paying a
  * full `pnpm install` first, on every issue.
  */
-export const WORKTREE_SYMLINK_DIRS = ['node_modules'] as const
+const WORKTREE_SYMLINK_DIRS = ['node_modules'] as const
 
 function asObject(value: unknown): Record<string, unknown> | null {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)

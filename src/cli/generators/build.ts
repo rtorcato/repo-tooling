@@ -129,7 +129,7 @@ export async function generateRolldownConfig(targetDir: string) {
 	await fs.writeFile(rolldownConfigPath, rolldownConfig)
 }
 
-export async function generateViteConfig(config: ProjectConfig, targetDir: string) {
+async function generateViteConfig(config: ProjectConfig, targetDir: string) {
 	const viteConfigPath = path.join(targetDir, 'vite.config.ts')
 
 	// React apps need the plugin; we layer it on top of the shipped preset.
@@ -230,7 +230,7 @@ export async function generateSemanticReleaseConfig(
 	return { written, replaced }
 }
 
-export async function generateChangesetsConfig(targetDir: string) {
+async function generateChangesetsConfig(targetDir: string) {
 	// Drop the canonical Changesets config into .changeset/config.json. The user
 	// owns this file once it's in their repo; subsequent `pnpm changeset` runs
 	// create per-change markdown files alongside it.

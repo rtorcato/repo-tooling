@@ -2,7 +2,7 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { getFixers } from './commands/fix.js'
 
-export async function isSelfRepo(dir: string): Promise<boolean> {
+async function isSelfRepo(dir: string): Promise<boolean> {
 	try {
 		const pkg = await fs.readJson(path.join(dir, 'package.json'))
 		return pkg.name === '@rtorcato/repo-tooling'

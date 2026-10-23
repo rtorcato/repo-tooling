@@ -29,7 +29,7 @@ export const MILESTONES_CHECK = 'Milestones'
 const CHECK = MILESTONES_CHECK
 
 /** The title `fix` gives the rolling milestone it opens. */
-export const NEXT_MILESTONE = 'next'
+const NEXT_MILESTONE = 'next'
 
 interface Milestone {
 	number: number
@@ -101,9 +101,7 @@ export async function milestoneReleaseWorkflow(dir: string): Promise<string | nu
  * or a local edit can lack the trigger `main` has. `undefined` means it could
  * not be read, and the caller fails closed on that.
  */
-export async function defaultBranchMilestoneWorkflow(
-	gh: GhExec
-): Promise<string | null | undefined> {
+async function defaultBranchMilestoneWorkflow(gh: GhExec): Promise<string | null | undefined> {
 	// No `ref`: the contents API reads the default branch.
 	const r = await gh(['api', 'repos/{owner}/{repo}/contents/.github/workflows'])
 	// The milestone read already proved the repo is visible, so a 404 here is

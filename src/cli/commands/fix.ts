@@ -33,6 +33,7 @@ export interface FixOptions {
 	diff?: boolean
 }
 
+/** @public Documented JSON shape (for-ai-agents.md); knip must not strip it. */
 export type FixActionStatus = 'applied' | 'dry-run' | 'skipped' | 'already-ok' | 'unsupported'
 
 export interface FixActionRecord {
@@ -44,6 +45,7 @@ export interface FixActionRecord {
 	lockfileConflict?: boolean
 }
 
+/** @public Documented JSON shape (for-ai-agents.md); knip must not strip it. */
 export interface FixJsonResult {
 	directory: string
 	target: string | null

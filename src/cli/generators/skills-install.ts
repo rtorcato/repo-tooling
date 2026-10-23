@@ -8,11 +8,11 @@ import { shellQuote } from '../utils/shell.js'
 import { upsertBlock } from './agent-rules.js'
 import { parseRepository } from './badges.js'
 
-export const SKILLS_DOCS_START = '<!-- js-tooling:skills:start -->'
-export const SKILLS_DOCS_END = '<!-- js-tooling:skills:end -->'
+const SKILLS_DOCS_START = '<!-- js-tooling:skills:start -->'
+const SKILLS_DOCS_END = '<!-- js-tooling:skills:end -->'
 
 /** Names of `skills/<name>/` directories that actually contain a SKILL.md. */
-export async function findSkills(targetDir: string): Promise<string[]> {
+async function findSkills(targetDir: string): Promise<string[]> {
 	const skillsDir = path.join(targetDir, 'skills')
 	if (!(await fs.pathExists(skillsDir))) return []
 	const entries = await fs.readdir(skillsDir, { withFileTypes: true })

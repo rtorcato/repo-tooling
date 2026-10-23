@@ -16,13 +16,13 @@ export const SWIFT_HOOKS_DIR = '.githooks'
 
 // SwiftLint's --fix is the formatter (see ./checks.ts), so pre-commit formats
 // then lints. --quiet keeps a clean commit from printing a wall of nothing.
-export const SWIFT_PRE_COMMIT = `#!/bin/sh
+const SWIFT_PRE_COMMIT = `#!/bin/sh
 set -e
 swiftlint --fix --quiet
 swiftlint lint --quiet
 `
 
-export const SWIFT_PRE_PUSH = `#!/bin/sh
+const SWIFT_PRE_PUSH = `#!/bin/sh
 set -e
 echo "🔍 Running pre-push verify..."
 swift build

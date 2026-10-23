@@ -16,7 +16,7 @@ import { realGitExec } from '../../base/git-identity.js'
 import { getPackageRoot } from './copy-preset.js'
 
 /** Injectable git runner — never rejects; a missing or failing git is null. */
-export type GitExec = (args: string[], cwd?: string) => Promise<string | null>
+type GitExec = (args: string[], cwd?: string) => Promise<string | null>
 
 function versionParts(version: string): number[] {
 	return version.split('.').map((n) => Number.parseInt(n, 10) || 0)
@@ -51,7 +51,7 @@ export function isNewerVersion(a: string, b: string): boolean {
  * answer, so a tagless, shallow, or git-less environment keeps today's
  * behaviour rather than silently reporting something lower.
  */
-export async function resolveShippedVersion(
+async function resolveShippedVersion(
 	root: string,
 	pkgVersion: string,
 	git: GitExec = realGitExec
