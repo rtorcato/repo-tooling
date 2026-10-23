@@ -10,6 +10,7 @@ import {
 	readLockfile,
 	recordAssetHash,
 	updateLockfileConfig,
+	writeGithubRules,
 	writeLockfile,
 } from '../../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -270,5 +271,41 @@ describe('rules survive a rewrite', () => {
 		})
 		expect(after).not.toHaveProperty('aiLoop')
 		expect(after).not.toHaveProperty('config')
+	})
+})
+
+describe('writeGithubRules (#863)', () => {
+	it('merges into rules.github and leaves the record and other rules alone', async () => {
+		const dir = newTmpDir()
+		await writeLockfile(dir, baseConfig())
+		const file = join(dir, LOCKFILE_NAME)
+		const before = await fs.readJson(file)
+		before.rules = { ...before.rules, github: { strict: true, releaseReviewers: ['someone'] } }
+		await fs.writeJson(file, before)
+
+		expect(await writeGithubRules(dir, { strict: false, autoMerge: true })).toBe(file)
+		const after = await fs.readJson(file)
+		expect(after.record).toEqual(before.record)
+		expect(after.rules.mcp).toEqual(DEFAULT_RULES.mcp)
+		// Read fields win; one the snapshot left out keeps its declared value.
+		expect(after.rules.github).toEqual({
+			strict: false,
+			releaseReviewers: ['someone'],
+			autoMerge: true,
+		})
+	})
+
+	it('refuses a missing, legacy-named or pre-v4 lockfile rather than migrating it', async () => {
+		const dir = newTmpDir()
+		await expect(writeGithubRules(dir, {})).rejects.toThrow(/fix lockfile/)
+		await fs.writeJson(join(dir, LEGACY_LOCKFILE_NAME), {
+			version: 3,
+			config: baseConfig(),
+			writtenBy: 'old',
+			writtenAt: '2024-01-01T00:00:00.000Z',
+		})
+		await expect(writeGithubRules(dir, {})).rejects.toThrow(/no \.repo-tooling\.json/)
+		await fs.move(join(dir, LEGACY_LOCKFILE_NAME), join(dir, LOCKFILE_NAME))
+		await expect(writeGithubRules(dir, {})).rejects.toThrow(/not a v4 lockfile/)
 	})
 })

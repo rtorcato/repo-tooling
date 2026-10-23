@@ -95,6 +95,11 @@ program
 		'--rules-from <owner/repo>',
 		"Report how this repo's config and rules differ from that repo's .repo-tooling.json (informational; read via `gh`)"
 	)
+	// #863: the one doctor mode that writes, and only rules.github.
+	.option(
+		'--snapshot',
+		"Write the repo's live GitHub settings into rules.github in .repo-tooling.json, then exit (runs no checks; read via `gh`)"
+	)
 	.action(doctorCommand)
 
 program

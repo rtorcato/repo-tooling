@@ -218,6 +218,13 @@ standard". A declared field differs from the standard in three ways:
 `fix release-environment` applies and which replaces any existing reviewer rule. Both need an
 admin token on the repo. GitHub answers a write it won't allow with a 404, and the fixer says so.
 
+To declare what the repo has today rather than typing it out, run `doctor --snapshot`. It reads
+the live settings over `gh` and merges them into `rules.github`, runs no checks, and leaves the
+rest of the file alone. A field the token can't read (`strict` and the security toggles need admin) is
+left out and listed, so a declared value for it stays as it was. It also lists every value that
+differs from the standard: committing one declares it, and `doctor` stops flagging it. Review the
+diff before you commit it.
+
 ### `rules.exceptions` — declared deviations
 
 A map from a `doctor` check name (the `check` string in `doctor --json` output) to the reason

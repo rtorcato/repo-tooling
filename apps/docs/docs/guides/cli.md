@@ -70,6 +70,7 @@ npx @rtorcato/repo-tooling doctor              # current dir
 npx @rtorcato/repo-tooling doctor -d ./app     # specific dir
 npx @rtorcato/repo-tooling doctor --json       # machine-readable output
 npx @rtorcato/repo-tooling doctor --offline    # skip checks that read live GitHub state
+npx @rtorcato/repo-tooling doctor --snapshot   # write the live GitHub settings into rules.github
 ```
 
 Each row reports one of:
