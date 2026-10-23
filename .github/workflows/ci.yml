@@ -289,7 +289,7 @@ jobs:
       # so the gate bought ~1 minute and cost full coverage on PRs. Run them all.
       - name: 🧩 Scaffold + install + verify every preset
         run: |
-          for preset in minimal library node-api web-app react-app nextjs-app; do
+          for preset in minimal library node-api web-app react-app nextjs-app vite-plus vite-plus-app; do
             node scripts/integration/preset-lifecycle.mjs "$preset"
           done
 
