@@ -779,7 +779,11 @@ async function huskyHookCallsLintStaged(dir: string): Promise<boolean> {
 	return false
 }
 
-export async function checkLintStaged(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+export async function checkLintStaged(
+	dir: string,
+	pkg: Pkg | null,
+	root = dir
+): Promise<CheckResult> {
 	// Vite+ stages through `vp staged` (the `staged` key of vite.config.ts), run by
 	// the pre-commit hook `vp config` wires up, so there is no lint-staged (#897).
 	if (/\bvp\s+config\b/.test(((pkg?.scripts as Record<string, string>) ?? {}).prepare ?? '')) {
@@ -800,22 +804,23 @@ export async function checkLintStaged(dir: string, pkg: Pkg | null): Promise<Che
 					hint: 'Run `npx @rtorcato/repo-tooling fix husky` to write the pre-commit hook',
 				}
 	}
+	const rootPkg = root === dir ? null : await readPackageJson(root)
 	const inPkg = pkg ? 'lint-staged' in pkg : false
-	let inFile: string | null = null
-	for (const candidate of LINT_STAGED_FILES) {
-		if (await fs.pathExists(path.join(dir, candidate))) {
-			inFile = candidate
-			break
-		}
-	}
+	const inRootPkg = rootPkg ? 'lint-staged' in rootPkg : false
+	const file = await configHome(dir, root, LINT_STAGED_FILES)
 
-	if (inPkg || inFile) {
-		const where = inPkg ? '`lint-staged` field in package.json' : `${inFile} found`
+	if (inPkg || inRootPkg || file) {
+		// Package dir first: its field, then its config file, then the root's file and field.
+		const where = inPkg
+			? '`lint-staged` field in package.json'
+			: file
+				? `${file.file} found${fromRoot(dir, file.home)}`
+				: '`lint-staged` field in workspace root package.json'
 		// Config presence isn't enough — verify a husky hook actually runs it.
 		// Only assert wiring when husky is in use; a non-husky setup may invoke
 		// lint-staged another way and shouldn't be flagged.
-		const huskyInUse = await fs.pathExists(path.join(dir, '.husky'))
-		if (huskyInUse && !(await huskyHookCallsLintStaged(dir))) {
+		const husky = await configHome(dir, root, ['.husky'])
+		if (husky && !(await huskyHookCallsLintStaged(husky.home))) {
 			return {
 				check: 'lint-staged',
 				status: 'drift',
@@ -913,33 +918,70 @@ export async function checkSizeLimit(dir: string, pkg: Pkg | null): Promise<Chec
 	}
 }
 
-/** Changesets is in use when its config file is present. */
-function usesChangesets(dir: string): Promise<boolean> {
-	return fs.pathExists(path.join(dir, '.changeset', 'config.json'))
+/**
+ * Where a monorepo package's config lives (#861): the package dir first, the git
+ * (workspace) root as fallback. Null when neither holds any of `files`.
+ */
+async function configHome(
+	dir: string,
+	root: string,
+	files: readonly string[]
+): Promise<{ home: string; file: string } | null> {
+	for (const home of new Set([dir, root])) {
+		for (const file of files) {
+			if (await fs.pathExists(path.join(home, file))) return { home, file }
+		}
+	}
+	return null
 }
 
-export async function checkSemanticRelease(dir: string, pkg: Pkg | null): Promise<CheckResult> {
+/** Says a config was read from the workspace root rather than the package dir (#861). */
+function fromRoot(dir: string, home: string): string {
+	return home === dir ? '' : ' (workspace root)'
+}
+
+/** Changesets is in use when its config file is present, in the package dir or the root. */
+async function usesChangesets(dir: string, root = dir): Promise<boolean> {
+	return (await configHome(dir, root, ['.changeset/config.json'])) !== null
+}
+
+/** checkFile for a monorepo package: reads the package dir, then the workspace root (#861). */
+export async function checkFileFromRoot(
+	dir: string,
+	root: string,
+	spec: FileCheck
+): Promise<CheckResult> {
+	const found = await configHome(dir, root, spec.candidates)
+	const result = await checkFile(found?.home ?? dir, spec)
+	return found ? { ...result, detail: `${result.detail}${fromRoot(dir, found.home)}` } : result
+}
+
+export async function checkSemanticRelease(
+	dir: string,
+	pkg: Pkg | null,
+	root = dir
+): Promise<CheckResult> {
 	const isPrivate = pkg?.private === true
+	const rootPkg = root === dir ? null : await readPackageJson(root)
 	const inPkg = pkg ? 'release' in pkg : false
+	const inRootPkg = rootPkg ? 'release' in rootPkg : false
 
 	let configFile: string | null = null
 	let configContent: string | null = null
-	for (const candidate of SEMANTIC_RELEASE_FILES) {
-		const filepath = path.join(dir, candidate)
-		if (await fs.pathExists(filepath)) {
-			configFile = candidate
-			try {
-				configContent = await fs.readFile(filepath, 'utf-8')
-			} catch {
-				configContent = ''
-			}
-			break
+	const found = await configHome(dir, root, SEMANTIC_RELEASE_FILES)
+	if (found) {
+		configFile = found.file
+		try {
+			configContent = await fs.readFile(path.join(found.home, found.file), 'utf-8')
+		} catch {
+			configContent = ''
 		}
 	}
+	const origin = found ? fromRoot(dir, found.home) : inRootPkg && !inPkg ? ' (workspace root)' : ''
 
-	const hasChangesets = await usesChangesets(dir)
-	const hasReleasePlease = await fs.pathExists(path.join(dir, 'release-please-config.json'))
-	const hasSemanticRelease = inPkg || !!configFile
+	const hasChangesets = await usesChangesets(dir, root)
+	const hasReleasePlease = (await configHome(dir, root, ['release-please-config.json'])) !== null
+	const hasSemanticRelease = inPkg || inRootPkg || !!configFile
 
 	// Conflict: more than one of {semantic-release, Changesets, Release Please}.
 	const configured = [
@@ -978,7 +1020,8 @@ export async function checkSemanticRelease(dir: string, pkg: Pkg | null): Promis
 	}
 
 	const presetRegex = /@rtorcato\/(?:js|repo)-tooling\/semantic-release/
-	const pkgReleaseStr = inPkg ? JSON.stringify(pkg?.release ?? '') : ''
+	const releaseField = inPkg ? pkg?.release : rootPkg?.release
+	const pkgReleaseStr = inPkg || inRootPkg ? JSON.stringify(releaseField ?? '') : ''
 	const usesPreset =
 		(configContent && presetRegex.test(configContent)) || presetRegex.test(pkgReleaseStr)
 
@@ -987,8 +1030,8 @@ export async function checkSemanticRelease(dir: string, pkg: Pkg | null): Promis
 			check: 'semantic-release',
 			status: 'ok',
 			detail: configFile
-				? `${configFile} extends ${PACKAGE}/semantic-release`
-				: `release field extends ${PACKAGE}/semantic-release`,
+				? `${configFile}${origin} extends ${PACKAGE}/semantic-release`
+				: `release field${origin} extends ${PACKAGE}/semantic-release`,
 		}
 	}
 
