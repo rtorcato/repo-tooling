@@ -1,7 +1,17 @@
-# Deploy a static build to Cloudflare Pages on push to main.
+# Deploy a static build to Cloudflare Pages on push to main: a preview deploy
+# right away, then the production deploy once someone approves the
+# `production` environment (rtorcato/repo-tooling#848). No long-lived prod
+# branch: main is the source, the environment is the gate.
 # Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
 # Set your Pages project name below (replace YOUR_PROJECT) and the build
-# output dir if it isn't `dist`.
+# output dir if it isn't `dist`. Pages treats a deploy as production only when
+# --branch matches the project's production branch, so keep that `main`.
+#
+# GitHub creates a missing environment on first use with NO protection, so the
+# production job would deploy unreviewed. Create it first, with you as the
+# required reviewer (the same gate as the npm `release` environment):
+#   echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" \
+#     | gh api -X PUT "repos/{owner}/{repo}/environments/production" --input -
 name: ☁️ Cloudflare Pages Deploy
 
 on:
@@ -14,7 +24,7 @@ permissions:
   deployments: write
 
 jobs:
-  deploy:
+  preview:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,9 +44,47 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy preview to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=YOUR_PROJECT
+          # Any branch other than the production one is a preview deploy.
+          command: pages deploy dist --project-name=YOUR_PROJECT --branch=preview
+
+  production:
+    needs: preview
+    # A workflow_dispatch from another branch gets a preview, never production.
+    if: github.ref == 'refs/heads/main'
+    # Waits for a required reviewer on the `production` environment (see top).
+    environment: production
+    # A newer push waiting for approval supersedes an older waiting one; a
+    # deploy already running is never cancelled.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Deploy to Cloudflare Pages production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=YOUR_PROJECT --branch=main

@@ -41,6 +41,11 @@ A long-lived `dev`/`develop` branch is deliberately **not** used:
 The risk of "everything goes to `main`" is real, but the fix is **protecting
 `main`**, below — not maintaining a parallel branch.
 
+Deployed apps don't get a `prod` branch either. Their deploy workflow sends
+every merge to a preview, and the production deploy waits on a protected
+`production` environment until someone approves it. See
+[Production waits for an approval](../reference/github-actions.md#production-waits-for-an-approval).
+
 ## Branch protection on `main`
 
 `main` requires a pull request and passing checks; direct pushes, force-pushes,
