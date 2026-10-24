@@ -4,12 +4,18 @@
 # the environment is the gate.
 # Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
 # (Project Settings → Tokens, and `vercel link` writes the org/project IDs.)
+# The Vercel CLI is pinned to an exact version because both jobs run it with
+# VERCEL_TOKEN in scope. Dependabot can't bump a version in a `run:` line, so
+# bump `vercel@65.2.0` by hand.
 #
 # GitHub creates a missing environment on first use with NO protection, so the
 # production job would deploy unreviewed. Create it first, with you as the
-# required reviewer (the same gate as the npm `release` environment):
-#   echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" \
+# required reviewer (the same gate as the npm `release` environment), limited to
+# `main` so a dispatch from another branch can never reach it:
+#   echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}],\"deployment_branch_policy\":{\"protected_branches\":false,\"custom_branch_policies\":true}}" \
 #     | gh api -X PUT "repos/{owner}/{repo}/environments/production" --input -
+#   gh api -X POST "repos/{owner}/{repo}/environments/production/deployment-branch-policies" \
+#     -f name=main -f type=branch
 name: ▲ Vercel Deploy
 
 on:
@@ -37,7 +43,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@65.2.0
 
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
@@ -70,7 +76,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@65.2.0
 
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}

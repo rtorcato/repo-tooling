@@ -62,6 +62,29 @@ describe('generateGhWorkflow', () => {
 		}
 	)
 
+	it.each(['vercel-deploy', 'cloudflare-pages'] as const)(
+		'%s header limits the production environment to main (#934)',
+		async (name) => {
+			const dir = newTmpDir()
+			await generateGhWorkflow(name, dir)
+			const yaml = await fs.readFile(join(dir, `.github/workflows/${name}.yml`), 'utf-8')
+			expect(yaml).toContain('\\"custom_branch_policies\\":true')
+			expect(yaml).toContain('environments/production/deployment-branch-policies')
+		}
+	)
+
+	it.each(['vercel-deploy', 'preview-deployments'] as const)(
+		'%s pins the Vercel CLI to an exact version (#934)',
+		async (name) => {
+			const dir = newTmpDir()
+			await generateGhWorkflow(name, dir)
+			const yaml = await fs.readFile(join(dir, `.github/workflows/${name}.yml`), 'utf-8')
+			const installs = yaml.match(/npm install --global vercel@\S+/g) ?? []
+			expect(installs.length).toBeGreaterThan(0)
+			for (const line of installs) expect(line).toMatch(/vercel@\d+\.\d+\.\d+$/)
+		}
+	)
+
 	it('preview-deployments triggers on pull_request', async () => {
 		const dir = newTmpDir()
 		await generateGhWorkflow('preview-deployments', dir)

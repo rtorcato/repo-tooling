@@ -9,9 +9,12 @@
 #
 # GitHub creates a missing environment on first use with NO protection, so the
 # production job would deploy unreviewed. Create it first, with you as the
-# required reviewer (the same gate as the npm `release` environment):
-#   echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" \
+# required reviewer (the same gate as the npm `release` environment), limited to
+# `main` so a dispatch from another branch can never reach it:
+#   echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}],\"deployment_branch_policy\":{\"protected_branches\":false,\"custom_branch_policies\":true}}" \
 #     | gh api -X PUT "repos/{owner}/{repo}/environments/production" --input -
+#   gh api -X POST "repos/{owner}/{repo}/environments/production/deployment-branch-policies" \
+#     -f name=main -f type=branch
 name: ☁️ Cloudflare Pages Deploy
 
 on:
