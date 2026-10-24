@@ -1,6 +1,15 @@
-# Production deploy to Vercel on push to main.
+# Deploy to Vercel on push to main: a preview deploy right away, then the
+# production deploy once someone approves the `production` environment
+# (rtorcato/repo-tooling#848). No long-lived prod branch: main is the source,
+# the environment is the gate.
 # Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
 # (Project Settings → Tokens, and `vercel link` writes the org/project IDs.)
+#
+# GitHub creates a missing environment on first use with NO protection, so the
+# production job would deploy unreviewed. Create it first, with you as the
+# required reviewer (the same gate as the npm `release` environment):
+#   echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" \
+#     | gh api -X PUT "repos/{owner}/{repo}/environments/production" --input -
 name: ▲ Vercel Deploy
 
 on:
@@ -16,7 +25,40 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  deploy:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build project artifacts
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy preview
+        run: vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
+
+  production:
+    needs: preview
+    # A workflow_dispatch from another branch gets a preview, never production.
+    if: github.ref == 'refs/heads/main'
+    # Waits for a required reviewer on the `production` environment (see top).
+    environment: production
+    # A newer push waiting for approval supersedes an older waiting one; a
+    # deploy already running is never cancelled.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

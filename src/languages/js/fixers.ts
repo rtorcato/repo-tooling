@@ -299,11 +299,11 @@ const GH_WORKFLOW_META: Record<(typeof GH_WORKFLOWS)[number], { check: string; d
 	},
 	'vercel-deploy': {
 		check: 'Vercel deploy workflow',
-		desc: 'Scaffold .github/workflows/vercel-deploy.yml (production deploy to Vercel on main)',
+		desc: 'Scaffold .github/workflows/vercel-deploy.yml (preview deploy on main, production behind the `production` environment)',
 	},
 	'cloudflare-pages': {
 		check: 'Cloudflare Pages workflow',
-		desc: 'Scaffold .github/workflows/cloudflare-pages.yml (static-site deploy to Cloudflare Pages)',
+		desc: 'Scaffold .github/workflows/cloudflare-pages.yml (static-site preview on main, production behind the `production` environment)',
 	},
 	'preview-deployments': {
 		check: 'Preview deployments workflow',

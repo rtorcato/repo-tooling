@@ -47,6 +47,21 @@ describe('generateGhWorkflow', () => {
 		expect(yaml).toContain('CLOUDFLARE_ACCOUNT_ID')
 	})
 
+	it.each(['vercel-deploy', 'cloudflare-pages'] as const)(
+		'%s deploys a preview from main and gates production on the environment (#848)',
+		async (name) => {
+			const dir = newTmpDir()
+			await generateGhWorkflow(name, dir)
+			const yaml = await fs.readFile(join(dir, `.github/workflows/${name}.yml`), 'utf-8')
+			const [preview, production] = yaml.split(/^ {2}production:$/m)
+			expect(preview).toMatch(/^ {2}preview:$/m)
+			expect(preview).not.toContain('environment:')
+			expect(production).toContain('needs: preview')
+			expect(production).toContain('environment: production')
+			expect(production).toContain("if: github.ref == 'refs/heads/main'")
+		}
+	)
+
 	it('preview-deployments triggers on pull_request', async () => {
 		const dir = newTmpDir()
 		await generateGhWorkflow('preview-deployments', dir)

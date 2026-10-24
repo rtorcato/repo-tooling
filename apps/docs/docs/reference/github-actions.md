@@ -274,11 +274,35 @@ file doesn't already exist, so it never clobbers a workflow you've customized.
 | Target | Workflow | Trigger | Secrets |
 |---|---|---|---|
 | `docker-publish` | Build + push a Docker image to GHCR | tag push (`v*`) | none (uses `GITHUB_TOKEN`) |
-| `vercel-deploy` | Production deploy to Vercel | push to `main` | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
-| `cloudflare-pages` | Deploy a static build to Cloudflare Pages | push to `main` | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
+| `vercel-deploy` | Preview deploy to Vercel, then production behind the `production` environment | push to `main` | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
+| `cloudflare-pages` | Preview deploy of a static build to Cloudflare Pages, then production behind the `production` environment | push to `main` | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 | `preview-deployments` | Per-PR preview deploy + URL comment | `pull_request` | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
 
 Each workflow ships with least-privilege `permissions:` and references its
 secrets via `${{ secrets.* }}` — add them under **Settings → Secrets and
 variables → Actions** in your repo. A couple carry a placeholder to fill in
 (the Cloudflare Pages `--project-name`, for example).
+
+### Production waits for an approval
+
+`vercel-deploy` and `cloudflare-pages` deploy in two jobs (#848). Every push to
+`main` gets a preview deploy straight away. The `production` job runs in the
+`production` GitHub environment, so it sits `waiting` until a required reviewer
+approves it, the same gate the npm `release` environment puts on a publish.
+There is no long-lived `prod` branch to drift from `main`. A newer push that is
+still waiting replaces an older waiting one, and a deploy already running is
+never cancelled. A `workflow_dispatch` from any branch other than `main` gets
+the preview only.
+
+GitHub creates a missing environment the first time a job uses it, **with no
+protection**, so the first production deploy would go out unreviewed. Create the
+environment before the workflow's first run, with yourself as the required
+reviewer:
+
+```bash
+echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" \
+  | gh api -X PUT "repos/{owner}/{repo}/environments/production" --input -
+```
+
+Or do it by hand under **Settings → Environments → New environment →
+`production` → Required reviewers**. Add other reviewers there too.

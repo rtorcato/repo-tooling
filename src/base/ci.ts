@@ -112,7 +112,7 @@ const workflowHeader = (lintsTitle: boolean) => `name: ${CI_WORKFLOW_NAME}
 
 on:
   push:
-    branches: [main, release, develop]
+    branches: [main]
   pull_request:
     branches: [main]${lintsTitle ? '\n    types: [opened, synchronize, reopened, edited]' : ''}
   workflow_dispatch:
