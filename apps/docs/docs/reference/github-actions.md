@@ -294,15 +294,27 @@ still waiting replaces an older waiting one, and a deploy already running is
 never cancelled. A `workflow_dispatch` from any branch other than `main` gets
 the preview only.
 
+The approval gates the production deploy only: the `preview` job holds the same
+deploy tokens and runs unreviewed on every push to `main`.
+
 GitHub creates a missing environment the first time a job uses it, **with no
 protection**, so the first production deploy would go out unreviewed. Create the
 environment before the workflow's first run, with yourself as the required
-reviewer:
+reviewer, and limit it to `main`. Then a `workflow_dispatch` from another branch
+whose copy of the workflow drops the `main` guard still can't reach it:
 
 ```bash
-echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}]}" \
+echo "{\"reviewers\":[{\"type\":\"User\",\"id\":$(gh api user --jq .id)}],\"deployment_branch_policy\":{\"protected_branches\":false,\"custom_branch_policies\":true}}" \
   | gh api -X PUT "repos/{owner}/{repo}/environments/production" --input -
+gh api -X POST "repos/{owner}/{repo}/environments/production/deployment-branch-policies" \
+  -f name=main -f type=branch
 ```
 
 Or do it by hand under **Settings → Environments → New environment →
-`production` → Required reviewers**. Add other reviewers there too.
+`production`**: add yourself under **Required reviewers**, and under
+**Deployment branches and tags** pick **Selected branches and tags** and add
+`main`. Add other reviewers there too.
+
+`vercel-deploy` and `preview-deployments` pin the Vercel CLI to an exact
+version, since it runs with `VERCEL_TOKEN` in scope. Dependabot can't bump a
+version inside a `run:` line, so bump the pin by hand.

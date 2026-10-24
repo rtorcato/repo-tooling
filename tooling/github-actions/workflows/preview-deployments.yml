@@ -1,6 +1,9 @@
 # Per-PR preview deploy to Vercel. Posts a preview URL for every pull request
 # so reviewers can click through the change before merge.
 # Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+# The Vercel CLI is pinned to an exact version because it runs with
+# VERCEL_TOKEN in scope. Dependabot can't bump a version in a `run:` line, so
+# bump `vercel@65.2.0` by hand.
 name: 🔍 Preview Deployment
 
 on:
@@ -28,7 +31,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@65.2.0
 
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
