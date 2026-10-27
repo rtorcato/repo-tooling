@@ -12,10 +12,11 @@ on:
       - 'README.md'
       - '.github/workflows/docs.yml'
       - '.github/workflows/docs-deploy-cloudflare.yml'
-  # semantic-release publishes a GitHub Release after the version commit lands;
-  # rebuild then so the site always tracks the latest release.
-  release:
-    types: [published]
+  # release.yml dispatches this after a publish, so the changelog page (built
+  # from the GitHub releases) picks up the new one. It does not subscribe to
+  # `release: published`: a release made with GITHUB_TOKEN starts no run, and a
+  # run triggered by that event has the tag as its ref, which the Cloudflare
+  # deploy would not take from `main`.
   workflow_dispatch:
 
 permissions:

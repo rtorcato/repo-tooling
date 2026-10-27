@@ -46,6 +46,8 @@ jobs:
     environment: release
     runs-on: ubuntu-latest
     permissions:
+      # Lets the release job dispatch docs.yml after a publish.
+      actions: write
       contents: write
       issues: write
       pull-requests: write
@@ -114,3 +116,22 @@ jobs:
               echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
             fi
           fi
+
+      # The docs changelog page is built from the GitHub releases at docs build
+      # time. A release made with GITHUB_TOKEN starts no `release: published`
+      # run, but a GITHUB_TOKEN dispatch does start one, so rebuild the docs
+      # from here (#944). The publish has already happened, so a hiccup here
+      # must not fail the job; worst case the docs refresh on the next push.
+      - name: 📘 Rebuild the docs after a publish
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          tag=$(git tag --points-at HEAD | head -1)
+          if [ -z "$tag" ]; then
+            echo "No tag on HEAD, so semantic-release published nothing. Skipping."
+            exit 0
+          fi
+          echo "Published $tag, dispatching docs.yml on the default branch."
+          gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
