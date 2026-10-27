@@ -2209,6 +2209,59 @@ ${generated
 	})
 })
 
+// #938: the single-job Changesets release asks for two approvals per release.
+describe('fix github-actions on a single-job Changesets release', () => {
+	it('rewrites release.yml as the two-job shape and leaves ci.yml alone', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { packageManager: 'pnpm@11.1.3' })
+		await fs.outputJson(join(dir, '.changeset/config.json'), {})
+		await fixCommand('github-actions', { directory: dir, yes: true })
+		const ciPath = join(dir, '.github/workflows/ci.yml')
+		const releasePath = join(dir, '.github/workflows/release.yml')
+		expect(await fs.readFile(releasePath, 'utf-8')).toContain('  publish:\n    needs: version\n')
+		const ci = `${await fs.readFile(ciPath, 'utf-8')}
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm docs:build
+`
+		await fs.writeFile(ciPath, ci)
+		await fs.writeFile(
+			releasePath,
+			`name: Release
+on:
+  workflow_dispatch:
+  milestone:
+    types: [closed]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - run: npm install -g npm@^11.5.1
+      - uses: changesets/action@v2.1.2
+        with:
+          publish-script: pnpm changeset publish
+`
+		)
+		const finding = (await runDoctor(dir)).find((r) => r.check === 'GitHub Actions')
+		expect(finding?.status).toBe('drift')
+		expect(finding?.detail).toContain('one job opens the Version Packages PR and publishes')
+
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		expect(await fs.readFile(ciPath, 'utf-8')).toBe(ci)
+		expect(await fs.readFile(releasePath, 'utf-8')).toContain('  version:\n')
+		expect((await runDoctor(dir)).find((r) => r.check === 'GitHub Actions')?.status).toBe('ok')
+	})
+})
+
 // #761: `fix github-actions` regenerated a publishing ci.yml from the preset,
 // taking the repo's own jobs (and any required check named after one) with it.
 describe('fix github-actions release migration', () => {

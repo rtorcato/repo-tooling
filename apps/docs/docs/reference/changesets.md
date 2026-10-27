@@ -59,7 +59,12 @@ pnpm changeset version   # consume changesets, bump versions, write CHANGELOG.md
 pnpm changeset publish   # publish to npm
 ```
 
-In CI, the [Changesets release bot](https://github.com/changesets/action) opens a "Version Packages" PR whenever changesets are pending and publishes on merge.
+In CI, the generated `release.yml` runs the [Changesets action](https://github.com/changesets/action) in two jobs. Shipping is **merge the Version Packages PR, then one approval**:
+
+1. Every push to `main` runs the ungated `version` job. With changesets pending, it opens or updates the "Version Packages" PR and publishes nothing.
+2. Merging that PR is the release. Its push runs the `publish` job, which waits for one approval on the `release` environment, then publishes every package whose version is not on npm yet and creates its GitHub release.
+
+An ordinary merge skips `publish`, so it never queues an approval request. Dispatch the workflow (`gh workflow run release.yml`) to retry a failed publish. With changesets pending, a dispatch updates the Version Packages PR instead, so a hotfix ships the normal way: merge it, then merge the Version Packages PR. In pre mode (`pnpm changeset pre enter beta`) the same flow publishes `x.y.z-beta.N` under the `beta` tag. See [GitHub Actions](./github-actions.md#changesets-releases) for the details.
 
 ## Choosing between Changesets and semantic-release
 
@@ -79,4 +84,5 @@ Both tools share the same shape: CI consumes intent, bumps versions, writes a ch
 
 - If only `.changeset/config.json` exists, `doctor` reports `semantic-release` as ok with "using Changesets instead".
 - If both exist, `doctor` flags drift — you have two release tools fighting for the same job. Remove one.
+- `doctor` flags a single-job `release.yml` that opens the Version Packages PR and publishes behind one approval (two approvals per release). `fix github-actions` rewrites it as the two-job shape and leaves `ci.yml` alone.
 - "Publishes on merge" means nothing stands between a merge and npm. The [Release gate](../guides/cli.md#release-gate) check flags a `changesets/action` job with no protected `environment:`. That holds in a monorepo with a private root too, as long as a workspace package isn't private. `fix release-environment` adds the gate.

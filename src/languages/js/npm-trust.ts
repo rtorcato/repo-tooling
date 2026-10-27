@@ -16,7 +16,7 @@ import {
 	type GhResult,
 	gitRoot,
 	jobEnvironment,
-	PUBLISH_COMMAND,
+	publishes,
 	publicWorkspacePackages,
 	workflowJobs,
 } from '../../base/github-settings.js'
@@ -93,9 +93,9 @@ export async function findNpmPublishJob(dir: string): Promise<NpmPublishJob | nu
 	for (const file of (await fs.readdir(workflowsDir)).sort()) {
 		if (!/\.ya?ml$/.test(file)) continue
 		const content = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
-		if (!PUBLISH_COMMAND.test(uncommented(content))) continue
+		if (!publishes(uncommented(content))) continue
 		const jobs = [...workflowJobs(content).values()].map(uncommented)
-		const body = jobs.find((b) => PUBLISH_COMMAND.test(b)) ?? uncommented(content)
+		const body = jobs.find((b) => publishes(b)) ?? uncommented(content)
 		return { file, body, content, environment: jobEnvironment(body) }
 	}
 	return null

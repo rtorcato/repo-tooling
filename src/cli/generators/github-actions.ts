@@ -21,7 +21,7 @@ const readIfExists = async (p: string) =>
 	(await fs.pathExists(p)) ? await fs.readFile(p, 'utf-8') : null
 
 /** The `environment:` of the workflow's publishing job, if it has one. */
-function releaseEnvironmentOf(yaml: string | null): string | null {
+export function releaseEnvironmentOf(yaml: string | null): string | null {
 	const job = yaml ? publishingJob(yaml) : null
 	const body = job && yaml ? workflowJobs(yaml).get(job) : undefined
 	return body ? jobEnvironment(body) : null

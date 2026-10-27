@@ -17,6 +17,7 @@ import {
 	CI_WORKFLOW,
 	generateGitHubActions,
 	RELEASE_WORKFLOW,
+	releaseEnvironmentOf,
 } from '../../cli/generators/github-actions.js'
 import { generateGitLabCI } from '../../cli/generators/gitlab-ci.js'
 import { GH_WORKFLOWS, generateGhWorkflow } from '../../cli/generators/github-workflows.js'
@@ -36,7 +37,7 @@ import {
 	generateVscodeExtensions,
 	pnpmSetupNeedsVersion,
 } from '../../cli/generators/misc.js'
-import { hasBin, hasCommitlint, nodeFloorOf, scriptsOf } from './ci.js'
+import { hasBin, hasCommitlint, nodeFloorOf, renderReleaseWorkflow, scriptsOf } from './ci.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
 import { allDeps, presetExtendedBy, usesPnpm } from './checks.js'
 import {
@@ -133,7 +134,7 @@ import type { ProjectConfig } from '../../cli/commands/setup.js'
 // The fixer contract moved to src/base/fixers.ts when Swift became the second
 // module (#286) — import it from there.
 import { FixerAbort, type Fixer, type Pkg } from '../../base/fixers.js'
-import { onlyReleaseConcurrencyDrift } from '../../base/checks.js'
+import { onlyChangesetsReleaseDrift, onlyReleaseConcurrencyDrift } from '../../base/checks.js'
 import { gateReleaseWorkflow } from '../../base/github-settings.js'
 
 // The bundlers ProjectConfig can record, in the order a repo carrying more than
@@ -206,6 +207,18 @@ export function inferProjectConfig(pkg: Pkg, dir?: string): ProjectConfig {
 		securityAutomation: true,
 		bundler: detectBundler(deps, dir),
 	}
+}
+
+/**
+ * {@link inferProjectConfig} plus Changesets when `.changeset/config.json` is on
+ * disk, so release.yml is rendered (and compared) as the two-job Changesets
+ * workflow rather than semantic-release's (#938).
+ */
+export function inferReleaseConfig(pkg: Pkg, dir: string): ProjectConfig {
+	const config = inferProjectConfig(pkg)
+	return fs.existsSync(path.join(dir, '.changeset', 'config.json'))
+		? { ...config, changesets: true, semanticRelease: false }
+		: config
 }
 
 // Where semantic-release can be configured besides a `release` key in package.json.
@@ -633,7 +646,7 @@ export const FIXERS: Fixer[] = [
 	{
 		target: 'github-actions',
 		description:
-			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library); migrates a release job out of ci.yml',
+			'Scaffold .github/workflows/ci.yml (+ release.yml for a semantic-release library or a Changesets repo); migrates a release job out of ci.yml',
 		appliesTo: ['GitHub Actions', NPM_OIDC_CHECK],
 		outputs: [CI_WORKFLOW, RELEASE_WORKFLOW, 'package.json (packageManager field)'],
 		canFixDrift: true,
@@ -665,18 +678,42 @@ export const FIXERS: Fixer[] = [
 				await fs.writeFile(releasePath, gated)
 				return { filesWritten: [RELEASE_WORKFLOW] }
 			}
+			// The single-job Changesets release: rewrite release.yml from the two-job
+			// template and leave ci.yml alone (#938), as the gate above does.
+			if (result.check === 'GitHub Actions' && onlyChangesetsReleaseDrift(result.detail)) {
+				const releasePath = path.join(targetDir, RELEASE_WORKFLOW)
+				const release = renderReleaseWorkflow(inferReleaseConfig(pkg, targetDir), {
+					scripts: scriptsOf(pkg),
+					releaseEnvironment: releaseEnvironmentOf(await fs.readFile(releasePath, 'utf-8')),
+				})
+				if (release) {
+					await fs.writeFile(releasePath, release)
+					const filesWritten = [RELEASE_WORKFLOW]
+					if (
+						(await pnpmSetupNeedsVersion(targetDir)) &&
+						(await ensurePackageManager(targetDir)) === 'added'
+					) {
+						filesWritten.push('package.json')
+					}
+					return { filesWritten }
+				}
+			}
 			// Only a `GitHub Actions` finding means the user was shown that the
 			// workflow itself is wrong (and got the destructive-overwrite prompt).
 			// A sibling finding — npm OIDC publish — must not take a
 			// customized ci.yml down with it (#349).
-			const filesWritten = await generateGitHubActions(inferProjectConfig(pkg), targetDir, {
-				overwrite: result.check === 'GitHub Actions',
-				// Only reference scripts this repo actually has (#364).
-				scripts: scriptsOf(pkg),
-				bin: hasBin(pkg),
-				commitlint: hasCommitlint(pkg),
-				nodeFloor: nodeFloorOf(pkg),
-			})
+			const filesWritten = await generateGitHubActions(
+				inferReleaseConfig(pkg, targetDir),
+				targetDir,
+				{
+					overwrite: result.check === 'GitHub Actions',
+					// Only reference scripts this repo actually has (#364).
+					scripts: scriptsOf(pkg),
+					bin: hasBin(pkg),
+					commitlint: hasCommitlint(pkg),
+					nodeFloor: nodeFloorOf(pkg),
+				}
+			)
 			// `pnpm/action-setup` without a `version:` input dies at setup with "No
 			// pnpm version is specified" unless packageManager is set — so pin it
 			// then, and only then; otherwise leave package.json alone (#779).
