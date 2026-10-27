@@ -28,7 +28,11 @@ export const baseOptions = (options: Options, env: string): Options => {
 		],
 		skipNodeModulesBundle: true, // Skips building dependencies for node modules
 		minify: !options.watch && env === 'production',
-		bundle: false, //env === 'production',
+		// The glob entry emits every file, so bundle: false is safe. A narrowed
+		// entry (e.g. ['src/index.ts']) with bundle: false emits only those
+		// files while they still import unbuilt siblings (#942), so bundle by
+		// default. An explicit bundle in options still wins.
+		bundle: options.entry !== undefined,
 		clean: true, // clean up the dist folder
 		dts: true, // generate dts file for main module
 		// sourcemap: env === 'production', // source map is only available in prod
