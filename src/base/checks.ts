@@ -13,6 +13,7 @@ import { behindShaPins, dependabotAutomergeWorkflowFor } from '../cli/generators
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
 import { CI_GATE_JOB } from './ci.js'
 import {
+	isTwoJobChangesetsRelease,
 	migrateReleaseJob,
 	pushReleaseJob,
 	semanticReleaseJob,
@@ -166,6 +167,22 @@ const RELEASE_CANCELS_PUBLISH =
 const RELEASE_NO_SUPERSEDE =
 	'release.yml: a newer release request does not supersede a waiting one (preset cancels a run still waiting for approval)'
 
+const CHANGESETS_ONE_JOB =
+	'release.yml: one job opens the Version Packages PR and publishes, both behind the approval (preset: an ungated `version` job opens it on every push, a gated `publish` job publishes once it merges)'
+const CHANGESETS_HINT =
+	'Run `npx @rtorcato/repo-tooling fix github-actions --diff` to review, then `fix github-actions`: it rewrites release.yml from the two-job template and leaves ci.yml alone. Steps only the old job had (a pinned pnpm version, custom scripts) are not carried over. Keep the file name and the `release` environment: npm trusted publishing is bound to both'
+
+/**
+ * Is this finding the single-job Changesets release, plus at most release.yml
+ * pins? Then `fix github-actions` rewrites release.yml alone (#938), leaving
+ * ci.yml and its own jobs as they are.
+ */
+export function onlyChangesetsReleaseDrift(detail: string): boolean {
+	if (!detail.startsWith(PRESET_DRIFT)) return false
+	const deltas = detail.slice(PRESET_DRIFT.length).split('; ')
+	return deltas.includes(CHANGESETS_ONE_JOB) && deltas.every((d) => d.startsWith('release.yml: '))
+}
+
 /**
  * Is this GitHub Actions finding only about release.yml's concurrency? Then
  * `fix github-actions` adds the gate in place instead of regenerating both
@@ -260,7 +277,15 @@ export async function checkGitHubActions(
 			pinDeltas('ci.yml', ci, preset)
 		}
 		const release = presetRelease ? await read('release.yml') : null
-		if (presetRelease && release !== null) {
+		if (presetRelease?.includes('changesets/action') && release !== null) {
+			// Changesets runs on every push, but only its gated job publishes, and
+			// only once the Version Packages PR merges (#938).
+			if (!isTwoJobChangesetsRelease(release)) {
+				deltas.push(CHANGESETS_ONE_JOB)
+				hint = CHANGESETS_HINT
+			}
+			pinDeltas('release.yml', release, presetRelease)
+		} else if (presetRelease && release !== null) {
 			// The preset releases on dispatch / milestone close only (#740).
 			const pushJob = pushReleaseJob(release)
 			if (pushJob) {

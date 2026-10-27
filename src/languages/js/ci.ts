@@ -362,6 +362,7 @@ export const RELEASE_WORKFLOW = '.github/workflows/release.yml'
  * install → build → test: the commit already passed full CI on its way to main.
  */
 export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = {}): string | null {
+	if (config.changesets) return renderChangesetsRelease(config, opts)
 	if (config.projectType !== 'library' || !config.semanticRelease) return null
 	const build =
 		buildsSomething(config, opts) && hasScript(opts, 'build')
@@ -446,6 +447,173 @@ ${build}${test}
               echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
             fi
           fi
+`
+}
+
+/**
+ * Prints `release=true` to $GITHUB_OUTPUT when a public workspace package's
+ * version is not on npm yet, i.e. the push merged the Version Packages PR.
+ * A 404 means unpublished; any other npm error fails the step rather than
+ * guessing either way. Exported so the tests can run it against stubs.
+ */
+export const UNPUBLISHED_CHECK = `release=false
+for spec in $(pnpm -r ls --depth -1 --json | jq -r '.[] | select(.private != true and .name and .version) | "\\(.name)@\\(.version)"'); do
+  if out=$(npm view "$spec" version 2>&1); then
+    continue
+  elif printf '%s' "$out" | grep -q E404; then
+    echo "::notice::$spec is not on npm yet"
+    release=true
+  else
+    printf '%s\\n' "$out" >&2
+    exit 1
+  fi
+done
+echo "release=$release" >> "$GITHUB_OUTPUT"`
+
+/**
+ * The Changesets release workflow (#938): still batched, but shipping is
+ * "merge the Version Packages PR (VPR) + one approval".
+ *
+ * The old shape put the `release` environment on its one job, run on dispatch
+ * or a closed milestone: one approval to open the VPR, a second to publish it,
+ * and a changeset merged while the second waited turned it into an empty VPR
+ * (react-common#261). Here every push runs the ungated `version` job, which
+ * only opens or updates the VPR. The gated `publish` job runs only on the push
+ * that merged it (nothing pending, a version not on npm) or a dispatch, so an
+ * ordinary merge never queues an approval. It checks out the commit that
+ * triggered the run, not the tip, so a changeset merged during the approval
+ * wait can't turn the publish back into a VPR update. The file name and the
+ * environment stay: npm trusted publishing is bound to both.
+ */
+function renderChangesetsRelease(config: ProjectConfig, opts: JobOptions): string {
+	// The version job is ungated and holds RELEASE_TOKEN, so no dependency
+	// install script runs there; `changeset version` needs no build.
+	const setup = (publish: boolean) => `      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc${publish ? "\n          registry-url: 'https://registry.npmjs.org'" : ''}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile${publish ? '' : ' --ignore-scripts'}
+`
+	const build =
+		buildsSomething(config, opts) && hasScript(opts, 'build')
+			? `
+      - name: 🏗️ Build packages
+        run: pnpm build
+`
+			: ''
+	const changesetsInputs = `          github-token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          version-script: pnpm changeset version
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'`
+	return `name: 🚀 Release
+
+# Changesets, batched (rtorcato/repo-tooling#938). Every push to main opens or
+# updates the "Version Packages" PR and publishes nothing. Merging that PR is
+# the release: its push runs the \`publish\` job, which waits for one \`release\`
+# approval. A dispatch re-runs the publish, e.g. after a failed one; with
+# changesets pending it updates the Version Packages PR instead.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # No environment: it only opens or updates the Version Packages PR, so it
+  # never asks for an approval.
+  version:
+    # Release only from the default branch; a dispatch from another is skipped.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Its own group, so a publish waiting for approval never holds it: a group
+    # keeps only one pending run, and a Version Packages PR merge queued behind
+    # that wait would be dropped by the next push.
+    concurrency:
+      group: release-version
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release: \${{ steps.unpublished.outputs.release }}
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          # RELEASE_TOKEN (admin PAT) lets the action push the Version Packages
+          # branch, and its PR then runs CI; GITHUB_TOKEN-made PRs trigger none.
+          # Falls back to GITHUB_TOKEN when no PAT is set.
+          token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+${setup(false)}
+      # No publish-script: with changesets pending this opens or updates the
+      # Version Packages PR; with none it does nothing.
+      - name: 📝 Open or update the Version Packages PR
+        id: changesets
+        uses: changesets/action@v2.1.2
+        with:
+${changesetsInputs}
+
+      # Nothing pending and a version not on npm yet: this push merged the
+      # Version Packages PR (pre mode included: the version is the -beta.N one).
+      - name: 🔎 Check for a version not on npm yet
+        id: unpublished
+        if: steps.changesets.outputs.has-changesets == 'false'
+        run: |
+${UNPUBLISHED_CHECK.split('\n')
+	.map((l) => `          ${l}`)
+	.join('\n')}
+
+  publish:
+    needs: version
+    # The Version Packages PR merge, or a dispatch. Any other push skips this
+    # job, so it never queues an approval request.
+    if: github.event_name == 'workflow_dispatch' || needs.version.outputs.release == 'true'
+    # Holds the run until a required reviewer approves it. npm trusted
+    # publishing is bound to release.yml + this environment, or the OIDC
+    # publish fails with E404.
+    environment: ${opts.releaseEnvironment || 'release'}
+    # Queue rather than cancel: a newer publish waits for the one ahead of it
+    # (approval included) instead of killing one already in flight
+    # (rtorcato/repo-tooling#790).
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      # The commit that triggered the run, not the tip: a changeset merged while
+      # this waited for approval would otherwise make it update the Version
+      # Packages PR instead of publishing.
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+${setup(true)}${build}
+      # OIDC trusted publishing needs npm >= 11.5.1; Node 22 bundles npm 10, whose
+      # \`npm publish\` fails with ENEEDAUTH. Pinned to a range, not \`latest\`, so a
+      # future npm major can't change publishing unannounced.
+      - name: 📦 Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      # Publishes every package whose version is not on npm yet (with the pre
+      # mode tag, e.g. beta), then tags it and creates its GitHub release. No
+      # NPM_TOKEN: OIDC trusted publishing, via \`id-token: write\` above.
+      - name: 🚀 Publish to npm
+        uses: changesets/action@v2.1.2
+        with:
+          publish-script: pnpm changeset publish
+${changesetsInputs}
 `
 }
 

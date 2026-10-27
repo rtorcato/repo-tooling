@@ -902,6 +902,18 @@ const RELEASE_ENVIRONMENT = 'release'
 export const PUBLISH_COMMAND =
 	/semantic-release|changesets\/action|changeset\s+publish|(?:npm|pnpm|yarn)\s+publish/
 
+/**
+ * Does this job (or workflow) text publish? A `changesets/action` step with no
+ * `publish` / `publish-script` input only opens the Version Packages PR, so on
+ * its own it reaches no registry (#938).
+ */
+export function publishes(text: string): boolean {
+	const t = /^[ \t]*publish(?:-script)?:/m.test(text)
+		? text
+		: text.replace(/changesets\/action/g, '')
+	return PUBLISH_COMMAND.test(t)
+}
+
 const GATE_HINT =
 	'Run `npx @rtorcato/repo-tooling fix release-environment` to create the `release` environment with required reviewers (you) and add `environment: release` to the publishing job — a merge to the default branch then leaves the run `waiting` instead of publishing'
 
@@ -1095,11 +1107,24 @@ export function pushReleaseJob(yaml: string): string | null {
 	if (!/^[ \t]*push:/m.test(yaml)) return null
 	for (const [job, raw] of workflowJobs(yaml)) {
 		const body = withoutComments(raw)
-		if (!PUBLISH_COMMAND.test(body)) continue
+		if (!publishes(body)) continue
 		const onDemand = /event_name == '(?:workflow_dispatch|milestone)'/.test(body)
 		if (!onDemand || /event_name == 'push'/.test(body)) return job
 	}
 	return null
+}
+
+/**
+ * Is this release.yml the two-job Changesets shape (#938)? An ungated job runs
+ * `changesets/action` without publishing (it opens the Version Packages PR),
+ * and the publishing job sits behind an environment.
+ */
+export function isTwoJobChangesetsRelease(yaml: string): boolean {
+	const jobs = [...workflowJobs(yaml).values()].map(withoutComments)
+	return (
+		jobs.some((b) => /changesets\/action/.test(b) && !publishes(b) && jobEnvironment(b) === null) &&
+		jobs.some((b) => publishes(b) && jobEnvironment(b) !== null)
+	)
 }
 
 /**
@@ -1348,7 +1373,7 @@ export function gateReleaseWorkflow(yaml: string): string | null {
 /** The id of the first job in this workflow that publishes, or null. */
 export function publishingJob(yaml: string): string | null {
 	for (const [job, raw] of workflowJobs(yaml)) {
-		if (PUBLISH_COMMAND.test(withoutComments(raw))) return job
+		if (publishes(withoutComments(raw))) return job
 	}
 	return null
 }
@@ -1429,10 +1454,10 @@ async function findPublishJob(dir: string): Promise<PublishJob | null | 'skip'> 
 		for (const f of (await fs.readdir(workflowsDir)).sort()) {
 			if (!/\.ya?ml$/.test(f)) continue
 			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
-			if (!PUBLISH_COMMAND.test(content)) continue
+			if (!publishes(content)) continue
 			for (const [job, raw] of workflowJobs(content)) {
 				const body = withoutComments(raw)
-				if (PUBLISH_COMMAND.test(body)) {
+				if (publishes(body)) {
 					const secrets = new Set(
 						[...body.matchAll(/secrets\.([A-Za-z_]\w*)/g)].map((m) => m[1] as string)
 					)

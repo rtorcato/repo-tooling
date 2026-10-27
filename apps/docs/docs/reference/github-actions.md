@@ -147,7 +147,9 @@ those settings needs a manual `doctor` run with a token that can read them.
 ## Scaffolded workflows
 
 Every scaffold gets a `ci.yml` (lint / typecheck / test / build) out of the box,
-and a library that publishes with semantic-release also gets a `release.yml`.
+and a library that publishes with semantic-release or Changesets also gets a
+`release.yml`. The Changesets one has its own shape; see
+[Changesets releases](#changesets-releases) below.
 
 With commitlint on, `ci.yml` also has a `commitlint` job. On a push it lints the
 commit that landed. On a pull request it lints the **PR title as the future
@@ -187,6 +189,40 @@ Re-point the npm trusted publisher's workflow filename to `release.yml` when you
 migrate, or OIDC publishing fails. Beyond that, repo-tooling ships **optional deploy
 workflows** you add on demand — they're too deploy-target-specific to scaffold
 by default, so the setup wizard never prompts for them.
+
+### Changesets releases
+
+A repo with `.changeset/config.json` gets a two-job `release.yml` (#938).
+Shipping is **merge the Version Packages PR, then one approval**:
+
+- **`version`** runs on every push to `main` with no environment. It runs
+  `changesets/action` without a publish script, so it only opens or updates
+  the Version Packages PR. A merge never publishes and never asks for an
+  approval.
+- **`publish`** keeps `environment: release`. It runs only on the push that
+  merged the Version Packages PR (no changesets pending, and a public package's
+  version is not on npm yet) or on a `workflow_dispatch`, which retries a
+  failed publish (with changesets pending, the action updates the Version
+  Packages PR instead). It checks
+  out the commit that triggered the run, so a changeset merged while it waits
+  for approval can't turn the publish back into a PR update.
+- **Pre mode works as is.** In pre mode (`.changeset/pre.json`) the Version
+  Packages PR bumps to `x.y.z-beta.N`, and `changeset publish` publishes it
+  under the pre tag.
+- `publish` keeps `concurrency: release`, and `version` has its own
+  `release-version` group. Both queue runs, never cancel them, and a publish
+  waiting for approval never holds up the next push's Version Packages PR
+  update. There is no milestone trigger: the Version Packages PR is the batch.
+- `version` installs with `--ignore-scripts`. It runs ungated on every push
+  with `RELEASE_TOKEN` checked out, so no dependency install script runs there.
+
+The file name and the environment name stay the same: npm trusted publishing
+is bound to `release.yml` plus the `release` environment. `doctor` flags the old
+single-job shape (one gated job on dispatch or a closed milestone, so two
+approvals per release). `fix github-actions` rewrites `release.yml` from the
+template and leaves `ci.yml` alone. Steps only the old job had, such as a
+pinned pnpm version, are not carried over, so review the diff with
+`fix github-actions --diff` first.
 
 ### Moving an existing repo to `release.yml`
 

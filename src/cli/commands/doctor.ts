@@ -10,7 +10,11 @@ import {
 	renderReleaseWorkflow,
 	scriptsOf,
 } from '../../languages/js/ci.js'
-import { inferProjectConfig, staleRecordFields } from '../../languages/js/fixers.js'
+import {
+	inferProjectConfig,
+	inferReleaseConfig,
+	staleRecordFields,
+} from '../../languages/js/fixers.js'
 import {
 	checkNpmTrustedPublishers,
 	checkPublishJob,
@@ -659,7 +663,9 @@ export async function runDoctor(
 					nodeFloor: nodeFloorOf(pkg),
 				})
 			),
-			presetRelease: renderReleaseWorkflow(inferProjectConfig(pkg), { scripts: scriptsOf(pkg) }),
+			presetRelease: renderReleaseWorkflow(inferReleaseConfig(pkg, targetDir), {
+				scripts: scriptsOf(pkg),
+			}),
 			language,
 			offline,
 			codeqlLanguages: languageModule.codeqlLanguages,

@@ -407,7 +407,7 @@ export function computeFileList(config: ProjectConfig): string[] {
 		files.push(`${hooksDir}/commit-msg`, 'commitlint.config.mjs')
 	}
 	files.push('.github/workflows/ci.yml')
-	if (config.projectType === 'library' && config.semanticRelease) {
+	if ((config.projectType === 'library' && config.semanticRelease) || config.changesets) {
 		files.push('.github/workflows/release.yml')
 	}
 	if (config.securityAutomation) {
