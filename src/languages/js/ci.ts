@@ -486,16 +486,18 @@ echo "release=$release" >> "$GITHUB_OUTPUT"`
  * environment stay: npm trusted publishing is bound to both.
  */
 function renderChangesetsRelease(config: ProjectConfig, opts: JobOptions): string {
-	const setup = (registry: boolean) => `      - name: 📦 Setup Node.js
+	// The version job is ungated and holds RELEASE_TOKEN, so no dependency
+	// install script runs there; `changeset version` needs no build.
+	const setup = (publish: boolean) => `      - name: 📦 Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version-file: .nvmrc${registry ? "\n          registry-url: 'https://registry.npmjs.org'" : ''}
+          node-version-file: .nvmrc${publish ? "\n          registry-url: 'https://registry.npmjs.org'" : ''}
 
       - name: 📦 Setup pnpm
         uses: pnpm/action-setup@v6
 
       - name: 📦 Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile${publish ? '' : ' --ignore-scripts'}
 `
 	const build =
 		buildsSomething(config, opts) && hasScript(opts, 'build')
@@ -520,19 +522,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Queue rather than cancel: a newer run waits for the one ahead of it (approval
-# included) instead of killing a publish already in flight
-# (rtorcato/repo-tooling#790).
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
   # No environment: it only opens or updates the Version Packages PR, so it
   # never asks for an approval.
   version:
     # Release only from the default branch; a dispatch from another is skipped.
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Its own group, so a publish waiting for approval never holds it: a group
+    # keeps only one pending run, and a Version Packages PR merge queued behind
+    # that wait would be dropped by the next push.
+    concurrency:
+      group: release-version
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -577,6 +578,12 @@ ${UNPUBLISHED_CHECK.split('\n')
     # publishing is bound to release.yml + this environment, or the OIDC
     # publish fails with E404.
     environment: ${opts.releaseEnvironment || 'release'}
+    # Queue rather than cancel: a newer publish waits for the one ahead of it
+    # (approval included) instead of killing one already in flight
+    # (rtorcato/repo-tooling#790).
+    concurrency:
+      group: release
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write

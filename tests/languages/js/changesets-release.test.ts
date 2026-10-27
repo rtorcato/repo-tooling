@@ -46,7 +46,16 @@ describe('generated Changesets release workflow (#938)', () => {
 		const yml = render()
 		expect(yml).toContain('on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\n')
 		expect(yml).not.toContain('milestone')
-		expect(yml).toContain('concurrency:\n  group: release\n  cancel-in-progress: false\n')
+		// Job-level groups: a publish waiting for approval must not hold up the
+		// version runs, or a Version Packages PR merge pending behind it is dropped.
+		expect(yml).not.toMatch(/^concurrency:/m)
+		const jobs = workflowJobs(yml)
+		expect(jobs.get('version')).toContain(
+			'    concurrency:\n      group: release-version\n      cancel-in-progress: false\n'
+		)
+		expect(jobs.get('publish')).toContain(
+			'    concurrency:\n      group: release\n      cancel-in-progress: false\n'
+		)
 		expect([...workflowJobs(yml).keys()]).toEqual(['version', 'publish'])
 	})
 
@@ -56,6 +65,8 @@ describe('generated Changesets release workflow (#938)', () => {
 		expect(version).toContain('changesets/action@v2.1.2')
 		expect(version).not.toMatch(/^\s*publish(-script)?:/m)
 		expect(version).not.toContain('id-token')
+		// Ungated with RELEASE_TOKEN in reach: no dependency install scripts.
+		expect(version).toContain('pnpm install --frozen-lockfile --ignore-scripts\n')
 		expect(version).toContain("if: steps.changesets.outputs.has-changesets == 'false'")
 	})
 
