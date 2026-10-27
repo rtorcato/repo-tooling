@@ -30,7 +30,7 @@ Returns a `tsup` `DefineConfig` with opinionated defaults merged with your overr
 | `treeshake` | `true` |
 | `skipNodeModulesBundle` | `true` |
 | `minify` | production only |
-| `bundle` | `false` |
+| `bundle` | `false` with the default `entry`; `true` when you pass your own `entry` (a narrowed entry with `bundle: false` emits only those files, not the siblings they import) |
 
 ### `baseOptions(options, env)`
 
