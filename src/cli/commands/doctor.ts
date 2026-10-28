@@ -34,6 +34,7 @@ import {
 	departuresFromStandard,
 	GITHUB_SETTINGS_CHECKS,
 	gitRoot,
+	opensReleasePr,
 	isPrivatePackage,
 	releaseConfigFile,
 	readGithubSnapshot,
@@ -151,7 +152,8 @@ const REMOTE_CHECKS = {
 		remote: true,
 		names: GITHUB_SETTINGS_CHECKS,
 		// rules.github (#817): the settings the repo declares, else the standard.
-		run: (dir, lock) => checkGitHubSettings(dir, undefined, lock?.rules?.github),
+		run: (dir, lock) =>
+			checkGitHubSettings(dir, undefined, lock?.rules?.github, lock?.record.config.changesets),
 	},
 	secrets: { remote: true, names: [SECRETS_CHECK], run: (dir) => checkRepositorySecrets(dir) },
 	// Milestone hygiene (#397) — same seam, same self-skip.
@@ -809,7 +811,11 @@ async function snapshotCommand(dir: string, options: DoctorOptions) {
 	} catch (error) {
 		return fail(error instanceof Error ? error.message : String(error))
 	}
-	const departures = departuresFromStandard(snap.github)
+	const lock = await readLockfile(target)
+	const departures = departuresFromStandard(
+		snap.github,
+		await opensReleasePr(target, lock?.record.config.changesets)
+	)
 	if (options.json) {
 		console.log(
 			JSON.stringify(

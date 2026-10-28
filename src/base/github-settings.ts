@@ -226,7 +226,8 @@ async function probeRepo(exec: GhExec): Promise<{ info: RepoInfo } | { skip: str
 export async function checkGitHubSettings(
 	target: string,
 	exec?: GhExec,
-	rules: GithubRules = {}
+	rules: GithubRules = {},
+	changesets?: boolean
 ): Promise<CheckResult[]> {
 	// Cheap gate first: no .git → never spawn (keeps tmp-dir doctor runs offline).
 	// `-d packages/x` audits from the repo root, where the workflows live (#811).
@@ -241,7 +242,7 @@ export async function checkGitHubSettings(
 	return [
 		await checkBranchProtection(gh, info.nwo, info.branch, dir, rules),
 		checkMergeSettings(info, rules),
-		await checkWorkflowPermissions(gh, info.nwo),
+		await checkWorkflowPermissions(gh, info.nwo, rules, await opensReleasePr(dir, changesets)),
 		await checkSecurityUpdates(gh, info.nwo, rules),
 		await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir),
 		...(await checkReleaseGate(gh, info.nwo, dir, rules)),
@@ -308,6 +309,10 @@ export async function readGithubSnapshot(
 		else github.privateVulnerabilityReporting = sec.reporting
 	}
 
+	const wp = await readWorkflowPermissions(gh, info.nwo)
+	if ('skip' in wp) omitted.push(`actionsCanCreatePullRequests: ${wp.skip}`)
+	else github.actionsCanCreatePullRequests = wp.p.can_approve_pull_request_reviews === true
+
 	const envs = await readEnvironments(gh, info.nwo)
 	const users = envs === 'skip' ? [] : (envs.get(RELEASE_ENVIRONMENT)?.users ?? [])
 	if (envs === 'skip') omitted.push('releaseReviewers: could not read environments')
@@ -333,7 +338,7 @@ const STANDARD_TOGGLES = {
  * stops doctor flagging it, so `--snapshot` names these rather than quietly
  * freezing a weakened repo as its stated rules.
  */
-export function departuresFromStandard(rules: GithubRules): string[] {
+export function departuresFromStandard(rules: GithubRules, releasePr = false): string[] {
 	const out: string[] = []
 	const missing = GITHUB_STANDARD.requiredContexts.filter((c) => !rules.requiredChecks?.includes(c))
 	if (rules.requiredChecks && missing.length)
@@ -346,7 +351,36 @@ export function departuresFromStandard(rules: GithubRules): string[] {
 		if (value !== undefined && value !== standard)
 			out.push(`${field}: ${value} (standard: ${standard})`)
 	}
+	const prs = rules.actionsCanCreatePullRequests
+	if (prs !== undefined && prs !== releasePr)
+		out.push(`actionsCanCreatePullRequests: ${prs} (standard: ${releasePr})`)
 	return out
+}
+
+/**
+ * The standard for `actionsCanCreatePullRequests` (#946): on when the repo
+ * releases with Changesets, since `changesets/action` opens the Version
+ * Packages PR from a workflow and GitHub refuses it with the setting off.
+ * `changesets` is the lockfile's `config.changesets`; a workflow using the
+ * action counts too.
+ */
+export async function opensReleasePr(target: string, changesets?: boolean): Promise<boolean> {
+	if (changesets) return true
+	const workflowsDir = path.join((await gitRoot(target)) ?? target, '.github', 'workflows')
+	let files: string[]
+	try {
+		files = (await fs.readdir(workflowsDir)).filter((f) => /\.ya?ml$/.test(f))
+	} catch {
+		return false
+	}
+	for (const f of files)
+		if (
+			/changesets\/action/.test(
+				withoutComments(await fs.readFile(path.join(workflowsDir, f), 'utf-8'))
+			)
+		)
+			return true
+	return false
 }
 
 function probeFailureReason(probe: GhResult): string {
@@ -582,32 +616,64 @@ function checkMergeSettings(info: RepoInfo, rules: GithubRules = {}): CheckResul
 	}
 }
 
-async function checkWorkflowPermissions(exec: GhExec, nwo: string): Promise<CheckResult> {
-	const check = 'Workflow permissions'
+async function readWorkflowPermissions(
+	exec: GhExec,
+	nwo: string
+): Promise<{ p: Record<string, any> } | { skip: string }> {
 	const r = await exec(['api', `repos/${nwo}/actions/permissions/workflow`])
 	if (!r.ok) {
-		if (/403|forbidden/i.test(r.stderr)) return skip(check, 'token lacks admin access')
-		return skip(check, 'could not read workflow permissions')
+		if (/403|forbidden/i.test(r.stderr)) return { skip: 'token lacks admin access' }
+		return { skip: 'could not read workflow permissions' }
 	}
-	let p: Record<string, any>
 	try {
-		p = JSON.parse(r.stdout)
+		return { p: JSON.parse(r.stdout) }
 	} catch {
-		return skip(check, 'could not parse permissions response')
+		return { skip: 'could not parse permissions response' }
 	}
+}
+
+/**
+ * Read-only default token, and "Allow GitHub Actions to create and approve pull
+ * requests" (`can_approve_pull_request_reviews`) off, unless the repo releases
+ * with Changesets (`releasePr`) or rules.github says otherwise (#946).
+ */
+async function checkWorkflowPermissions(
+	exec: GhExec,
+	nwo: string,
+	rules: GithubRules,
+	releasePr: boolean
+): Promise<CheckResult> {
+	const check = 'Workflow permissions'
+	const read = await readWorkflowPermissions(exec, nwo)
+	if ('skip' in read) return skip(check, read.skip)
+	const { p } = read
+	const declared = rules.actionsCanCreatePullRequests
+	const want = declared ?? releasePr
+	const why =
+		declared !== undefined
+			? declaredBy('actionsCanCreatePullRequests', declared)
+			: want
+				? ' (should be on: the Changesets release opens the Version Packages PR)'
+				: ' (should be off)'
 	const deltas: string[] = []
 	if (p.default_workflow_permissions !== 'read')
 		deltas.push(`default permissions '${p.default_workflow_permissions}' (should be read)`)
-	if (p.can_approve_pull_request_reviews === true)
-		deltas.push('workflows can approve PRs (should be off)')
+	if ((p.can_approve_pull_request_reviews === true) !== want)
+		deltas.push(`workflows ${want ? 'cannot' : 'can'} create and approve PRs${why}`)
 	if (deltas.length)
 		return {
 			check,
 			status: 'drift',
 			detail: deltas.join('; '),
-			hint: 'Set default workflow permissions to read-only and disable workflow PR approvals',
+			hint: `Run \`npx @rtorcato/repo-tooling fix github-settings\`, or in Settings → Actions → General → Workflow permissions pick "Read repository contents and packages permissions", turn "Allow GitHub Actions to create and approve pull requests" ${onOff(want)} → Save`,
 		}
-	return { check, status: 'ok', detail: 'read-only default, no workflow PR approvals' }
+	return {
+		check,
+		status: 'ok',
+		detail: want
+			? `read-only default, workflows can create PRs${declared === undefined ? ' (Changesets)' : ' per rules.github'}`
+			: 'read-only default, no workflow PR approvals',
+	}
 }
 
 /**
@@ -1825,9 +1891,12 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 			],
 			stdin: protectionBody(rules),
 		})
+	const prs = rules.actionsCanCreatePullRequests ?? false
 	if (state.workflow)
 		commands.push({
-			label: 'workflow permissions (read-only)',
+			label: prs
+				? 'workflow permissions (read-only, Actions can create PRs)'
+				: 'workflow permissions (read-only)',
 			args: [
 				'api',
 				'-X',
@@ -1836,7 +1905,7 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 				'-f',
 				'default_workflow_permissions=read',
 				'-F',
-				'can_approve_pull_request_reviews=false',
+				`can_approve_pull_request_reviews=${prs}`,
 			],
 		})
 	// Alerts first when enabling: GitHub refuses security fixes on a repo with
@@ -1882,7 +1951,8 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 export async function applyGithubSettings(
 	dir: string,
 	exec?: GhExec,
-	rules: GithubRules = {}
+	rules: GithubRules = {},
+	changesets?: boolean
 ): Promise<string[]> {
 	if (!(await fs.pathExists(path.join(dir, '.git')))) {
 		console.error(chalk.gray('   skipped — not a git repository'))
@@ -1900,7 +1970,13 @@ export async function applyGithubSettings(
 	// Re-read via the same checks so the delta logic stays single-sourced. A 403
 	// (no admin) reports `ok` → treated as "nothing to apply", never a failed PUT.
 	const bp = await checkBranchProtection(gh, info.nwo, info.branch, dir, rules)
-	const wp = await checkWorkflowPermissions(gh, info.nwo)
+	// The PUT writes the resolved value, so a Changesets repo keeps PR creation on (#946).
+	rules = {
+		...rules,
+		actionsCanCreatePullRequests:
+			rules.actionsCanCreatePullRequests ?? (await opensReleasePr(dir, changesets)),
+	}
+	const wp = await checkWorkflowPermissions(gh, info.nwo, rules, false)
 	const sec = await readSecurityUpdates(gh, info.nwo)
 	let protection = bp.status === 'optional-missing' || bp.status === 'drift'
 	// Requiring a `ci` check that no workflow reports would block every PR (#816).

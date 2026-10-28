@@ -96,6 +96,12 @@ export interface GithubRules {
 	automatedSecurityFixes?: boolean
 	/** Private vulnerability reporting (the "Report a vulnerability" button). Standard: true. */
 	privateVulnerabilityReporting?: boolean
+	/**
+	 * "Allow GitHub Actions to create and approve pull requests" (#946).
+	 * Standard: on when the repo releases with Changesets, which opens the
+	 * Version Packages PR from a workflow; off otherwise.
+	 */
+	actionsCanCreatePullRequests?: boolean
 	/** GitHub user logins required to approve the `release` environment. No standard: unchecked when absent. */
 	releaseReviewers?: string[]
 }
@@ -336,6 +342,11 @@ export function lockfileSchema() {
 								type: 'boolean',
 								description:
 									'Private vulnerability reporting (the "Report a vulnerability" button). Standard: true.',
+							},
+							actionsCanCreatePullRequests: {
+								type: 'boolean',
+								description:
+									'Allow GitHub Actions to create and approve pull requests. Standard: on for a Changesets repo (its Version Packages PR needs it), off otherwise.',
 							},
 							releaseReviewers: {
 								type: 'array',
