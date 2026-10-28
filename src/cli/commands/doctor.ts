@@ -80,11 +80,11 @@ import {
 	allDeps,
 	checkAreTheTypesWrong,
 	checkBiome,
+	checkChangesets,
 	checkClaudeWorktreeSettings,
 	checkConfigSchemaVersions,
 	checkEnginesNode,
 	checkExportsBuildable,
-	checkFileFromRoot,
 	checkGitDependencies,
 	checkKnip,
 	checkLintStaged,
@@ -616,7 +616,7 @@ export async function runDoctor(
 		if (spec.check === 'Biome') {
 			results.push(await checkBiome(targetDir))
 		} else if (spec.check === 'Changesets') {
-			results.push(await checkFileFromRoot(targetDir, root, spec))
+			results.push(await checkChangesets(targetDir, root, pkg, spec))
 		} else {
 			results.push(await checkFile(targetDir, spec))
 		}

@@ -49,6 +49,19 @@ describe('generatePackageJson', () => {
 		expect((await fs.readJson(join(dir, 'package.json'))).private).toBe(expected)
 	})
 
+	// #952: the release workflow runs `pnpm changeset version`, which needs the CLI.
+	it.each([
+		[{ changesets: true }, '^3.0.3'],
+		[{ changesets: true, vitePlus: true }, '^3.0.3'],
+		[{ semanticRelease: true }, undefined],
+	] as const)('scaffolds @changesets/cli for %o: %s', async (release, expected) => {
+		const dir = newTmpDir()
+		await generatePackageJson(baseConfig(release), dir)
+		expect((await fs.readJson(join(dir, 'package.json'))).devDependencies['@changesets/cli']).toBe(
+			expected
+		)
+	})
+
 	it('creates a new package.json with the project name', async () => {
 		const dir = newTmpDir()
 		await generatePackageJson(baseConfig({ projectName: 'cool-lib' }), dir)

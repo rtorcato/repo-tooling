@@ -2,7 +2,7 @@ import chalk from 'chalk'
 import fs from '../../base/safe-fs.js'
 import path from 'node:path'
 import packageJson from '../../../package.json' with { type: 'json' }
-import { compareVersion, rangeFloor } from '../../languages/js/checks.js'
+import { CHANGESETS_CLI_RANGE, compareVersion, rangeFloor } from '../../languages/js/checks.js'
 import type { ProjectConfig } from '../commands/setup.js'
 import { SEMANTIC_RELEASE_DEPS } from './build.js'
 import { COMMITLINT_DEPS } from './git.js'
@@ -542,6 +542,8 @@ function getDependencies(config: ProjectConfig): Record<string, string> {
 	if (config.semanticRelease) {
 		Object.assign(deps, SEMANTIC_RELEASE_DEPS)
 	}
+	// The release workflow runs `pnpm changeset version` / `publish` (#952).
+	if (config.changesets) deps['@changesets/cli'] = CHANGESETS_CLI_RANGE
 
 	return raiseToPeerFloors(deps)
 }
@@ -566,6 +568,7 @@ function getVitePlusDependencies(config: ProjectConfig): Record<string, string> 
 		deps['cz-conventional-changelog'] = '^3.3.0'
 	}
 	if (config.semanticRelease) Object.assign(deps, SEMANTIC_RELEASE_DEPS)
+	if (config.changesets) deps['@changesets/cli'] = CHANGESETS_CLI_RANGE
 	return raiseToPeerFloors(deps)
 }
 
