@@ -197,12 +197,11 @@ describe('yourFunction', () => {
 
 ## 🚢 Release Process
 
-Releases are automated using semantic-release:
+Releases use [Changesets](https://github.com/changesets/changesets) (see [RELEASING.md](./RELEASING.md)):
 
-1. **Close a milestone, or dispatch the release:** merging to main does not release. Closing a milestone, or running `gh workflow run release.yml`, releases everything merged to main since the last tag; a newer request supersedes one still waiting for approval
-2. **Version calculation:** Based on conventional commit messages
-3. **Changelog generation:** Automatic based on commits
-4. **npm publication:** Automated via GitHub Actions
+1. **Add a changeset** to any PR that changes the published package: `pnpm changeset`. Pick the bump (patch/minor/major) and commit the file under `.changeset/`. Don't edit `version` in `package.json` by hand.
+2. **Merging does not release.** Each push to `main` opens or updates a "Version Packages" PR that consumes the pending changesets, bumps the version and writes `CHANGELOG.md`.
+3. **Merging the Version Packages PR is the release.** Its `publish` job waits for one approval on the `release` environment, then publishes to npm and creates the GitHub Release.
 
 ## 📝 Pull Request Guidelines
 

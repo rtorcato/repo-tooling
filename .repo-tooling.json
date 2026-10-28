@@ -23,7 +23,8 @@
       },
       "gitHooks": true,
       "commitLint": true,
-      "semanticRelease": true,
+      "semanticRelease": false,
+      "changesets": true,
       "securityAutomation": true,
       "bundler": "none",
       "docs": {

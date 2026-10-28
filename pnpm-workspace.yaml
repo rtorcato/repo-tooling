@@ -1,4 +1,7 @@
 packages:
+  # The root is the published package. Unlisted, Changesets cannot see it and
+  # rejects every changeset as "not in the workspace".
+  - '.'
   - 'apps/*'
 
 allowBuilds:

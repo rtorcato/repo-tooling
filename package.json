@@ -1,6 +1,6 @@
 {
 	"name": "@rtorcato/repo-tooling",
-	"version": "3.11.0",
+	"version": "6.1.1",
 	"description": "One CLI to scaffold, audit and fix your repo's whole toolchain — linting, tests, commits, releases & CI.",
 	"type": "module",
 	"keywords": [
@@ -33,6 +33,7 @@
 		"format": "pnpm exec biome format .",
 		"check:fix": "pnpm exec biome check --fix .",
 		"check": "pnpm exec biome check .",
+		"changeset": "changeset",
 		"prepare": "is-ci || husky",
 		"typecheck": "tsc --noEmit --project src/cli/tsconfig.json",
 		"test": "vitest",
@@ -233,6 +234,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.14",
+		"@changesets/cli": "^3.0.3",
 		"@commitlint/cli": "^21.2.3",
 		"@commitlint/config-conventional": "^21.2.3",
 		"@commitlint/types": "^21.2.3",
@@ -242,11 +244,6 @@
 		"@next/eslint-plugin-next": "^16.3.6",
 		"@playwright/test": "^1.63.0",
 		"@rollup/plugin-typescript": "^12.3.0",
-		"@semantic-release/commit-analyzer": "^13.0.1",
-		"@semantic-release/exec": "^7.1.0",
-		"@semantic-release/github": "^12.0.10",
-		"@semantic-release/npm": "^13.2.0",
-		"@semantic-release/release-notes-generator": "^14.1.1",
 		"@size-limit/preset-small-lib": "^14.1.0",
 		"@total-typescript/ts-reset": "0.6.1",
 		"@types/fs-extra": "^11.0.4",
@@ -256,7 +253,6 @@
 		"@vitejs/plugin-react": "^6.1.1",
 		"@vitest/coverage-v8": "^5.0.1",
 		"commitizen": "^4.3.2",
-		"conventional-changelog-conventionalcommits": "^10.4.0",
 		"cz-conventional-changelog": "^3.3.0",
 		"esbuild": "^0.28.2",
 		"esbuild-node-externals": "^2.0.0",
@@ -431,12 +427,6 @@
 	"knip": {
 		"ignoreDependencies": [
 			"ts-jest",
-			"@semantic-release/commit-analyzer",
-			"@semantic-release/exec",
-			"@semantic-release/github",
-			"@semantic-release/npm",
-			"@semantic-release/release-notes-generator",
-			"conventional-changelog-conventionalcommits",
 			"@infrazero/repo-ai"
 		],
 		"ignore": [
