@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import {
+	checkChangesets,
 	checkFileFromRoot,
 	checkLintStaged,
 	checkSemanticRelease,
@@ -54,6 +55,24 @@ describe('monorepo config lookup (#861)', () => {
 		const result = await checkFileFromRoot(pkg, root, spec)
 		expect(result.status).toBe('ok')
 		expect(result.detail).toContain('workspace root')
+	})
+
+	// #952: a config with no CLI fails the release workflow's `pnpm changeset version`.
+	it.each([
+		['the package', 'pkg', 'ok'],
+		['the workspace root', 'root', 'ok'],
+		['neither', null, 'drift'],
+	] as const)('checks @changesets/cli in %s', async (_label, where, status) => {
+		const { root, pkg } = await monorepo()
+		await fs.outputJson(join(root, '.changeset', 'config.json'), { baseBranch: 'main' })
+		const withCli = { devDependencies: { '@changesets/cli': '^3.0.3' } }
+		if (where === 'pkg') await fs.writeJson(join(pkg, 'package.json'), { name: 'app', ...withCli })
+		await fs.writeJson(join(root, 'package.json'), where === 'root' ? withCli : {})
+		const spec = FILE_CHECKS.find((c) => c.check === 'Changesets')
+		if (!spec) throw new Error('Changesets spec missing')
+		const result = await checkChangesets(pkg, root, await readPackageJson(pkg), spec)
+		expect(result.status).toBe(status)
+		if (status === 'drift') expect(result.hint).toContain('@changesets/cli')
 	})
 
 	it('accepts a root semantic-release preset when the package has no release config', async () => {

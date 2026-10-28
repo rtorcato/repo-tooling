@@ -945,6 +945,32 @@ async function usesChangesets(dir: string, root = dir): Promise<boolean> {
 	return (await configHome(dir, root, ['.changeset/config.json'])) !== null
 }
 
+/** The range setup scaffolds; `pnpm changeset` needs the CLI installed (#952). */
+export const CHANGESETS_CLI_RANGE = '^3.0.3'
+
+/**
+ * The Changesets config check, plus the CLI the release workflow runs. A config
+ * with no `@changesets/cli` in the package or workspace root fails the first
+ * Version job with `Command "changeset" not found` (#952).
+ */
+export async function checkChangesets(
+	dir: string,
+	root: string,
+	pkg: Pkg | null,
+	spec: FileCheck
+): Promise<CheckResult> {
+	const result = await checkFileFromRoot(dir, root, spec)
+	if (result.status !== 'ok') return result
+	const rootPkg = root === dir ? null : await readPackageJson(root)
+	if (allDeps(pkg)['@changesets/cli'] || allDeps(rootPkg)['@changesets/cli']) return result
+	return {
+		check: spec.check,
+		status: 'drift',
+		detail: '.changeset/config.json found but @changesets/cli is not a dependency',
+		hint: `Run \`pnpm add -D @changesets/cli@${CHANGESETS_CLI_RANGE}\``,
+	}
+}
+
 /** checkFile for a monorepo package: reads the package dir, then the workspace root (#861). */
 export async function checkFileFromRoot(
 	dir: string,
