@@ -344,6 +344,10 @@
 							"type": "boolean",
 							"description": "Private vulnerability reporting (the \"Report a vulnerability\" button). Standard: true."
 						},
+						"actionsCanCreatePullRequests": {
+							"type": "boolean",
+							"description": "Allow GitHub Actions to create and approve pull requests. Standard: on for a Changesets repo (its Version Packages PR needs it), off otherwise."
+						},
 						"releaseReviewers": {
 							"type": "array",
 							"minItems": 1,

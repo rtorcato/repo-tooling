@@ -260,7 +260,14 @@ export const BASE_FIXERS: Fixer[] = [
 		explicitOnly: true,
 		canFixDrift: true,
 		async run({ targetDir, lock }) {
-			return { filesWritten: await applyGithubSettings(targetDir, undefined, lock?.rules?.github) }
+			return {
+				filesWritten: await applyGithubSettings(
+					targetDir,
+					undefined,
+					lock?.rules?.github,
+					lock?.record.config.changesets
+				),
+			}
 		},
 	},
 	{

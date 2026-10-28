@@ -1697,6 +1697,7 @@ describe('readGithubSnapshot (#863)', () => {
 				vulnerabilityAlerts: true,
 				automatedSecurityFixes: true,
 				privateVulnerabilityReporting: true,
+				actionsCanCreatePullRequests: false,
 				// Users only, lowercased: a team slug isn't a login the fixer can apply.
 				releaseReviewers: ['rtorcato'],
 			},
@@ -1717,6 +1718,7 @@ describe('readGithubSnapshot (#863)', () => {
 				})
 			),
 			alerts: fail('gh: (HTTP 403)'),
+			workflow: fail('gh: (HTTP 403)'),
 		})
 		const snap = await readGithubSnapshot(gitRepo(), exec)
 		if ('skip' in snap) throw new Error(snap.skip)
@@ -1725,6 +1727,7 @@ describe('readGithubSnapshot (#863)', () => {
 		expect(snap.omitted.join('\n')).toMatch(/autoMerge, deleteOnMerge/)
 		expect(snap.omitted.join('\n')).toMatch(/vulnerabilityAlerts.*needs admin/)
 		expect(snap.omitted.join('\n')).toMatch(/releaseReviewers/)
+		expect(snap.omitted.join('\n')).toMatch(/actionsCanCreatePullRequests: token lacks admin/)
 	})
 
 	it('never writes the security toggles a non-admin read as off', async () => {
@@ -1776,5 +1779,119 @@ describe('departuresFromStandard (#863)', () => {
 	it('is empty for the standard, and for absent fields', () => {
 		expect(departuresFromStandard({})).toEqual([])
 		expect(departuresFromStandard({ requiredChecks: ['ci', 'lint'], strict: false })).toEqual([])
+	})
+})
+
+describe('actionsCanCreatePullRequests (#946)', () => {
+	const PRS_ON = ok(
+		JSON.stringify({ default_workflow_permissions: 'read', can_approve_pull_request_reviews: true })
+	)
+	/** A repo whose release.yml runs changesets/action, the Version Packages PR opener. */
+	function changesetsRepo(): string {
+		const dir = gitRepoWithGate()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/release.yml'),
+			'jobs:\n  version:\n    steps:\n      - uses: changesets/action@v2.1.2\n'
+		)
+		return dir
+	}
+	const wp = async (dir: string, workflow?: GhResult, rules = {}, changesets?: boolean) =>
+		byName(
+			await checkGitHubSettings(dir, fakeGh({ workflow }), rules, changesets),
+			'Workflow permissions'
+		) as { status: string; detail: string; hint?: string }
+
+	it('a Changesets repo with the setting off is drift, naming the setting path', async () => {
+		const r = await wp(changesetsRepo())
+		expect(r.status).toBe('drift')
+		expect(r.detail).toBe(
+			'workflows cannot create and approve PRs (should be on: the Changesets release opens the Version Packages PR)'
+		)
+		expect(r.hint).toContain(
+			'Settings → Actions → General → Workflow permissions pick "Read repository contents and packages permissions", turn "Allow GitHub Actions to create and approve pull requests" on → Save'
+		)
+	})
+
+	it('a Changesets repo with it on is ok, from the workflow or the lockfile flag', async () => {
+		expect((await wp(changesetsRepo(), PRS_ON)).status).toBe('ok')
+		const r = await wp(gitRepo(), PRS_ON, {}, true)
+		expect(r).toMatchObject({
+			status: 'ok',
+			detail: 'read-only default, workflows can create PRs (Changesets)',
+		})
+	})
+
+	it('a semantic-release repo with it on is still drift', async () => {
+		const r = await wp(gitRepo(), PRS_ON)
+		expect(r.status).toBe('drift')
+		expect(r.detail).toBe('workflows can create and approve PRs (should be off)')
+	})
+
+	it('a commented-out changesets/action does not count', async () => {
+		const dir = gitRepo()
+		fs.outputFileSync(join(dir, '.github/workflows/release.yml'), '# uses: changesets/action\n')
+		expect((await wp(dir)).status).toBe('ok')
+	})
+
+	it('an explicit rules.github value wins in both directions', async () => {
+		const off = { actionsCanCreatePullRequests: false }
+		expect((await wp(changesetsRepo(), undefined, off)).status).toBe('ok')
+		expect((await wp(changesetsRepo(), PRS_ON, off)).detail).toBe(
+			'workflows can create and approve PRs (rules.github.actionsCanCreatePullRequests: false)'
+		)
+		const on = { actionsCanCreatePullRequests: true }
+		expect((await wp(gitRepo(), PRS_ON, on)).detail).toBe(
+			'read-only default, workflows can create PRs per rules.github'
+		)
+		expect((await wp(gitRepo(), undefined, on)).status).toBe('drift')
+	})
+
+	it('fix github-settings turns it on for a Changesets repo, keeping the read default', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const run = async (dir: string, workflow?: GhResult, rules = {}) => {
+			const calls: string[][] = []
+			const fallback = fakeGh({ workflow })
+			const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
+				if (args.includes('-X')) {
+					calls.push(args)
+					return ok('')
+				}
+				return fallback(args, stdin)
+			})
+			return { applied: await applyGithubSettings(dir, exec, rules), calls }
+		}
+		const put = (on: boolean) => [
+			'api',
+			'-X',
+			'PUT',
+			'repos/owner/repo/actions/permissions/workflow',
+			'-f',
+			'default_workflow_permissions=read',
+			'-F',
+			`can_approve_pull_request_reviews=${on}`,
+		]
+		expect(await run(changesetsRepo())).toEqual({
+			applied: ['workflow permissions (read-only, Actions can create PRs)'],
+			calls: [put(true)],
+		})
+		expect(await run(changesetsRepo(), PRS_ON)).toEqual({ applied: [], calls: [] })
+		expect(await run(gitRepoWithGate(), PRS_ON)).toEqual({
+			applied: ['workflow permissions (read-only)'],
+			calls: [put(false)],
+		})
+		expect(
+			await run(changesetsRepo(), PRS_ON, { actionsCanCreatePullRequests: false })
+		).toMatchObject({ calls: [put(false)] })
+	})
+
+	it('departuresFromStandard compares against the repo-derived standard', () => {
+		const on = { actionsCanCreatePullRequests: true }
+		expect(departuresFromStandard(on)).toEqual([
+			'actionsCanCreatePullRequests: true (standard: false)',
+		])
+		expect(departuresFromStandard(on, true)).toEqual([])
+		expect(departuresFromStandard({ actionsCanCreatePullRequests: false }, true)).toEqual([
+			'actionsCanCreatePullRequests: false (standard: true)',
+		])
 	})
 })
