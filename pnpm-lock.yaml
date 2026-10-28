@@ -17,10 +17,10 @@ importers:
         specifier: ^6.0.0
         version: 6.0.3(semantic-release@25.0.9(typescript@7.0.2))
       '@semantic-release/commit-analyzer':
-        specifier: ^13.0.1
+        specifier: ^13.0.0
         version: 13.0.1(semantic-release@25.0.9(typescript@7.0.2))
       '@semantic-release/exec':
-        specifier: ^7.1.0
+        specifier: ^7.0.0
         version: 7.1.0(semantic-release@25.0.9(typescript@7.0.2))
       '@semantic-release/git':
         specifier: ^10.0.0
@@ -29,10 +29,10 @@ importers:
         specifier: ^12.0.10
         version: 12.0.10(semantic-release@25.0.9(typescript@7.0.2))
       '@semantic-release/npm':
-        specifier: ^13.2.0
+        specifier: ^13.0.0
         version: 13.2.0(semantic-release@25.0.9(typescript@7.0.2))
       '@semantic-release/release-notes-generator':
-        specifier: ^14.1.1
+        specifier: ^14.0.0
         version: 14.1.1(semantic-release@25.0.9(typescript@7.0.2))
       chalk:
         specifier: ^6.0.0
@@ -41,7 +41,7 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0
       conventional-changelog-conventionalcommits:
-        specifier: ^10.4.0
+        specifier: ^9.0.0 || ^10.0.0
         version: 10.4.0
       diff:
         specifier: ^9.0.0
