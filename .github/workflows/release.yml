@@ -1,137 +1,165 @@
 name: 🚀 Release
 
-# Releases run only on demand (#740): a dispatch, or closing a milestone.
-# Split out of ci.yml (#753) so a waiting release never holds up CI, and so a
-# newer request can supersede it.
+# Changesets, batched (#938, moved off semantic-release in #940). Every push to
+# main opens or updates the "Version Packages" PR and publishes nothing. Merging
+# that PR is the release: its push runs the `publish` job, which waits for one
+# `release` approval. A dispatch re-runs the publish, e.g. after a failed one;
+# with changesets pending it updates the Version Packages PR instead.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-  milestone:
-    types: [closed]
 
 jobs:
-  # Is an approved release already publishing? Then this request must queue
-  # behind it, not cancel it mid-publish (#790). One still waiting for approval
-  # has published nothing, so superseding that one is safe (#753).
-  in-flight:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-    outputs:
-      publishing: ${{ steps.check.outputs.publishing }}
-    steps:
-      - name: 🔎 Check for a release already publishing
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          publishing=false
-          # A run waiting for approval is `waiting`, not `in_progress`.
-          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?status=in_progress" --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id"); do
-            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" --jq '.jobs[] | select(.status == "in_progress" and .name != "in-flight") | .name' | grep -q .; then
-              publishing=true
-            fi
-          done
-          echo "publishing=$publishing" >> "$GITHUB_OUTPUT"
-          if [ "$publishing" = true ]; then
-            echo "::notice::A release is already publishing; this one runs after it."
-          fi
-
-  release:
-    needs: in-flight
-    # Supersede a run still waiting for approval, never one publishing (#753, #790).
+  # No environment: it only opens or updates the Version Packages PR, so it
+  # never asks for an approval.
+  version:
+    # Release only from the default branch; a dispatch from another is skipped.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Its own group, so a publish waiting for approval never holds it: a group
+    # keeps only one pending run, and a Version Packages PR merge queued behind
+    # that wait would be dropped by the next push.
     concurrency:
-      group: release
-      cancel-in-progress: ${{ needs.in-flight.outputs.publishing != 'true' }}
-    # The merge-to-npm gate: the run waits here for the required reviewer (#429).
-    environment: release
+      group: release-version
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
-      # Lets the release job dispatch docs.yml after a publish.
-      actions: write
       contents: write
-      issues: write
       pull-requests: write
-      id-token: write
+    outputs:
+      release: ${{ steps.unpublished.outputs.release }}
     steps:
       - name: 📦 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # main's tip, not the event's SHA: the job starts after approval, and
-          # semantic-release refuses a checkout that main has moved past.
-          ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 0 # Fetch full history for semantic-release
-          # RELEASE_TOKEN is an admin PAT so semantic-release can push the
-          # version commit + tag to a protected main (github-actions[bot]
-          # can't bypass branch protection). Falls back to GITHUB_TOKEN.
+          fetch-depth: 0
+          # RELEASE_TOKEN (admin PAT) lets the action push the Version Packages
+          # branch, and its PR then runs CI; GITHUB_TOKEN-made PRs trigger none.
+          # Falls back to GITHUB_TOKEN when no PAT is set.
           token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: 📦 Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
+          node-version-file: .nvmrc
 
       - name: 📦 Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
-      # main's tip already passed full CI on its way in; this is the smoke check
-      # that what we publish builds and tests, not a second CI run.
+      # Ungated with RELEASE_TOKEN checked out, so no dependency install script
+      # runs here; `changeset version` needs no build.
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # No publish-script: with changesets pending this opens or updates the
+      # Version Packages PR; with none it does nothing.
+      - name: 📝 Open or update the Version Packages PR
+        id: changesets
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          github-token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          version-script: pnpm changeset version
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'
+
+      # Nothing pending and a version not on npm yet: this push merged the
+      # Version Packages PR.
+      - name: 🔎 Check for a version not on npm yet
+        id: unpublished
+        if: steps.changesets.outputs.has-changesets == 'false'
+        run: |
+          release=false
+          for spec in $(pnpm -r ls --depth -1 --json | jq -r '.[] | select(.private != true and .name and .version) | "\(.name)@\(.version)"'); do
+            if out=$(npm view "$spec" version 2>&1); then
+              continue
+            elif printf '%s' "$out" | grep -q E404; then
+              echo "::notice::$spec is not on npm yet"
+              release=true
+            else
+              printf '%s\n' "$out" >&2
+              exit 1
+            fi
+          done
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: version
+    # The Version Packages PR merge, or a dispatch. Any other push skips this
+    # job, so it never queues an approval request.
+    if: github.event_name == 'workflow_dispatch' || needs.version.outputs.release == 'true'
+    # Holds the run until a required reviewer approves it. npm trusted
+    # publishing is bound to release.yml + this environment, or the OIDC
+    # exchange returns `404 package not found`.
+    environment: release
+    # Queue rather than cancel: a newer publish waits for the one ahead of it
+    # (approval included) instead of killing one already in flight
+    # (rtorcato/repo-tooling#790).
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      # Dispatches docs.yml after a publish.
+      actions: write
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      # The commit that triggered the run, not the tip: a changeset merged while
+      # this waited for approval would otherwise make it update the Version
+      # Packages PR instead of publishing.
+      - name: 📦 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
       - name: 📦 Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: 🏗️ Build CLI
-        run: pnpm run build-cli
+      - name: 🏗️ Build project
+        run: pnpm build
 
       - name: 🧪 Run tests
         run: pnpm test --run
 
-      - name: 🔧 Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      # OIDC trusted publishing needs npm CLI >= 11.5.1; Node 22 ships 10.x, so
-      # semantic-release's own OIDC token exchange succeeds but the `npm publish`
-      # it shells out to fails with ENEEDAUTH. Pinned to npm 11, never `latest`:
-      # a release job must not pull an unpinned tool.
+      # OIDC trusted publishing needs npm >= 11.5.1; Node 22 bundles npm 10, whose
+      # `npm publish` fails with ENEEDAUTH. Pinned to a range, not `latest`, so a
+      # future npm major can't change publishing unannounced.
       - name: 📦 Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@^11.5.1
 
-      - name: 🚀 Run semantic-release
-        # Publishes to npm via OIDC trusted publishing — no NPM_TOKEN. Requires
-        # the `id-token: write` permission above + a trusted publisher configured
-        # for the package on npmjs.com (Settings → Trusted Publisher, workflow
-        # release.yml).
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          set -o pipefail
-          npx semantic-release 2>&1 | tee release.log
-          # semantic-release exits 0 when main moved on since this run started,
-          # publishing nothing (#690). Say so instead of going quietly green.
-          if grep -q "is behind the remote one" release.log; then
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::warning::main moved on during this run; nothing was published. Run the workflow again."
-            else
-              echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
-            fi
-          fi
+      # Publishes the package if its version is not on npm yet, then tags it and
+      # creates its GitHub release. No NPM_TOKEN: OIDC trusted publishing, via
+      # `id-token: write` above.
+      - name: 🚀 Publish to npm
+        id: publish
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          publish-script: pnpm changeset publish
+          github-token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          version-script: pnpm changeset version
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'
 
-      # The docs changelog page is built from the GitHub releases at docs build
-      # time. A release made with GITHUB_TOKEN starts no `release: published`
-      # run, but a GITHUB_TOKEN dispatch does start one, so rebuild the docs
-      # from here (#944). The publish has already happened, so a hiccup here
-      # must not fail the job; worst case the docs refresh on the next push.
-      - name: 📘 Rebuild the docs after a publish
+      # The docs changelog page is built from the GitHub releases. Releases made
+      # with GITHUB_TOKEN start no `release: published` run, and docs.yml's
+      # `workflow_run` on CI fires before this approval, so rebuild from here.
+      - name: 📚 Rebuild the docs changelog
+        if: steps.publish.outputs.published == 'true'
+        # The publish already happened, so a hiccup here must not fail the job.
+        # Worst case the docs refresh on the next green CI run on main.
         continue-on-error: true
+        run: gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          tag=$(git tag --points-at HEAD | head -1)
-          if [ -z "$tag" ]; then
-            echo "No tag on HEAD, so semantic-release published nothing. Skipping."
-            exit 0
-          fi
-          echo "Published $tag, dispatching docs.yml on the default branch."
-          gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"

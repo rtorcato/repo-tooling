@@ -114,7 +114,8 @@ A fixer may also **refuse** — the target file holds something the generator ca
 - Conventional commits enforced via commitlint; header max 100 chars, body/footer line length unenforced
 - Biome for lint + format (run via `pnpm run check`, i.e. `biome check .` over the whole repo — the same script this package emits to consumers)
 - Tests live alongside source in `tests/`; vitest with no separate config
-- semantic-release runs from `release.yml` on `workflow_dispatch` or a closed milestone, never on a plain push to `main` (#740, #753); `fix:` → patch, `feat:` → minor, `chore:` / `docs:` → no release
+- Releases use Changesets (#940). A PR that changes the published package adds a changeset (`pnpm changeset`). Merging to `main` does not release: each push opens or updates the "Version Packages" PR, which bumps `package.json`'s `version` and writes `CHANGELOG.md`. Merging that PR is the release, and its `publish` job in `release.yml` waits for one `release` approval. Keep the filename and the environment name: npm trusted publishing is bound to both. See RELEASING.md
+- `pnpm-workspace.yaml` lists `.` so Changesets sees the root package; drop it and every changeset fails with "not in the workspace"
 
 ## Pointers
 

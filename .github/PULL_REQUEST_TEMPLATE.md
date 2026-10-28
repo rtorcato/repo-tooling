@@ -20,5 +20,6 @@
 ## Checklist
 
 - [ ] No `console.log` left in production code
+- [ ] A changeset is added if the published package changes (`pnpm changeset`)
 - [ ] No breaking changes (or BREAKING CHANGE footer added to commit)
 - [ ] `pnpm check` (Biome) passes

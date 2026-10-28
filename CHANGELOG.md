@@ -1,9 +1,16 @@
-> **This file stops at 3.11.0.** Releases after that are recorded in
-> [GitHub Releases](https://github.com/rtorcato/repo-tooling/releases), which is
-> the canonical changelog. Nothing regenerates this file any more: the release
-> no longer commits back to `main`, because the `code-scanning-main` ruleset
-> rejects that push with `GH013` ([#417](https://github.com/rtorcato/repo-tooling/issues/417)).
-> The `version` in `package.json` is frozen for the same reason — read the tags.
+# @rtorcato/repo-tooling
+
+## 6.1.1
+
+Releases 3.11.1 to 6.1.1 were cut by semantic-release, which no longer wrote
+this file (the release could not commit back to `main`: the
+`code-scanning-main` ruleset rejects that push with `GH013`, see
+[#417](https://github.com/rtorcato/repo-tooling/issues/417)). Their notes are on
+[GitHub Releases](https://github.com/rtorcato/repo-tooling/releases). From the
+next release on, Changesets writes each entry here, above this one, through the
+Version Packages PR.
+
+The entries below, down to 3.11.0, are semantic-release's.
 
 # [3.11.0](https://github.com/rtorcato/repo-tooling/compare/v3.10.2...v3.11.0) (2026-08-17)
 

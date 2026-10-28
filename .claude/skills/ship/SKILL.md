@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Commit and push the current working tree after running all CI gates locally. Triggers on "ship it", "commit and push", "let's push", "/ship", or any explicit request to commit-then-push. Encodes this repo's conventions (pnpm + biome + commitlint + semantic-release on main). Does NOT trigger on commit-only or push-only requests — use those flows directly.
+description: Commit and push the current working tree after running all CI gates locally. Triggers on "ship it", "commit and push", "let's push", "/ship", or any explicit request to commit-then-push. Encodes this repo's conventions (pnpm + biome + commitlint + Changesets). Does NOT trigger on commit-only or push-only requests — use those flows directly.
 ---
 
 # Ship workflow
@@ -16,7 +16,7 @@ Run in a single message:
 - `git log -5 --oneline` — recent commit style
 - `git status -sb` — branch + tracking info (ahead/behind origin)
 
-If on `main` or `master`, note it — pushing there triggers semantic-release.
+If on `main` or `master`, note it — work lands through a PR, not a direct push.
 
 ## 2. Run all CI gates locally (parallel)
 
@@ -68,15 +68,12 @@ If the change is a breaking API/behavior change:
 - Add `BREAKING CHANGE: <description>` footer
 - **Confirm with the user before this commit** that they want a major version bump
 
-### Release impact (semantic-release rules)
+### Release impact (Changesets)
 
-On push to `main`:
-- `feat:` → **minor** bump + npm publish
-- `fix:` → **patch** bump + npm publish
-- `feat!:` / `BREAKING CHANGE:` → **major** bump + npm publish
-- `chore:`, `docs:`, `ci:`, `style:`, `test:`, `refactor:`, `build:`, `perf:` → **no release**
-
-Multiple commits in one push? Semantic-release picks the highest bump from the set.
+The commit type does not decide the release; a changeset does. A change to the
+published package adds one (`pnpm changeset`: patch, minor or major). Pushing to
+`main` never publishes: it opens or updates the "Version Packages" PR, and
+merging that PR is the release, after one `release` approval (see RELEASING.md).
 
 ## 5. Rebase, then push
 
@@ -92,25 +89,16 @@ Then:
 git push origin <branch>
 ```
 
-If pushing to `main` triggers a release, **alert the user before pushing**:
-
-> This will publish `@<scope>/<name>@<predicted-version>` to npm. Continue?
-
-Wait for explicit confirmation. Use AskUserQuestion with three options:
-1. Push and publish (default)
-2. Append `[skip ci]` to skip release
-3. Hold off
-
 ## 6. Report what's running
 
 After push, give the user:
 - The remote URL + branch
-- Predicted next version (if release triggered)
-- A note that pre-push already ran the CI gates locally, so failures should be infra-only (npm token, GitHub API, etc.)
+- Whether a changeset is included, and its bump
+- A note that pre-push already ran the CI gates locally, so failures should be infra-only (GitHub API, runner, etc.)
 
 ## What NOT to do
 
 - Don't `--no-verify` or `--no-gpg-sign` without explicit user permission. If a hook fails, fix the cause.
 - Don't amend a pushed commit; create a new commit.
 - Don't force-push `main` ever. Force-push other branches only with explicit user permission.
-- Don't squash a multi-commit working set into one without asking — separate commits give better semantic-release changelog entries.
+- Don't squash a multi-commit working set into one without asking — separate commits keep the history reviewable.
