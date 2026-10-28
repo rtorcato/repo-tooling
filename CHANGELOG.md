@@ -1,5 +1,12 @@
 # @rtorcato/repo-tooling
 
+## 6.2.1
+
+### Patch Changes
+
+- a03a79d: `setup` with Changesets now adds `@changesets/cli` to devDependencies, and `doctor` reports drift when `.changeset/config.json` exists without it (#952).
+- 0b74994: `fix github-settings` now coerces `rules.github.autoMerge`, `deleteOnMerge` and `actionsCanCreatePullRequests` to booleans before they reach `gh api -F`, so a non-boolean lockfile value can no longer make `gh` read a file (#949).
+
 ## 6.2.0
 
 ### Minor Changes
