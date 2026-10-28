@@ -16,6 +16,7 @@ import {
 	removeWorkflowJob,
 	workflowJobs,
 } from '../../src/base/github-settings.js'
+import type { GithubRules } from '../../src/cli/utils/lockfile.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -943,6 +944,21 @@ describe('buildGhApplyCommands', () => {
 			['api', '-X', 'PUT', 'repos/owner/repo/vulnerability-alerts'],
 			['api', '-X', 'PUT', 'repos/owner/repo/automated-security-fixes'],
 		])
+	})
+
+	it('never passes a non-boolean rules.github value to gh -F (#949)', () => {
+		const rules = {
+			autoMerge: '@/etc/passwd',
+			deleteOnMerge: '@/etc/passwd',
+			actionsCanCreatePullRequests: '@/etc/passwd',
+		} as unknown as GithubRules
+		const args = buildGhApplyCommands({ ...state, rules, merge: true, workflow: true }).flatMap(
+			(c) => c.args
+		)
+		expect(args.join(' ')).not.toContain('@')
+		expect(args).toContain('allow_auto_merge=true')
+		expect(args).toContain('delete_branch_on_merge=true')
+		expect(args).toContain('can_approve_pull_request_reviews=false')
 	})
 
 	it('returns [] when nothing deviates', () => {
