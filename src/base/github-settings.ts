@@ -1853,8 +1853,10 @@ const ADMIN_404_HINT =
 export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 	const commands: GhCommand[] = []
 	const rules = withDerivedDefaults(state.rules ?? {})
-	const autoMerge = rules.autoMerge ?? true
-	const deleteOnMerge = rules.deleteOnMerge ?? true
+	// Coerced, not `??`: these land in `gh api -F`, which reads `@path` values as
+	// files, and nothing checks the lockfile's types at runtime (#949).
+	const autoMerge = rules.autoMerge !== false
+	const deleteOnMerge = rules.deleteOnMerge !== false
 	if (state.merge)
 		commands.push({
 			label:
@@ -1891,7 +1893,7 @@ export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 			],
 			stdin: protectionBody(rules),
 		})
-	const prs = rules.actionsCanCreatePullRequests ?? false
+	const prs = rules.actionsCanCreatePullRequests === true
 	if (state.workflow)
 		commands.push({
 			label: prs
