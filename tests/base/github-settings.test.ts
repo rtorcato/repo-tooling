@@ -124,6 +124,8 @@ interface GhOverrides {
 	reporting?: GhResult
 	repoSecrets?: GhResult
 	releaseSecrets?: GhResult
+	/** `environments/release/deployment-branch-policies` (#960). */
+	branchPolicies?: GhResult
 }
 
 const FIXES_ON = JSON.stringify({ enabled: true, paused: false })
@@ -149,6 +151,8 @@ function fakeGh(overrides: GhOverrides = {}): GhExec {
 			return overrides.repoSecrets ?? fail('gh: (HTTP 403)')
 		if (p?.startsWith('repos/owner/repo/environments/release/secrets'))
 			return overrides.releaseSecrets ?? fail('gh: Not Found (HTTP 404)')
+		if (p?.includes('/deployment-branch-policies') && overrides.branchPolicies)
+			return overrides.branchPolicies
 		if (p?.endsWith('/vulnerability-alerts')) return overrides.alerts ?? ok('')
 		if (p?.endsWith('/automated-security-fixes')) return overrides.securityFixes ?? ok(FIXES_ON)
 		if (p?.endsWith('/private-vulnerability-reporting') && overrides.reporting)
@@ -470,6 +474,73 @@ jobs:
 			expect(r?.detail).toContain('could not read .github/workflows')
 			expect(r?.detail).not.toContain('not applicable')
 		}
+	})
+
+	describe('deployment branch policy (#960)', () => {
+		const withPolicy = (deployment_branch_policy: unknown) =>
+			ok(
+				JSON.stringify({
+					environments: [
+						{
+							name: 'release',
+							protection_rules: [{ type: 'required_reviewers' }],
+							deployment_branch_policy,
+						},
+					],
+				})
+			)
+		const CUSTOM = { protected_branches: false, custom_branch_policies: true }
+		const policies = (...names: string[]) =>
+			ok(JSON.stringify({ branch_policies: names.map((name) => ({ name, type: 'branch' })) }))
+		const gateFor = async (overrides: GhOverrides, rules = {}) =>
+			gate(
+				await checkGitHubSettings(repoWithWorkflow(workflow('release')), fakeGh(overrides), rules)
+			)
+
+		it('drifts when the release environment has no branch policy', async () => {
+			const g = await gateFor({ environments: withPolicy(null) })
+			expect(g?.status).toBe('drift')
+			expect(g?.detail).toContain('no deployment branch policy')
+			expect(g?.hint).toContain('fix release-environment')
+		})
+
+		it('drifts when a custom policy leaves out the default branch', async () => {
+			const g = await gateFor({ environments: withPolicy(CUSTOM), branchPolicies: policies('dev') })
+			expect(g?.status).toBe('drift')
+			expect(g?.detail).toContain('does not allow `main`')
+		})
+
+		it('is ok when a custom policy allows the default branch', async () => {
+			const g = await gateFor({
+				environments: withPolicy(CUSTOM),
+				branchPolicies: policies('main'),
+			})
+			expect(g?.status).toBe('ok')
+		})
+
+		it('is ok with a protected-branches policy', async () => {
+			const g = await gateFor({
+				environments: withPolicy({ protected_branches: true, custom_branch_policies: false }),
+			})
+			expect(g?.status).toBe('ok')
+		})
+
+		it('checks declared rules.github.releaseBranches instead of the default branch', async () => {
+			const g = await gateFor(
+				{ environments: withPolicy(CUSTOM), branchPolicies: policies('main') },
+				{ releaseBranches: ['release'] }
+			)
+			expect(g?.status).toBe('drift')
+			expect(g?.detail).toContain('rules.github.releaseBranches')
+		})
+
+		it('skips when the branch policies cannot be read', async () => {
+			const g = await gateFor({
+				environments: withPolicy(CUSTOM),
+				branchPolicies: fail('gh: (HTTP 403)'),
+			})
+			expect(g?.status).toBe('skipped')
+		})
 	})
 })
 
@@ -1229,35 +1300,130 @@ ${env ? `    environment: ${env}\n` : ''}    steps:
 	}
 
 	/** Routes by inspecting the full args array — the PUT's path is not args[1]. */
-	function applyGh(overrides: { environments?: GhResult; put?: GhResult } = {}) {
+	function applyGh(
+		overrides: { environments?: GhResult; put?: GhResult; branchPolicies?: GhResult } = {}
+	) {
 		const puts: Array<{ path: string; stdin?: string }> = []
+		const posts: Array<{ path: string; stdin?: string }> = []
 		const exec: GhExec = vi.fn(async (args: string[], stdin?: string) => {
 			const path = args.find((a) => a.startsWith('repos/') || a === 'user') ?? ''
 			if (args.includes('PUT')) {
 				puts.push({ path, stdin })
 				return overrides.put ?? ok('{}')
 			}
+			if (args.includes('POST')) {
+				posts.push({ path, stdin })
+				return ok('{}')
+			}
 			if (path === 'repos/{owner}/{repo}') return ok(COMPLIANT_REPO)
 			if (path === 'user') return ok('12345\n')
 			if (path.endsWith('/environments')) return overrides.environments ?? ok(NO_ENVIRONMENTS)
+			if (path.includes('/deployment-branch-policies') && overrides.branchPolicies)
+				return overrides.branchPolicies
 			return fail('unexpected call')
 		})
-		return { exec, puts }
+		return { exec, puts, posts }
 	}
+
+	/** A gated `release` environment (reviewer id 7) with the given branch policy. */
+	const gatedEnv = (deployment_branch_policy: unknown, id: number | null = 7) =>
+		ok(
+			JSON.stringify({
+				environments: [
+					{
+						name: 'release',
+						protection_rules: [
+							{
+								type: 'required_reviewers',
+								reviewers: [{ type: 'User', reviewer: { id, login: 'alice' } }],
+							},
+						],
+						deployment_branch_policy,
+					},
+				],
+			})
+		)
+	const CUSTOM = { protected_branches: false, custom_branch_policies: true }
 
 	it('creates the environment with the authenticated user and wires the job', async () => {
 		const dir = publishRepo()
-		const { exec, puts } = applyGh()
+		const { exec, puts, posts } = applyGh()
 
 		const applied = await applyReleaseEnvironment(dir, exec)
 		expect(puts).toHaveLength(1)
 		expect(puts[0]?.path).toMatch(/\/environments\/release$/)
 		expect(JSON.parse(puts[0]?.stdin ?? '')).toEqual({
 			reviewers: [{ type: 'User', id: 12345 }],
+			deployment_branch_policy: CUSTOM,
 		})
+		// The new environment is limited to the default branch (#960).
+		expect(posts).toHaveLength(1)
+		expect(posts[0]?.path).toMatch(/\/environments\/release\/deployment-branch-policies$/)
+		expect(JSON.parse(posts[0]?.stdin ?? '')).toEqual({ name: 'main', type: 'branch' })
 		const yaml = fs.readFileSync(join(dir, '.github/workflows/release.yml'), 'utf-8')
 		expect(yaml).toContain('  release:\n    environment: release\n    runs-on:')
+		expect(applied).toHaveLength(3)
+	})
+
+	it('gives a gated environment with no branch policy one, keeping its reviewers (#960)', async () => {
+		const { exec, puts, posts } = applyGh({ environments: gatedEnv(null) })
+		const applied = await applyReleaseEnvironment(publishRepo('release'), exec)
+		expect(JSON.parse(puts[0]?.stdin ?? '')).toEqual({
+			reviewers: [{ type: 'User', id: 7 }],
+			deployment_branch_policy: CUSTOM,
+		})
+		expect(posts.map((p) => JSON.parse(p.stdin ?? '').name)).toEqual(['main'])
 		expect(applied).toHaveLength(2)
+	})
+
+	it('only adds the missing branch to an existing custom policy (#960)', async () => {
+		const { exec, puts, posts } = applyGh({
+			environments: gatedEnv(CUSTOM),
+			branchPolicies: ok(JSON.stringify({ branch_policies: [{ name: 'dev', type: 'branch' }] })),
+		})
+		await applyReleaseEnvironment(publishRepo('release'), exec)
+		expect(puts).toHaveLength(0)
+		expect(posts.map((p) => JSON.parse(p.stdin ?? '').name)).toEqual(['main'])
+	})
+
+	it('adds declared rules.github.releaseBranches (#960)', async () => {
+		const { exec, posts } = applyGh({ environments: gatedEnv(null) })
+		await applyReleaseEnvironment(publishRepo('release'), exec, {
+			releaseBranches: ['main', 'next'],
+		})
+		expect(posts.map((p) => JSON.parse(p.stdin ?? '').name)).toEqual(['main', 'next'])
+	})
+
+	it('leaves a protected-branches policy alone (#960)', async () => {
+		const { exec, puts, posts } = applyGh({
+			environments: gatedEnv({ protected_branches: true, custom_branch_policies: false }),
+		})
+		expect(await applyReleaseEnvironment(publishRepo('release'), exec)).toEqual([])
+		expect(puts).toHaveLength(0)
+		expect(posts).toHaveLength(0)
+	})
+
+	it('resends an existing policy when it rewrites the reviewers (#960)', async () => {
+		const { exec, puts } = applyGh({
+			environments: ok(
+				JSON.stringify({
+					environments: [
+						{ name: 'release', protection_rules: [], deployment_branch_policy: CUSTOM },
+					],
+				})
+			),
+			branchPolicies: ok(JSON.stringify({ branch_policies: [{ name: 'main', type: 'branch' }] })),
+		})
+		await applyReleaseEnvironment(publishRepo('release'), exec)
+		expect(JSON.parse(puts[0]?.stdin ?? '').deployment_branch_policy).toEqual(CUSTOM)
+	})
+
+	it('writes nothing when a reviewer id is unreadable, so the PUT cannot drop it (#960)', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const { exec, puts, posts } = applyGh({ environments: gatedEnv(null, null) })
+		expect(await applyReleaseEnvironment(publishRepo('release'), exec)).toEqual([])
+		expect(puts).toHaveLength(0)
+		expect(posts).toHaveLength(0)
 	})
 
 	it('adds reviewers to an existing unprotected release environment', async () => {

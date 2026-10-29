@@ -104,6 +104,11 @@ export interface GithubRules {
 	actionsCanCreatePullRequests?: boolean
 	/** GitHub user logins required to approve the `release` environment. No standard: unchecked when absent. */
 	releaseReviewers?: string[]
+	/**
+	 * Branches the `release` environment's custom deployment branch policy must
+	 * allow (#960). Standard: the default branch.
+	 */
+	releaseBranches?: string[]
 }
 
 export interface LockfileRules {
@@ -354,6 +359,13 @@ export function lockfileSchema() {
 								items: { type: 'string', minLength: 1 },
 								description:
 									'GitHub user logins required to approve the `release` environment. Unchecked when absent.',
+							},
+							releaseBranches: {
+								type: 'array',
+								minItems: 1,
+								items: { type: 'string', minLength: 1 },
+								description:
+									"Branches the `release` environment's deployment branch policy must allow. Standard: the default branch.",
 							},
 						} satisfies Record<keyof GithubRules, object>,
 					},
