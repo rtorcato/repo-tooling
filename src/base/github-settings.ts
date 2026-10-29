@@ -258,7 +258,7 @@ export async function checkGitHubSettings(
 		await checkWorkflowPermissions(gh, info.nwo, rules, await opensReleasePr(dir, changesets)),
 		await checkSecurityUpdates(gh, info.nwo, rules),
 		await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir),
-		...(await checkReleaseGate(gh, info.nwo, dir, rules)),
+		...(await checkReleaseGate(gh, info.nwo, dir, rules, info.branch)),
 	]
 }
 
@@ -1567,12 +1567,20 @@ interface Environment {
 	reviewers: string[]
 	/** Just the user logins, as `rules.github.releaseReviewers` holds them (#863). */
 	users: string[]
+	/** Reviewers as a PUT takes them back, so a policy-only write keeps the gate (#960). */
+	reviewerIds: Array<{ type: string; id: number }>
+	/**
+	 * `deployment_branch_policy` (#960): `null` lets any branch deploy. Undefined
+	 * when the response left the key out, which reads as unknown, not unrestricted.
+	 */
+	branchPolicy?: BranchPolicy | null
 }
 type Environments = Map<string, Environment>
+type BranchPolicy = { protected_branches: boolean; custom_branch_policies: boolean }
 
 interface ReviewerRule {
 	type?: string
-	reviewers?: Array<{ reviewer?: { login?: string; slug?: string } }>
+	reviewers?: Array<{ type?: string; reviewer?: { id?: number; login?: string; slug?: string } }>
 }
 
 async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments | 'skip'> {
@@ -1581,7 +1589,11 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 	if (!r.ok) return /404|not found/i.test(r.stderr) ? new Map() : 'skip'
 	try {
 		const parsed = JSON.parse(r.stdout) as {
-			environments?: Array<{ name?: string; protection_rules?: ReviewerRule[] }>
+			environments?: Array<{
+				name?: string
+				protection_rules?: ReviewerRule[]
+				deployment_branch_policy?: BranchPolicy | null
+			}>
 		}
 		const envs: Environments = new Map()
 		for (const e of parsed.environments ?? []) {
@@ -1593,12 +1605,58 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 					(rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? x.reviewer?.slug ?? '')
 				),
 				users: normalizeReviewers((rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? '')),
+				reviewerIds: (rule?.reviewers ?? []).flatMap((x) =>
+					typeof x.reviewer?.id === 'number' ? [{ type: x.type ?? 'User', id: x.reviewer.id }] : []
+				),
+				branchPolicy: e.deployment_branch_policy,
 			})
 		}
 		return envs
 	} catch {
 		return 'skip'
 	}
+}
+
+/** The branches `release` must be limited to (#960): declared, else the default branch. */
+const releaseBranches = (rules: GithubRules, defaultBranch: string) =>
+	rules.releaseBranches?.length ? rules.releaseBranches : [defaultBranch]
+
+/**
+ * Which of `wanted` the environment's deployment branch policy leaves out (#960).
+ * `unrestricted` is the null policy: any branch, an unmerged one included, can
+ * run in the environment and request the release approval. A protected-branches
+ * policy counts as restricted. A custom one is read back and matched by exact
+ * name, so a wildcard pattern reads as missing.
+ */
+async function releaseBranchGap(
+	gh: GhExec,
+	nwo: string,
+	env: Environment | undefined,
+	wanted: string[]
+): Promise<{ unrestricted: boolean; missing: string[] } | 'skip'> {
+	const policy = env ? env.branchPolicy : null
+	if (policy === undefined || policy?.protected_branches)
+		return { unrestricted: false, missing: [] }
+	if (policy === null) return { unrestricted: true, missing: wanted }
+	const r = await gh([
+		'api',
+		`repos/${nwo}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies?per_page=100`,
+	])
+	if (!r.ok) return 'skip'
+	try {
+		const d = JSON.parse(r.stdout) as { branch_policies?: Array<{ name?: string; type?: string }> }
+		const names = new Set(
+			(d.branch_policies ?? []).flatMap((b) => ((b.type ?? 'branch') === 'branch' ? [b.name] : []))
+		)
+		return { unrestricted: false, missing: wanted.filter((b) => !names.has(b)) }
+	} catch {
+		return 'skip'
+	}
+}
+
+const CUSTOM_BRANCH_POLICY: BranchPolicy = {
+	protected_branches: false,
+	custom_branch_policies: true,
 }
 
 /**
@@ -1626,7 +1684,8 @@ async function checkReleaseGate(
 	gh: GhExec,
 	nwo: string,
 	dir: string,
-	rules: GithubRules = {}
+	rules: GithubRules = {},
+	defaultBranch = 'main'
 ): Promise<[CheckResult, CheckResult, CheckResult]> {
 	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
 	if (publish === 'skip') {
@@ -1705,6 +1764,33 @@ async function checkReleaseGate(
 			status: 'drift',
 			detail: `the \`${named}\` environment's reviewers are ${live.join(', ') || 'none'}${declaredBy('releaseReviewers', rules.releaseReviewers)}`,
 			hint: 'Run `npx @rtorcato/repo-tooling fix release-environment` to apply rules.github.releaseReviewers',
+		}
+	}
+
+	// A real gate can still be reached from any branch (#960).
+	if (gate.status === 'ok' && named === RELEASE_ENVIRONMENT) {
+		const wantedBranches = releaseBranches(rules, defaultBranch)
+		const gap = await releaseBranchGap(gh, nwo, envs.get(named), wantedBranches)
+		const hint = `Run \`npx @rtorcato/repo-tooling fix release-environment\` to limit \`${RELEASE_ENVIRONMENT}\` to ${wantedBranches.map((b) => `\`${b}\``).join(', ')}`
+		if (gap === 'skip') {
+			gate = skip(
+				RELEASE_GATE_CHECK,
+				`could not read the \`${named}\` environment's branch policies`
+			)
+		} else if (gap.unrestricted) {
+			gate = {
+				check: RELEASE_GATE_CHECK,
+				status: 'drift',
+				detail: `the \`${named}\` environment has no deployment branch policy — a run from any branch, an unmerged one included, can request the release approval`,
+				hint,
+			}
+		} else if (gap.missing.length) {
+			gate = {
+				check: RELEASE_GATE_CHECK,
+				status: 'drift',
+				detail: `the \`${named}\` environment's branch policy does not allow ${gap.missing.map((b) => `\`${b}\``).join(', ')}${rules.releaseBranches ? declaredBy('releaseBranches', rules.releaseBranches) : ''}`,
+				hint,
+			}
 		}
 	}
 
@@ -2138,8 +2224,12 @@ export function addJobEnvironment(yaml: string, jobId: string, env: string): str
  * 1. `PUT /repos/{nwo}/environments/release` with the **authenticated user** as
  *    the required reviewer. On a solo-maintained repo they are the only human
  *    there is; add or swap reviewers afterwards under Settings → Environments.
- *    An environment that already carries a `required_reviewers` rule is never
- *    touched — whoever set it up made a richer decision than this default.
+ *    An environment that already carries a `required_reviewers` rule keeps its
+ *    reviewers — whoever set it up made a richer decision than this default.
+ *    The same PUT gives a null deployment branch policy a custom one (#960),
+ *    and each missing `rules.github.releaseBranches` entry (default: the
+ *    default branch) is then added to it. A protected-branches policy is left
+ *    alone, and a custom one only gains branches.
  * 2. `environment: release` on the publishing job, so the merge leaves the run
  *    `waiting` instead of publishing.
  *
@@ -2162,7 +2252,7 @@ export async function applyReleaseEnvironment(
 		console.error(chalk.gray(`   skipped — ${probe.skip}`))
 		return []
 	}
-	const nwo = probe.info.nwo
+	const { nwo, branch } = probe.info
 
 	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
 	if (publish === 'skip') {
@@ -2200,9 +2290,32 @@ export async function applyReleaseEnvironment(
 	// environment that is already gated stays untouched (see above).
 	const stale =
 		declared !== undefined && env?.reviewers.join() !== normalizeReviewers(declared).join()
-	if (!env?.gated || stale) {
-		const logins = declared ?? [null]
-		const ids: number[] = []
+	const wantedBranches = releaseBranches(rules, branch)
+	const gap = await releaseBranchGap(gh, nwo, env, wantedBranches)
+	if (gap === 'skip') {
+		console.error(
+			chalk.yellow(`   skipped — could not read the \`${RELEASE_ENVIRONMENT}\` branch policies`)
+		)
+		return applied
+	}
+	const needReviewers = !env?.gated || stale
+	// An existing policy is resent as is, so a reviewers write never clears it.
+	const policy = gap.unrestricted ? CUSTOM_BRANCH_POLICY : env?.branchPolicy
+	if (needReviewers || gap.unrestricted) {
+		let reviewers: Array<{ type: string; id: number }> = []
+		const logins = needReviewers ? (declared ?? [null]) : []
+		if (!needReviewers) {
+			// A policy-only PUT resends the reviewers; one without an id would drop out.
+			if (env.reviewerIds.length !== env.reviewers.length) {
+				console.error(
+					chalk.yellow(
+						`   could not read the \`${RELEASE_ENVIRONMENT}\` reviewer ids — set its deployment branch policy by hand`
+					)
+				)
+				return applied
+			}
+			reviewers = env.reviewerIds
+		}
 		for (const login of logins) {
 			// The login lands in an API path, so a value like `../x` must not reach it.
 			if (login !== null && !GITHUB_LOGIN.test(login)) {
@@ -2223,19 +2336,46 @@ export async function applyReleaseEnvironment(
 				)
 				return applied
 			}
-			ids.push(id)
+			reviewers.push({ type: 'User', id })
 		}
 		const who = declared
 			? `rules.github.releaseReviewers (${declared.join(', ')})`
 			: 'the authenticated user'
-		const label = `\`${RELEASE_ENVIRONMENT}\` environment with ${who} as required reviewer${declared && declared.length !== 1 ? 's' : ''}`
+		const parts = [
+			...(needReviewers
+				? [`${who} as required reviewer${declared && declared.length !== 1 ? 's' : ''}`]
+				: []),
+			...(gap.unrestricted ? ['a custom deployment branch policy'] : []),
+		]
+		const label = `\`${RELEASE_ENVIRONMENT}\` environment with ${parts.join(' and ')}`
 		const r = await gh(
 			['api', '-X', 'PUT', `repos/${nwo}/environments/${RELEASE_ENVIRONMENT}`, '--input', '-'],
-			JSON.stringify({ reviewers: ids.map((id) => ({ type: 'User', id })) })
+			JSON.stringify({ reviewers, ...(policy ? { deployment_branch_policy: policy } : {}) })
 		)
 		if (r.ok) applied.push(label)
 		else {
 			console.error(chalk.yellow(`   could not apply ${label}: ${r.stderr.trim() || 'gh error'}`))
+			return applied
+		}
+	}
+
+	// Additive: a custom policy only gains the missing branches, never loses one.
+	for (const name of gap.missing) {
+		const label = `\`${name}\` on the \`${RELEASE_ENVIRONMENT}\` deployment branch policy`
+		const r = await gh(
+			[
+				'api',
+				'-X',
+				'POST',
+				`repos/${nwo}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies`,
+				'--input',
+				'-',
+			],
+			JSON.stringify({ name, type: 'branch' })
+		)
+		if (r.ok) applied.push(label)
+		else {
+			console.error(chalk.yellow(`   could not add ${label}: ${r.stderr.trim() || 'gh error'}`))
 			return applied
 		}
 	}

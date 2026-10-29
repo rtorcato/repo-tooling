@@ -214,8 +214,11 @@ standard". A declared field differs from the standard in three ways:
 - **`false` is applied as off.** `fix github-settings` turns a feature off when the rules say
   `false`, and does not only turn missing ones on.
 
-`fix github-settings` applies everything except `releaseReviewers`, which
-`fix release-environment` applies and which replaces any existing reviewer rule. Both need an
+`fix github-settings` applies everything except `releaseReviewers` and `releaseBranches`, which
+`fix release-environment` applies. `releaseReviewers` replaces any existing reviewer rule.
+`releaseBranches` (default: the default branch) gives a `release` environment with no deployment
+branch policy a custom one, and adds any missing branch to an existing custom policy without removing
+one; a protected-branches policy is left alone. Both need an
 admin token on the repo. GitHub answers a write it won't allow with a 404, and the fixer says so.
 
 To declare what the repo has today rather than typing it out, run `doctor --snapshot`. It reads
