@@ -7,6 +7,7 @@ import fs from './safe-fs.js'
 import { workspaceGlobs } from '../cli/generators/agent-rules.js'
 import type { GithubRules } from '../cli/utils/lockfile.js'
 import { RELEASE_JOB_GATE, RELEASE_WORKFLOW_HEADER } from './ci.js'
+import { FixerAbort } from './fixer-abort.js'
 import type { CheckResult } from './types.js'
 
 /**
@@ -92,6 +93,18 @@ const GITHUB_STANDARD = {
 const declaredBy = (field: keyof GithubRules, value: unknown) =>
 	` (rules.github.${field}: ${JSON.stringify(value)})`
 const onOff = (b: boolean) => (b ? 'on' : 'off')
+/**
+ * The lockfile is only type-checked on write, so a hand-edited `"false"` or `0`
+ * reaches here. `!== false` and `?? true` both read that as on (#956).
+ */
+const nonBooleanMergeToggle = (rules: GithubRules): string | null => {
+	for (const field of ['autoMerge', 'deleteOnMerge'] as const) {
+		const value: unknown = rules[field]
+		if (value !== undefined && typeof value !== 'boolean')
+			return `rules.github.${field} must be true or false in .repo-tooling.json, not ${JSON.stringify(value)}`
+	}
+	return null
+}
 /**
  * Alerts off means fixes off: GitHub refuses security fixes without alerts, so
  * an undeclared `automatedSecurityFixes` follows a declared-false alerts value
@@ -581,6 +594,14 @@ function hasMatrix(body: string, indent: number): boolean {
  */
 function checkMergeSettings(info: RepoInfo, rules: GithubRules = {}): CheckResult {
 	const check = 'Merge settings'
+	const invalid = nonBooleanMergeToggle(rules)
+	if (invalid)
+		return {
+			check,
+			status: 'drift',
+			detail: invalid,
+			hint: 'Set it to true or false, then re-run doctor',
+		}
 	// The token can't see the merge-setting fields (no admin:read) — skip rather
 	// than misreport the absent booleans as "disabled" (a false-positive drift).
 	if (!info.mergeVisible) return skip(check, 'token lacks admin:read for merge settings')
@@ -1853,8 +1874,16 @@ const ADMIN_404_HINT =
 export function buildGhApplyCommands(state: GhApplyState): GhCommand[] {
 	const commands: GhCommand[] = []
 	const rules = withDerivedDefaults(state.rules ?? {})
-	// Coerced, not `??`: these land in `gh api -F`, which reads `@path` values as
-	// files, and nothing checks the lockfile's types at runtime (#949).
+	// Refuse, don't coerce: these land in `gh api -F`, which reads `@path` values
+	// as files, and nothing checks the lockfile's types at runtime (#949). A
+	// coerced `"false"` would turn auto-merge on (#956).
+	const invalid = state.merge ? nonBooleanMergeToggle(rules) : null
+	if (invalid)
+		throw new FixerAbort(
+			'invalid-rules',
+			invalid,
+			'Set it to true or false in .repo-tooling.json, then re-run `fix github-settings`'
+		)
 	const autoMerge = rules.autoMerge !== false
 	const deleteOnMerge = rules.deleteOnMerge !== false
 	if (state.merge)
