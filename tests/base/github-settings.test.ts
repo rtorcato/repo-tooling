@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import fs from 'fs-extra'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FixerAbort } from '../../src/base/fixer-abort.js'
 import {
 	addJobEnvironment,
 	applyGithubSettings,
@@ -946,19 +947,32 @@ describe('buildGhApplyCommands', () => {
 		])
 	})
 
-	it('never passes a non-boolean rules.github value to gh -F (#949)', () => {
+	it('never passes a non-boolean rules.github value to gh -F (#949, #956)', () => {
 		const rules = {
 			autoMerge: '@/etc/passwd',
 			deleteOnMerge: '@/etc/passwd',
 			actionsCanCreatePullRequests: '@/etc/passwd',
 		} as unknown as GithubRules
-		const args = buildGhApplyCommands({ ...state, rules, merge: true, workflow: true }).flatMap(
+		// A merge run refuses outright; nothing reaches gh.
+		expect(() => buildGhApplyCommands({ ...state, rules, merge: true })).toThrow(FixerAbort)
+		// The workflow write doesn't read the merge toggles, so it still builds clean.
+		const args = buildGhApplyCommands({ ...state, rules, merge: false, workflow: true }).flatMap(
 			(c) => c.args
 		)
 		expect(args.join(' ')).not.toContain('@')
-		expect(args).toContain('allow_auto_merge=true')
-		expect(args).toContain('delete_branch_on_merge=true')
 		expect(args).toContain('can_approve_pull_request_reviews=false')
+	})
+
+	it.each([
+		['autoMerge', 'false'],
+		['deleteOnMerge', 0],
+	])('refuses a non-boolean rules.github.%s instead of turning it on (#956)', (field, value) => {
+		const rules = { [field]: value } as unknown as GithubRules
+		const run = () => buildGhApplyCommands({ ...state, rules, merge: true })
+		expect(run).toThrow(FixerAbort)
+		expect(run).toThrow(
+			`rules.github.${field} must be true or false in .repo-tooling.json, not ${JSON.stringify(value)}`
+		)
 	})
 
 	it('returns [] when nothing deviates', () => {
@@ -1463,6 +1477,25 @@ jobs:
 		expect(drift?.status).toBe('drift')
 		expect(drift?.detail).toBe('auto-merge enabled (rules.github.autoMerge: false)')
 	})
+
+	it.each([
+		['autoMerge', 'false'],
+		['deleteOnMerge', 0],
+	])(
+		'reports a non-boolean rules.github.%s as a config error, not as on (#956)',
+		async (field, value) => {
+			const merge = byName(
+				await checkGitHubSettings(gitRepo(), fakeGh(), {
+					[field]: value,
+				} as unknown as GithubRules),
+				'Merge settings'
+			)
+			expect(merge?.status).toBe('drift')
+			expect(merge?.detail).toBe(
+				`rules.github.${field} must be true or false in .repo-tooling.json, not ${JSON.stringify(value)}`
+			)
+		}
+	)
 
 	it('reports a declared security setting the repo does not match as drift', async () => {
 		const results = await checkGitHubSettings(gitRepo(), fakeGh(), { vulnerabilityAlerts: false })
