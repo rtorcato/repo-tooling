@@ -1574,12 +1574,17 @@ interface Environment {
 	 * when the response left the key out, which reads as unknown, not unrestricted.
 	 */
 	branchPolicy?: BranchPolicy | null
+	/** Settings a PUT resets when left out, so every PUT resends them (#962). */
+	preventSelfReview?: boolean
+	waitTimer?: number
 }
 type Environments = Map<string, Environment>
 type BranchPolicy = { protected_branches: boolean; custom_branch_policies: boolean }
 
 interface ReviewerRule {
 	type?: string
+	prevent_self_review?: boolean
+	wait_timer?: number
 	reviewers?: Array<{ type?: string; reviewer?: { id?: number; login?: string; slug?: string } }>
 }
 
@@ -1599,6 +1604,7 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 		for (const e of parsed.environments ?? []) {
 			if (typeof e.name !== 'string') continue
 			const rule = (e.protection_rules ?? []).find((p) => p.type === 'required_reviewers')
+			const timer = (e.protection_rules ?? []).find((p) => p.type === 'wait_timer')
 			envs.set(e.name, {
 				gated: rule !== undefined,
 				reviewers: normalizeReviewers(
@@ -1609,6 +1615,8 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 					typeof x.reviewer?.id === 'number' ? [{ type: x.type ?? 'User', id: x.reviewer.id }] : []
 				),
 				branchPolicy: e.deployment_branch_policy,
+				preventSelfReview: rule?.prevent_self_review,
+				waitTimer: timer?.wait_timer,
 			})
 		}
 		return envs
@@ -2350,7 +2358,15 @@ export async function applyReleaseEnvironment(
 		const label = `\`${RELEASE_ENVIRONMENT}\` environment with ${parts.join(' and ')}`
 		const r = await gh(
 			['api', '-X', 'PUT', `repos/${nwo}/environments/${RELEASE_ENVIRONMENT}`, '--input', '-'],
-			JSON.stringify({ reviewers, ...(policy ? { deployment_branch_policy: policy } : {}) })
+			JSON.stringify({
+				reviewers,
+				...(policy ? { deployment_branch_policy: policy } : {}),
+				// The PUT replaces the environment: resend what an owner hardened by hand (#962).
+				...(typeof env?.preventSelfReview === 'boolean'
+					? { prevent_self_review: env.preventSelfReview }
+					: {}),
+				...(typeof env?.waitTimer === 'number' ? { wait_timer: env.waitTimer } : {}),
+			})
 		)
 		if (r.ok) applied.push(label)
 		else {
