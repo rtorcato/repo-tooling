@@ -1,5 +1,13 @@
 # @rtorcato/repo-tooling
 
+## 6.2.2
+
+### Patch Changes
+
+- 40e2c99: `doctor` and `fix github-settings` reject a non-boolean `rules.github.autoMerge` or `deleteOnMerge` (`"false"`, `0`) with a config error. They used to read it as on, so a repo that meant `false` got auto-merge turned on and doctor never went clean (#956).
+- 483e5e2: `doctor` reports drift when the `release` environment has no deployment branch policy, or a custom one that leaves out the default branch, so any branch could request the release approval. `fix release-environment` sets a custom policy on the same PUT and adds the default branch, or the branches in the new `rules.github.releaseBranches` (#960). A protected-branches policy is left alone, and a custom one only gains branches.
+- f2373cb: `fix release-environment` now resends the `release` environment's `prevent_self_review` and `wait_timer` on every PUT (#962). GitHub's PUT replaces the environment, so a reviewers or branch-policy write could reset either setting to its default.
+
 ## 6.2.1
 
 ### Patch Changes
