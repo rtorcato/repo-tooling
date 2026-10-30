@@ -1418,6 +1418,36 @@ ${env ? `    environment: ${env}\n` : ''}    steps:
 		expect(JSON.parse(puts[0]?.stdin ?? '').deployment_branch_policy).toEqual(CUSTOM)
 	})
 
+	it('resends prevent_self_review and wait_timer on every PUT (#962)', async () => {
+		const { exec, puts } = applyGh({
+			environments: ok(
+				JSON.stringify({
+					environments: [
+						{
+							name: 'release',
+							protection_rules: [
+								{ type: 'wait_timer', wait_timer: 30 },
+								{
+									type: 'required_reviewers',
+									prevent_self_review: true,
+									reviewers: [{ type: 'User', reviewer: { id: 7, login: 'alice' } }],
+								},
+							],
+							deployment_branch_policy: null,
+						},
+					],
+				})
+			),
+		})
+		await applyReleaseEnvironment(publishRepo('release'), exec)
+		expect(JSON.parse(puts[0]?.stdin ?? '')).toEqual({
+			reviewers: [{ type: 'User', id: 7 }],
+			deployment_branch_policy: CUSTOM,
+			prevent_self_review: true,
+			wait_timer: 30,
+		})
+	})
+
 	it('writes nothing when a reviewer id is unreadable, so the PUT cannot drop it (#960)', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {})
 		const { exec, puts, posts } = applyGh({ environments: gatedEnv(null, null) })
