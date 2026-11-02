@@ -98,7 +98,7 @@ is what your editor enforces.
 
 Unknown fields are rejected (`additionalProperties: false`): the CLI rewrites the file from
 scratch on every save, so any key it doesn't know is a key it would silently drop — except
-`rules`, which is carried forward verbatim.
+`rules` and `extends`, which are carried forward verbatim.
 
 ## `record` — what the tool wrote
 
@@ -320,6 +320,37 @@ by construction, so including them would bury every difference that means someth
 
 With `--json`, the comparison rides alongside the results under `rulesReference`, and only when
 the flag is given.
+
+## Sharing rules with `extends`
+
+A maintainer with several repos can keep one base of `rules` and point each repo at it, the way
+`tsconfig.json` and Biome do. repo-tooling ships no base of its own: the file lives somewhere you own.
+
+```json
+{ "extends": "github:acme/standards/repo-tooling-base.json#v2", "version": 4, "record": { "...": "..." }, "rules": { "dependabot": { "onPr": "label" } } }
+```
+
+The base is a JSON file with a `rules` object (a repo's own `.repo-tooling.json` works too; only its
+`rules` are read). `extends` takes one of:
+
+- a **relative path**, resolved from the repo root: `./base.json`, `../standards/base.json`
+- an **npm package path** to a file in an installed package: `@acme/standards/base.json`
+- a **`github:` ref**, read over `gh`: `github:<owner>/<repo>/<path>[#<ref>]`. Pin with `#<ref>` (a tag, branch or SHA).
+
+How it behaves:
+
+- **The repo wins.** The base comes first and the repo's own `rules` are deep-merged on top. Objects merge key by key; arrays and
+  scalars in the repo replace the base's whole.
+- **No `extends`, no change.** Everything above is opt-in.
+- **Never silent.** `doctor` adds an `Extends` row. If the base cannot be read, is not valid JSON, fails the published schema, or has
+  an `extends` of its own (one level only), the row is `drift` and only the repo's own rules apply. A `github:` base is not fetched
+  under `--offline`; the row reads `skipped`, and values from that base do not apply in that run.
+- **The base is never written.** `fix` and `doctor --snapshot` write only this repo's file, and never copy a base value into it.
+  `doctor --snapshot` lists the rules still coming from the base.
+- **The base is untrusted input**, like a `--rules-from` reference: the spec is shape-checked before it reaches a path or an API call,
+  the file is size-capped, and its `rules` are validated against the schema before they are read.
+
+Lists of sibling repos and fleet sweeps stay in your own tooling.
 
 ## Starting a new repo from another one
 
