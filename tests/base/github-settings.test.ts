@@ -1688,7 +1688,7 @@ jobs:
 			)
 			expect(merge?.status).toBe('drift')
 			expect(merge?.detail).toBe(
-				`rules.github.${field} must be true or false in .repo-tooling.json, not ${JSON.stringify(value)}`
+				`config error: rules.github.${field} must be true or false in .repo-tooling.json, not ${JSON.stringify(value)}`
 			)
 		}
 	)
