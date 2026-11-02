@@ -54,6 +54,8 @@ Commit the changeset file alongside the change. The release process consumes it 
 
 ## Releasing
 
+For the whole flow, from a PR's changeset to npm, see [Releasing](../guides/releasing.md).
+
 ```bash
 pnpm changeset version   # consume changesets, bump versions, write CHANGELOG.md
 pnpm changeset publish   # publish to npm
