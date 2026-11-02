@@ -1,4 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/latest/schema.json",
-  "extends": ["@rtorcato/repo-tooling/biome"]
+  "extends": ["@rtorcato/repo-tooling/biome"],
+  "formatter": {
+    "includes": ["**", "!**/*.md", "!**/*.mdx", "!**/*.yaml", "!**/*.yml"]
+  }
 }

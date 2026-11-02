@@ -412,7 +412,7 @@ exports[`generator output snapshots > package.json (library) 1`] = `
     "size-limit": "^14.1.0",
     "@size-limit/preset-small-lib": "^14.1.0",
     "@commitlint/cli": "^21.2.3",
-    "@commitlint/config-conventional": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.4",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
     "semantic-release": "^25.0.0",

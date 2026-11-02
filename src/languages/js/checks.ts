@@ -1071,6 +1071,34 @@ export async function checkSemanticRelease(
 	}
 }
 
+export const RELEASE_TOOL_CHECK = 'Release tool'
+
+/**
+ * A public package still on semantic-release, which the torcato.dev libraries
+ * have left for Changesets (#967). `optional-missing`: a bulk `fix` skips it
+ * and a failing exit code never follows, since moving changes what a merge
+ * does. Null for anything else, so a repo on another tool sees no new line.
+ * Only the package dir is read: a monorepo's root config is not ours to move.
+ */
+export async function checkReleaseTool(dir: string, pkg: Pkg | null): Promise<CheckResult | null> {
+	if (!pkg || pkg.private === true) return null
+	if (
+		(await configHome(dir, dir, ['.changeset/config.json', 'release-please-config.json'])) !== null
+	)
+		return null
+	const file =
+		'release' in pkg
+			? 'package.json `release`'
+			: (await configHome(dir, dir, SEMANTIC_RELEASE_FILES))?.file
+	if (!file) return null
+	return {
+		check: RELEASE_TOOL_CHECK,
+		status: 'optional-missing',
+		detail: `still on semantic-release (${file}); the torcato.dev libraries release with Changesets`,
+		hint: 'Run `npx @rtorcato/repo-tooling fix changesets-migrate`',
+	}
+}
+
 const TYPEDOC_CONFIGS = [
 	'typedoc.json',
 	'typedoc.config.js',
