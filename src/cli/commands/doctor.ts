@@ -10,11 +10,7 @@ import {
 	renderReleaseWorkflow,
 	scriptsOf,
 } from '../../languages/js/ci.js'
-import {
-	inferProjectConfig,
-	inferReleaseConfig,
-	staleRecordFields,
-} from '../../languages/js/fixers.js'
+import { inferReleaseConfig, staleRecordFields } from '../../languages/js/fixers.js'
 import {
 	checkNpmTrustedPublishers,
 	checkPublishJob,
@@ -672,7 +668,7 @@ export async function runDoctor(
 			// Same `scripts` gating the fixer applies, or the workflow doctor
 			// compares against would reference steps the fixer never writes (#364).
 			presetWorkflow: renderGitHubWorkflow(
-				githubJobs(inferProjectConfig(pkg), {
+				githubJobs(inferReleaseConfig(pkg, targetDir), {
 					scripts: scriptsOf(pkg),
 					bin: hasBin(pkg),
 					commitlint: hasCommitlint(pkg),

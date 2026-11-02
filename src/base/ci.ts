@@ -164,6 +164,9 @@ ${job.steps}`
 /** The gate job's id — the one check branch protection requires (#816). */
 export const CI_GATE_JOB = 'ci'
 
+/** A Changesets repo's PR check that published source came with a changeset (#968). */
+export const CHANGESET_JOB = 'changeset'
+
 /**
  * The single required check (#816). It needs every other job and runs even when
  * one fails, so protection names `ci` alone and a matrix change (a leg added or

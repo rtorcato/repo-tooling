@@ -7,6 +7,7 @@
  * `src/base/ci.ts` and is shared with Swift/Perl/Python (#287/#289/#290).
  */
 import {
+	CHANGESET_JOB,
 	type CiJob,
 	type GitLabSpec,
 	RELEASE_JOB_GATE,
@@ -186,6 +187,44 @@ const COMMITLINT_STEP = `      - name: 🔍 Validate commit messages
           fi`
 
 /**
+ * A Changesets repo fails a PR that changes published source with no changeset
+ * (#968), or the change merges and never ships. Runs on PRs only, and not on
+ * the Version Packages PR, which consumes changesets. A title whose type
+ * releases nothing (docs, chore, …) skips; `pnpm changeset --empty` is the
+ * escape hatch for anything else. Diffs the merge commit against its first
+ * parent, the base it merges into. The title arrives through `env:` (#777).
+ * ponytail: "published source" is `src/` and `packages/<name>/src/`; read
+ * package.json `files` if a repo publishes from elsewhere.
+ */
+const CHANGESET_JOB_DEF: CiJob = {
+	id: CHANGESET_JOB,
+	if: "github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')",
+	steps: `      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: 🦋 Require a changeset for published source
+        env:
+          PR_TITLE: \${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s' "$PR_TITLE" | grep -Eq '^(docs|chore|ci|test|build|style|refactor)(\\([^)]*\\))?:'; then
+            echo "Skipped: the PR title's type releases nothing"
+            exit 0
+          fi
+          if ! git diff --name-only HEAD^1 HEAD | grep -Eq '^(src|packages/[^/]+/src)/'; then
+            echo "No published source changed"
+            exit 0
+          fi
+          if git diff --name-only --diff-filter=A HEAD^1 HEAD -- '.changeset/*.md' | grep -qv '^\\.changeset/README\\.md$'; then
+            echo "Changeset found"
+            exit 0
+          fi
+          echo "::error::This PR changes published source but adds no changeset. Run 'pnpm changeset' and commit the file, or 'pnpm changeset --empty' if it releases nothing."
+          exit 1`,
+}
+
+/**
  * `JobOptions.scripts` for a real repo. A package.json with no `scripts` block
  * yields `{}` — "this repo has no scripts", which gates every step off —
  * whereas no package.json at all yields undefined, the setup shape.
@@ -258,6 +297,8 @@ export function githubJobs(config: ProjectConfig, opts: JobOptions = {}): CiJob[
 			steps: `${SETUP_STEPS}\n\n${COMMITLINT_STEP}`,
 		})
 	}
+
+	if (config.changesets) jobs.push(CHANGESET_JOB_DEF)
 
 	if (hasTypeScript) {
 		const steps = jobSteps([
