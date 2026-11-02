@@ -524,14 +524,37 @@ export function parseLockfile(raw: unknown): Lockfile | null {
 	return migrate(obj)
 }
 
-export async function readLockfile(dir: string): Promise<Lockfile | null> {
-	let filepath = path.join(dir, LOCKFILE_NAME)
-	if (!(await fs.pathExists(filepath))) {
-		// Fall back to the pre-rename name so existing repos keep working (#272).
-		const legacy = path.join(dir, LEGACY_LOCKFILE_NAME)
-		if (!(await fs.pathExists(legacy))) return null
-		filepath = legacy
+/**
+ * The lockfile's path on disk, or null when there is none. Separate from
+ * readLockfile because a file that exists but doesn't parse (a hand-written one
+ * holding only `rules`, #959) must not look the same as no file to `doctor`.
+ */
+export async function lockfilePath(dir: string): Promise<string | null> {
+	const filepath = path.join(dir, LOCKFILE_NAME)
+	if (await fs.pathExists(filepath)) return filepath
+	// Fall back to the pre-rename name so existing repos keep working (#272).
+	const legacy = path.join(dir, LEGACY_LOCKFILE_NAME)
+	return (await fs.pathExists(legacy)) ? legacy : null
+}
+
+/** The `rules` object from a file that isn't a valid lockfile, if it has one (#959). */
+async function strayRules(dir: string): Promise<LockfileRules | undefined> {
+	const filepath = await lockfilePath(dir)
+	if (!filepath) return undefined
+	try {
+		const raw = (await fs.readJson(filepath)) as { rules?: unknown }
+		const rules = raw?.rules
+		return typeof rules === 'object' && rules !== null && !Array.isArray(rules)
+			? (rules as LockfileRules)
+			: undefined
+	} catch {
+		return undefined
 	}
+}
+
+export async function readLockfile(dir: string): Promise<Lockfile | null> {
+	const filepath = await lockfilePath(dir)
+	if (!filepath) return null
 	try {
 		return parseLockfile((await fs.readJson(filepath)) as unknown)
 	} catch {
@@ -570,7 +593,10 @@ export async function writeLockfile(
 			writtenAt: new Date().toISOString(),
 		},
 		// A repo that has stated no rules gets the empty scaffold, not nothing (#571).
-		rules: existing?.rules ?? DEFAULT_RULES,
+		// A file that held only `rules` keeps them: doctor points here to fix it (#959).
+		rules: existing
+			? (existing.rules ?? DEFAULT_RULES)
+			: ((await strayRules(dir)) ?? DEFAULT_RULES),
 	}
 	await fs.writeJson(filepath, lockfile, { spaces: 2 })
 	// Migrate a pre-rename repo to the new name: now that the canonical file is

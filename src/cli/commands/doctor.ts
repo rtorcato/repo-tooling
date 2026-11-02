@@ -48,6 +48,7 @@ import { checkCopiedAssets } from '../utils/copied-assets.js'
 import {
 	type Lockfile,
 	LOCKFILE_VERSION,
+	lockfilePath,
 	readLockfile,
 	writeGithubRules,
 } from '../utils/lockfile.js'
@@ -281,11 +282,22 @@ function registeredFixTarget(check: string, language: string): string | null {
 function checkLockfile(
 	lock: Lockfile | null,
 	language: string,
-	stale: Partial<ProjectConfig> = {}
+	stale: Partial<ProjectConfig> = {},
+	unreadable: string | null = null
 ): CheckResult {
 	const target = registeredFixTarget('lockfile', language)
 	const run = (why: string) =>
 		target ? { hint: `Run \`npx @rtorcato/repo-tooling fix ${target}\` to ${why}` } : {}
+	// Before the missing case: a file holding only `rules` would otherwise read as
+	// "no lockfile", and every rule in it would be silently ignored (#959).
+	if (!lock && unreadable) {
+		return {
+			check: 'lockfile',
+			status: 'drift',
+			detail: `${path.basename(unreadable)} is not a lockfile doctor can read (it needs \`version\` and \`record.config\`, or isn't valid JSON), so its \`rules\` are ignored`,
+			...run('write the record around the rules it holds'),
+		}
+	}
 	if (!lock) {
 		return {
 			check: 'lockfile',
@@ -437,7 +449,9 @@ async function runBaseChecks(
 	const results: CheckResult[] = []
 	// Git state and workflows live at the repo root, not in a `-d packages/x` dir (#814).
 	const root = (await gitRoot(dir)) ?? dir
-	results.push(checkLockfile(lock, opts.language, opts.staleRecord))
+	results.push(
+		checkLockfile(lock, opts.language, opts.staleRecord, lock ? null : await lockfilePath(dir))
+	)
 	// Any language can have copied presets (swiftlint, ruff, perlcriticrc), so
 	// this rides with the base suite rather than a module's (#428).
 	results.push(await checkCopiedAssets(dir))

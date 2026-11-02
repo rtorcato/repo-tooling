@@ -124,6 +124,20 @@ Everything under `rules` is edited by hand and reviewed in PRs. It is deliberate
 the `writtenBy`/`writtenAt` stamps: the tool never writes a rule here, so it never claims
 authorship of one — a hand edit to `rules` leaves the record's provenance true.
 
+**`rules` lives inside a full lockfile.** The examples on this page show only the `rules` key.
+A file that holds `rules` alone, with no `version` and `record`, is not a lockfile `doctor` can
+read, so none of its rules apply. `doctor` reports it as `lockfile` drift, and
+`npx @rtorcato/repo-tooling fix lockfile` writes the `record` around the rules you already have.
+Start from `fix lockfile` (or `setup`) and add `rules` to the file it writes, so it has this shape:
+
+```jsonc
+{
+  "version": 4,
+  "record": { "config": { /* written by fix lockfile */ } },
+  "rules": { "github": { "autoMerge": true } }
+}
+```
+
 `setup` does write the **empty containers**, so a new repo has the shape in front of it rather
 than a blank page — and `doctor --rules-from` has something local to compare:
 

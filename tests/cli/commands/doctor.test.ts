@@ -1455,6 +1455,16 @@ describe('doctor + lockfile', () => {
 		expect(lock?.hint).toMatch(/fix lockfile/)
 	})
 
+	it('flags a file holding only rules instead of reading it as no lockfile (#959)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeJson(join(dir, '.repo-tooling.json'), { rules: { github: { autoMerge: false } } })
+		const lock = (await runDoctor(dir)).find((r) => r.check === 'lockfile')
+		expect(lock?.status).toBe('drift')
+		expect(lock?.detail).toMatch(/not a lockfile doctor can read.*rules.*ignored/)
+		expect(lock?.hint).toMatch(/fix lockfile/)
+	})
+
 	it('reports lockfile drift when version is from a newer CLI', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

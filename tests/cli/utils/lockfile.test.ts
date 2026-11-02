@@ -237,6 +237,23 @@ describe('rules survive a rewrite', () => {
 		expect(after.record.config.projectName).toBe('renamed')
 	})
 
+	// #959: doctor sends a rules-only file to `fix lockfile`, so the write must
+	// wrap the record around those rules, not replace them with the scaffold.
+	it('keeps the rules of a file that held only rules', async () => {
+		const dir = newTmpDir()
+		const file = join(dir, '.repo-tooling.json')
+		const rules = { github: { autoMerge: false, requiredChecks: ['ci'] } }
+		await fs.writeJson(file, { rules })
+		expect(await readLockfile(dir)).toBeNull()
+
+		await writeLockfile(dir, baseConfig())
+
+		const after = await fs.readJson(file)
+		expect(after.rules).toEqual(rules)
+		expect(after.version).toBe(LOCKFILE_VERSION)
+		expect((await readLockfile(dir))?.rules).toEqual(rules)
+	})
+
 	// #571: a greenfield repo used to get `record` only, so there was nothing to
 	// edit and nothing for `doctor --rules-from` to compare against.
 	it('writes the empty scaffold when nothing set it', async () => {
