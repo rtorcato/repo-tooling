@@ -132,7 +132,7 @@ async function ensureHookRuns(hookPath: string, runs: RegExp, fresh: string, lin
  */
 export const COMMITLINT_DEPS: Record<string, string> = {
 	'@commitlint/cli': '^21.2.3',
-	'@commitlint/config-conventional': '^21.2.3',
+	'@commitlint/config-conventional': '^21.2.4',
 }
 
 /**
