@@ -96,6 +96,7 @@ import {
 	checkPackageManager,
 	checkPeerVersions,
 	checkPublint,
+	checkReleaseTool,
 	checkSemanticRelease,
 	checkSizeLimit,
 	checkTailwind,
@@ -638,6 +639,8 @@ export async function runDoctor(
 	results.push(await checkLintStaged(targetDir, pkg, root))
 	results.push(await checkVerifyScript(targetDir, pkg))
 	results.push(await checkSemanticRelease(targetDir, pkg, root))
+	const releaseTool = await checkReleaseTool(targetDir, pkg)
+	if (releaseTool) results.push(releaseTool)
 	results.push(await checkKnip(targetDir, pkg))
 	results.push(await checkSizeLimit(targetDir, pkg))
 	results.push(await checkReleaseToken(targetDir, offline))

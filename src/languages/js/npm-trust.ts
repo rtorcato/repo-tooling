@@ -28,7 +28,7 @@ export type NpmExec = (args: string[]) => Promise<GhResult>
 const NPM_TIMEOUT_MS = 15_000
 
 /** Real `npm` runner — never rejects. Args are derived, never free text, and execFile runs no shell. */
-const realNpmExec: NpmExec = (args) =>
+export const realNpmExec: NpmExec = (args) =>
 	new Promise((resolve) => {
 		execFile('npm', args, { timeout: NPM_TIMEOUT_MS }, (err, stdout, stderr) => {
 			const code = err ? (typeof err.code === 'number' ? err.code : null) : 0
