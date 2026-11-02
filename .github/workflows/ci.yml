@@ -420,13 +420,45 @@ jobs:
             pnpm-lock.yaml
           retention-days: 7
 
+  # A PR that changes published source must add a changeset, or it merges and
+  # never ships (#968). Same job the preset renders for a Changesets repo.
+  changeset:
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: 🦋 Require a changeset for published source
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s' "$PR_TITLE" | grep -Eq '^(docs|chore|ci|test|build|style|refactor)(\([^)]*\))?:'; then
+            echo "Skipped: the PR title's type releases nothing"
+            exit 0
+          fi
+          if ! git diff --name-only HEAD^1 HEAD | grep -Eq '^(src|packages/[^/]+/src)/'; then
+            echo "No published source changed"
+            exit 0
+          fi
+          if git diff --name-only --diff-filter=A HEAD^1 HEAD -- '.changeset/*.md' | grep -qv '^\.changeset/README\.md$'; then
+            echo "Changeset found"
+            exit 0
+          fi
+          echo "::error::This PR changes published source but adds no changeset. Run 'pnpm changeset' and commit the file, or 'pnpm changeset --empty' if it releases nothing."
+          exit 1
+
   # The one check branch protection requires (#816). It needs every job above and
   # runs even when one fails, so a matrix change never strands PRs on a leg that
   # no longer reports. Skipped jobs pass: `[skip ci]` and the PR-only Swift gate.
   ci:
     runs-on: ubuntu-latest
     needs:
-      [check-skip, dependencies, lint, commitlint, typecheck, varcheck, test, integration, integration-no-dotfiles, integration-swift, build]
+      [check-skip, dependencies, lint, commitlint, typecheck, varcheck, test, integration, integration-no-dotfiles, integration-swift, build, changeset]
     if: always()
     permissions: {}
     steps:
