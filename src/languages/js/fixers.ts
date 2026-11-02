@@ -38,6 +38,7 @@ import {
 	pnpmSetupNeedsVersion,
 } from '../../cli/generators/misc.js'
 import { hasBin, hasCommitlint, nodeFloorOf, renderReleaseWorkflow, scriptsOf } from './ci.js'
+import { CHANGESETS_MIGRATE_FIXER } from './changesets-migrate.js'
 import { NPM_OIDC_CHECK, NPM_TRUST_FIXER } from './npm-trust.js'
 import { allDeps, presetExtendedBy, usesPnpm } from './checks.js'
 import {
@@ -734,6 +735,7 @@ export const FIXERS: Fixer[] = [
 		},
 	},
 	NPM_TRUST_FIXER,
+	CHANGESETS_MIGRATE_FIXER,
 	{
 		target: 'gitlab-ci',
 		description: 'Scaffold .gitlab-ci.yml (lint/typecheck/test/build mirrored from GitHub Actions)',
