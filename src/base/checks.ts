@@ -11,7 +11,7 @@ import {
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import { behindShaPins, dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
 import type { McpRecommendation } from '../cli/utils/lockfile.js'
-import { CI_GATE_JOB } from './ci.js'
+import { CHANGESET_JOB, CI_GATE_JOB } from './ci.js'
 import {
 	isTwoJobChangesetsRelease,
 	migrateReleaseJob,
@@ -272,6 +272,12 @@ export async function checkGitHubActions(
 			if (workflowJobs(preset).has(CI_GATE_JOB) && !workflowJobs(ci).has(CI_GATE_JOB)) {
 				deltas.push(
 					`ci.yml: no \`${CI_GATE_JOB}\` gate job (preset gates every job behind it, and branch protection requires only \`${CI_GATE_JOB}\`)`
+				)
+			}
+			// The preset renders it only for a Changesets repo (#968).
+			if (workflowJobs(preset).has(CHANGESET_JOB) && !workflowJobs(ci).has(CHANGESET_JOB)) {
+				deltas.push(
+					`ci.yml: no \`${CHANGESET_JOB}\` job (preset fails a PR that changes published source without a changeset)`
 				)
 			}
 			pinDeltas('ci.yml', ci, preset)

@@ -52,6 +52,8 @@ Add the new sparkle widget.
 
 Commit the changeset file alongside the change. The release process consumes it later.
 
+The scaffolded `ci.yml` has a `changeset` job that fails a PR changing `src/` (or `packages/<name>/src/`) with no new `.changeset/*.md`. It skips the Version Packages PR and any PR whose title type releases nothing (`docs`, `chore`, `ci`, `test`, `build`, `style`, `refactor`). For a change that ships nothing under another type, commit an empty changeset with `pnpm changeset --empty`.
+
 ## Releasing
 
 For the whole flow, from a PR's changeset to npm, see [Releasing](../guides/releasing.md).
@@ -98,5 +100,6 @@ It runs only when named, refuses while `ci.yml` still holds a semantic-release j
 
 - If only `.changeset/config.json` exists, `doctor` reports `semantic-release` as ok with "using Changesets instead".
 - If both exist, `doctor` flags drift — you have two release tools fighting for the same job. Remove one.
+- `doctor` flags a `ci.yml` with no `changeset` job; `fix github-actions` regenerates `ci.yml` with it (see `--diff` first if yours is customized).
 - `doctor` flags a single-job `release.yml` that opens the Version Packages PR and publishes behind one approval (two approvals per release). `fix github-actions` rewrites it as the two-job shape and leaves `ci.yml` alone.
 - "Publishes on merge" means nothing stands between a merge and npm. The [Release gate](../guides/cli.md#release-gate) check flags a `changesets/action` job with no protected `environment:`. That holds in a monorepo with a private root too, as long as a workspace package isn't private. `fix release-environment` adds the gate.
