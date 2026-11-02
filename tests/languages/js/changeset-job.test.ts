@@ -69,6 +69,7 @@ describe('changeset CI job (#968)', () => {
 		expect(job).toContain("!startsWith(github.head_ref, 'changeset-release/')")
 		expect(job).toContain('PR_TITLE: ${{ github.event.pull_request.title }}')
 		expect(job).toContain('fetch-depth: 2')
+		expect(job).toContain('    permissions:\n      contents: read\n    steps:')
 		expect(render(true)).toMatch(/^ {4}needs: \[check-skip, .*changeset/m)
 	})
 

@@ -199,6 +199,8 @@ const COMMITLINT_STEP = `      - name: 🔍 Validate commit messages
 const CHANGESET_JOB_DEF: CiJob = {
 	id: CHANGESET_JOB,
 	if: "github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')",
+	extra: `    permissions:
+      contents: read`,
 	steps: `      - name: 📦 Checkout repository
         uses: actions/checkout@v7
         with:
