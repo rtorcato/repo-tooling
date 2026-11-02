@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
 				'guides/vite-plus',
 				'guides/dependabot-strategy',
 				'guides/git-flow',
+				'guides/releasing',
 				'guides/public-repo-issue-safety',
 				'guides/docs-site',
 				'guides/brand-assets',
