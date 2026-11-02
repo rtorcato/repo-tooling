@@ -599,7 +599,8 @@ function checkMergeSettings(info: RepoInfo, rules: GithubRules = {}): CheckResul
 		return {
 			check,
 			status: 'drift',
-			detail: invalid,
+			// The row is named for the setting; say it's the file that's wrong (#959).
+			detail: `config error: ${invalid}`,
 			hint: 'Set it to true or false, then re-run doctor',
 		}
 	// The token can't see the merge-setting fields (no admin:read) — skip rather

@@ -22,14 +22,14 @@
 		"@mdx-js/react": "^3.1.1",
 		"clsx": "^2.1.1",
 		"prism-react-renderer": "^2.4.1",
-		"react": "^19.3.0",
-		"react-dom": "^19.3.0"
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
 	},
 	"devDependencies": {
 		"@docusaurus/module-type-aliases": "^3.10.2",
 		"@docusaurus/plugin-content-docs": "^3.10.2",
 		"@docusaurus/types": "^3.10.2",
-		"@rtorcato/shared-docs": "^1.18.0",
+		"@rtorcato/shared-docs": "^1.19.0",
 		"@types/react": "^19.3.0",
 		"typescript": "~7.0.2"
 	},

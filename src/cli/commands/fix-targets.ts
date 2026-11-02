@@ -20,6 +20,7 @@ const FIX_TARGETS: Record<string, string> = {
 	'Pre-push hook': 'husky',
 	'verify script': 'verify',
 	'semantic-release': 'semantic-release',
+	'Release tool': 'changesets-migrate',
 	knip: 'knip',
 	'size-limit': 'size-limit',
 	'Tree-shake check': 'treeshake-check',
@@ -238,6 +239,10 @@ export function lockfilePatchForTarget(
 		case 'semantic-release':
 		case 'swift-release':
 			return c.semanticRelease ? null : { semanticRelease: true }
+		case 'changesets-migrate':
+			return c.changesets && !c.semanticRelease
+				? null
+				: { semanticRelease: false, changesets: true }
 		case 'dependabot':
 		case 'renovate':
 		case 'codeql':

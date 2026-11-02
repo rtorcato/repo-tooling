@@ -54,6 +54,8 @@ Commit the changeset file alongside the change. The release process consumes it 
 
 ## Releasing
 
+For the whole flow, from a PR's changeset to npm, see [Releasing](../guides/releasing.md).
+
 ```bash
 pnpm changeset version   # consume changesets, bump versions, write CHANGELOG.md
 pnpm changeset publish   # publish to npm
@@ -79,6 +81,18 @@ An ordinary merge skips `publish`, so it never queues an approval request. Dispa
 - An existing CI built around `pnpm run release`.
 
 Both tools share the same shape: CI consumes intent, bumps versions, writes a changelog, and publishes to npm. The difference is *where* the intent lives.
+
+## Migrating from semantic-release
+
+`doctor` lists a public package still on semantic-release as `Release tool` (`optional-missing`, so it never fails the exit code). `fix changesets-migrate` moves it:
+
+- deletes `release.config.*` / `.releaserc*`, the `release` field, the `release` script and the `semantic-release` / `@semantic-release/*` dependencies;
+- adds `.changeset/config.json`, `@changesets/cli` and a `changeset` script, and lists `.` in `pnpm-workspace.yaml` when it has a `packages:` list without it;
+- sets `package.json` `version` to the latest on npm, so Changesets bumps from what is published (a package not on npm yet keeps its version);
+- rewrites `release.yml` as the two-job Version Packages flow, keeping its `environment:` and dropping the `milestone: closed` trigger. Re-add any custom steps afterwards;
+- records `semanticRelease: false` and `changesets: true` in `.repo-tooling.json`.
+
+It runs only when named, refuses while `ci.yml` still holds a semantic-release job (run `fix github-actions` first), and writes nothing when npm cannot be reached. Run `pnpm install` afterwards to refresh the lockfile.
 
 ## Doctor behaviour
 

@@ -196,6 +196,8 @@ import '@rtorcato/repo-tooling/typescript/base'
 
 The scaffolded `release.yml` publishes to npm with OIDC trusted publishing, so it needs no `NPM_TOKEN`. Register the workflow on npm with `fix npm-trusted-publisher`, and gate it with `fix release-environment`. See [Moving an existing repo to `release.yml`](../reference/github-actions.md#moving-an-existing-repo-to-releaseyml).
 
+On a Changesets repo, a merge never publishes. For how a change gets from its PR to npm, see [Releasing](./releasing.md).
+
 `GITHUB_TOKEN` is provided by GitHub Actions. If you add a `RELEASE_TOKEN` (an admin PAT that lets semantic-release push past branch protection), store it as a secret on the `release` environment, not as a repository secret. `doctor`'s **Release secrets** check flags it at repo level.
 
 `Settings → Environments → release → Environment secrets`
