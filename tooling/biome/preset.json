@@ -21,6 +21,7 @@
   },
   "formatter": {
     "enabled": true,
+    "includes": ["**", "!**/*.md", "!**/*.mdx", "!**/*.yaml", "!**/*.yml"],
     "indentStyle": "tab",
     "lineWidth": 100
   },
