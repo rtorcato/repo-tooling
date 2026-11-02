@@ -228,6 +228,7 @@ Implementation note: the preview is computed by shadow-running the fixer in a te
 | `release-please` | `release-please-config.json` + manifest + workflow (alternative) |
 | `release-environment` | the `release` environment on GitHub with you as required reviewer, plus `environment: release` on the publishing job (see [Release gate](#release-gate)). Runs only when named, never under bare `fix` or `--yes` |
 | `npm-trusted-publisher` | registers `release.yml` as the package's OIDC trusted publisher on npm via `npm trust github`. Refuses when the package isn't on npm yet, local npm is older than 11.15.0, or you aren't logged in. Runs only when named. In a monorepo, run it once per package with `-d packages/x` |
+| `changesets-migrate` | moves a public package from semantic-release to [Changesets](../reference/changesets.md#migrating-from-semantic-release). Runs only when named |
 | `attw` | `@arethetypeswrong/cli` + an `attw` script, wired into `verify` |
 | `publint` | `publint` + a `publint --strict` script, wired into `verify` |
 | `badges` | status-badge row (CI, npm, license) in `README.md` |
