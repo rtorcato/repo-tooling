@@ -25,7 +25,7 @@ import {
  * gh API path below, so anything with a slash, `..` or a shell metacharacter in
  * it has to be rejected here rather than defended against later.
  */
-const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/
+export const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /**
  * Generous by four orders of magnitude — a real lockfile is ~1 KB. This is not a
@@ -41,21 +41,24 @@ export type ReferenceResult = { ok: true; lockfile: Lockfile } | { ok: false; re
  * dispatched from fetchReferenceLockfile — everything downstream (size cap,
  * parse, schema validation, diff) is forge-agnostic and already shared.
  */
-async function fetchFromGitHub(
+export async function fetchFromGitHub(
 	reference: string,
-	exec?: GhExec
+	exec?: GhExec,
+	/** A path inside the repo, already shape-checked by the caller. `extends` (#947) reads other files. */
+	file: string = LOCKFILE_NAME,
+	ref?: string
 ): Promise<{ ok: true; text: string } | { ok: false; reason: string }> {
 	const gh: GhExec = exec ?? ((args, stdin) => realGhExec(args, stdin))
 	// `Accept: raw` returns the file itself rather than the base64-in-JSON envelope.
 	const r = await gh([
 		'api',
-		`repos/${reference}/contents/${LOCKFILE_NAME}`,
+		`repos/${reference}/contents/${file}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`,
 		'-H',
 		'Accept: application/vnd.github.raw',
 	])
 	if (r.ok) return { ok: true, text: r.stdout }
 	if (/HTTP 404/.test(r.stderr)) {
-		return { ok: false, reason: `${reference} has no ${LOCKFILE_NAME} (or is not visible to you)` }
+		return { ok: false, reason: `${reference} has no ${file} (or is not visible to you)` }
 	}
 	const detail = r.stderr.trim().split('\n').pop() ?? 'gh failed'
 	return { ok: false, reason: `could not read ${reference}: ${detail}` }

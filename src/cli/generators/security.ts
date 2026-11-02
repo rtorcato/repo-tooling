@@ -3,7 +3,8 @@ import fs from '../../base/safe-fs.js'
 import { renderCodeQLWorkflow } from '../../base/ci.js'
 import { LANGUAGES } from '../../languages/registry.js'
 import { detectLanguage } from '../utils/detect-language.js'
-import { type DependabotOnPr, readLockfile } from '../utils/lockfile.js'
+import { readEffectiveLockfile } from '../utils/extends.js'
+import type { DependabotOnPr } from '../utils/lockfile.js'
 
 /**
  * The canonical dependency-update standard shared by every @rtorcato repo.
@@ -343,7 +344,7 @@ const DEFAULT_DEPENDABOT_LABEL = 'needs-review'
  * unrecognised means \`automerge\`, so a repo that never set it sees no change.
  */
 export async function dependabotAutomergeWorkflowFor(targetDir: string): Promise<string> {
-	const setting = (await readLockfile(targetDir))?.rules?.dependabot
+	const setting = (await readEffectiveLockfile(targetDir)).lock?.rules?.dependabot
 	if (setting?.onPr !== 'label') return DEPENDABOT_AUTOMERGE_WORKFLOW
 	return renderAutomergeWorkflow('label', setting.label?.trim() || DEFAULT_DEPENDABOT_LABEL)
 }

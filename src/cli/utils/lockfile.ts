@@ -189,6 +189,12 @@ interface DocsSibling {
 
 export interface Lockfile {
 	$schema?: string
+	/**
+	 * A shared base of `rules` the repo inherits (#947): a relative path, an npm
+	 * package path, or `github:<owner>/<repo>/<path>[#<ref>]`. The repo's own
+	 * `rules` are merged on top. See `readEffectiveLockfile`.
+	 */
+	extends?: string
 	version: number
 	record: LockfileRecord
 	rules?: LockfileRules
@@ -239,6 +245,12 @@ export function lockfileSchema() {
 			$schema: {
 				type: 'string',
 				description: 'URL of this schema; stamped on every write so editors validate the file.',
+			},
+			extends: {
+				type: 'string',
+				minLength: 1,
+				description:
+					"A shared base of `rules` this repo inherits: a relative path (./base.json), an npm package path (@scope/pkg/base.json) or github:<owner>/<repo>/<path>[#<ref>]. The base is a JSON file with a `rules` object; this repo's own `rules` are deep-merged on top and always win. doctor reports when the base cannot be read; fix never writes into it.",
 			},
 			version: {
 				type: 'integer',
@@ -585,6 +597,8 @@ export async function writeLockfile(
 	const filepath = path.join(dir, LOCKFILE_NAME)
 	const lockfile: Lockfile = {
 		$schema: LOCKFILE_SCHEMA_URL,
+		// The human's pointer to a shared base (#947); only the tool-written half is rebuilt.
+		...(existing?.extends === undefined ? {} : { extends: existing.extends }),
 		version: LOCKFILE_VERSION,
 		record: {
 			config,

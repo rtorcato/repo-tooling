@@ -49,9 +49,9 @@ import {
 	type Lockfile,
 	LOCKFILE_VERSION,
 	lockfilePath,
-	readLockfile,
 	writeGithubRules,
 } from '../utils/lockfile.js'
+import { readEffectiveLockfile } from '../utils/extends.js'
 import { compareRulesWithReference, type RulesComparison } from '../utils/reference-rules.js'
 import { declinedInLock, getFixTargetForCheck } from './fix-targets.js'
 import { fixersForLanguage } from './fixers-by-language.js'
@@ -487,14 +487,31 @@ async function runBaseChecks(
 	return results
 }
 
-export async function runDoctor(
-	dir: string,
-	{ offline }: RunDoctorOptions = {}
-): Promise<CheckResult[]> {
+export async function runDoctor(dir: string, opts: RunDoctorOptions = {}): Promise<CheckResult[]> {
 	const targetDir = path.resolve(dir)
+	// `extends` (#947): every check reads the base merged under the repo's rules.
+	const { lock, report } = await readEffectiveLockfile(targetDir, opts)
+	const results = await runChecks(targetDir, lock, opts.offline)
+	if (!report) return results
+	const { status, detail } = report
+	return [
+		{
+			check: 'Extends',
+			status,
+			detail: `.repo-tooling.json extends ${detail}`,
+			...(status === 'drift' && {
+				hint: "Fix the `extends` value or the base file; until then only this repo's own rules apply",
+			}),
+		},
+		...results,
+	]
+}
 
-	const lock = await readLockfile(targetDir)
-
+async function runChecks(
+	targetDir: string,
+	lock: Lockfile | null,
+	offline: boolean | undefined
+): Promise<CheckResult[]> {
 	// Per-module dispatch (#285): the base checks (repo hygiene, CI, security,
 	// GitHub settings) apply to any repo and run for every language. A supported
 	// module layers its own checks on top. 'unknown' (no marker) gets the base
@@ -828,7 +845,7 @@ async function snapshotCommand(dir: string, options: DoctorOptions) {
 	} catch (error) {
 		return fail(error instanceof Error ? error.message : String(error))
 	}
-	const lock = await readLockfile(target)
+	const { lock, report } = await readEffectiveLockfile(target)
 	const departures = departuresFromStandard(
 		snap.github,
 		await opensReleasePr(target, lock?.record.config.changesets)
@@ -843,6 +860,7 @@ async function snapshotCommand(dir: string, options: DoctorOptions) {
 					github: snap.github,
 					omitted: snap.omitted,
 					departures,
+					...(report && { extends: report }),
 				},
 				null,
 				2
@@ -857,6 +875,11 @@ async function snapshotCommand(dir: string, options: DoctorOptions) {
 	if (snap.omitted.length) {
 		console.log(chalk.gray('\n  Not written (a declared value stays as it was):'))
 		for (const o of snap.omitted) console.log(chalk.gray(`    - ${o}`))
+	}
+	if (report) {
+		console.log(chalk.gray(`\n  extends ${report.detail}`))
+		for (const p of report.inherited)
+			console.log(chalk.gray(`    - rules.${p} (from the base, not written)`))
 	}
 	if (departures.length) {
 		console.log(

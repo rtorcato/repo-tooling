@@ -13,6 +13,7 @@ import {
 	updateLockfileConfig,
 	writeLockfile,
 } from '../utils/lockfile.js'
+import { readEffectiveLockfile } from '../utils/extends.js'
 import type { CheckResult } from './doctor.js'
 import { runDoctor } from './doctor.js'
 import { declinedInLock, lockfilePatchForTarget } from './fix-targets.js'
@@ -512,7 +513,8 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 	}
 
 	const pkg = await readPackageJson(targetDir)
-	const lock = await readLockfile(targetDir)
+	// The base is merged in for reading (`rules.github`); no fixer writes it back (#947).
+	const { lock } = await readEffectiveLockfile(targetDir)
 	const fixers = fixersForLanguage(await detectAuditLanguage(targetDir))
 	const results = await runDoctor(targetDir)
 	const actions: FixActionRecord[] = []
