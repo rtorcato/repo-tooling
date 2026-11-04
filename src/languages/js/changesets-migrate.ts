@@ -17,15 +17,39 @@ import { WORKSPACE_FILE } from '../../cli/generators/pnpm-workspace.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { buildPresetConfig } from '../../cli/commands/setup-presets.js'
 import { CHANGESETS_CLI_RANGE, RELEASE_TOOL_CHECK } from './checks.js'
-import { type NpmExec, realNpmExec } from './npm-trust.js'
+import { NPM_NAME, type NpmExec, realNpmExec } from './npm-trust.js'
 import { renderReleaseWorkflow, scriptsOf } from './ci.js'
 
 const CHANGESETS_CONFIG = '.changeset/config.json'
 
+const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+/** `semantic-release`, bare or behind a runner (`npx`, `pnpm exec`, ...) and only flags after it: a chained command (`&& node notify.js`) keeps the script. */
+const SR_SCRIPT =
+	/^(?:(?:npx|bunx|yarn|pnpm (?:exec|dlx))\s+)?(?:-\S+\s+)*semantic-release(?:\s+-[^\s;&|<>()$`]+)*\s*$/
+
 /** The newest version npm serves for `name`; null when it was never published. */
 export async function publishedVersion(name: string, npm: NpmExec): Promise<string | null> {
-	const res = await npm(['view', name, 'version'])
-	if (res.ok) return res.stdout.trim() || null
+	// package.json is untrusted: refuse a name npm could parse as a flag.
+	if (!NPM_NAME.test(name)) {
+		throw new FixerAbort(
+			'invalid-package-name',
+			`package.json \`name\` (${name}) is not a valid npm package name`,
+			'fix the name, then re-run `fix changesets-migrate`'
+		)
+	}
+	const res = await npm(['view', '--', name, 'version'])
+	if (res.ok) {
+		const version = res.stdout.trim()
+		if (!version) return null
+		if (!SEMVER.test(version)) {
+			throw new FixerAbort(
+				'npm-view-failed',
+				`npm returned an unexpected version for ${name}: ${version.slice(0, 40)}`,
+				're-run `fix changesets-migrate`, or set `version` by hand'
+			)
+		}
+		return version
+	}
 	if (/E404/.test(res.stderr)) return null
 	// Fail closed: guessing here would seed Changesets with the wrong base version.
 	throw new FixerAbort(
@@ -111,7 +135,7 @@ export async function migrateToChangesets(
 		next[k] = kept
 	}
 	const scripts = { ...((next.scripts ?? {}) as Record<string, string>) }
-	if (scripts.release === 'semantic-release') delete scripts.release
+	if (SR_SCRIPT.test(scripts.release ?? '')) delete scripts.release
 	if (!scripts.changeset) scripts.changeset = 'changeset'
 	next.scripts = scripts
 	next.devDependencies = {
@@ -119,7 +143,9 @@ export async function migrateToChangesets(
 		'@changesets/cli': CHANGESETS_CLI_RANGE,
 	}
 	if (version) next.version = version
-	await fs.writeJson(pkgPath, next, { spaces: 2 })
+	// Keep the file's own indent (tabs included) so the diff stays small.
+	const indent = /^([ \t]+)"/m.exec(await fs.readFile(pkgPath, 'utf-8'))?.[1] ?? 2
+	await fs.writeJson(pkgPath, next, { spaces: indent })
 	written.push('package.json')
 
 	if (!(await fs.pathExists(path.join(targetDir, CHANGESETS_CONFIG)))) {
@@ -141,9 +167,10 @@ export async function migrateToChangesets(
 	const existing = (await fs.pathExists(releasePath))
 		? await fs.readFile(releasePath, 'utf-8')
 		: null
+	const environment = releaseEnvironmentOf(existing)
 	const release = renderReleaseWorkflow(
 		{ ...buildPresetConfig('library', pkg.name), changesets: true, semanticRelease: false },
-		{ scripts: scriptsOf(pkg), releaseEnvironment: releaseEnvironmentOf(existing) }
+		{ scripts: scriptsOf(pkg), releaseEnvironment: environment }
 	)
 	if (release) {
 		await fs.outputFile(releasePath, release)
@@ -155,6 +182,13 @@ export async function migrateToChangesets(
 			`   ${RELEASE_WORKFLOW} was regenerated from the Changesets template — re-add any custom steps; run \`pnpm install\` to refresh the lockfile${version ? '' : ` (${pkg.name} is not on npm yet, so its version was left as is)`}`
 		)
 	)
+	if (!environment) {
+		console.error(
+			chalk.yellow(
+				'   the old release workflow had no `environment:` — run `fix release-environment` to put the publish job behind a required reviewer'
+			)
+		)
+	}
 	return written
 }
 
