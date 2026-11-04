@@ -154,6 +154,27 @@ describe('migrateToChangesets (#967)', () => {
 		}
 	})
 
+	it('strips terminal control characters from the name and version it prints', async () => {
+		for (const [name, out] of [
+			['\u001b]0;pwned\u0007\u001b[2J', '1.0.0'],
+			['@x/lib', '1.0.0\u001b[31m\u009b2J'],
+		] as const) {
+			const dir = await fixture({ ...PKG, name })
+			const err = await migrateToChangesets(dir, { ...PKG, name }, npm(out)).catch((e) => e)
+			expect(err).toBeInstanceOf(FixerAbort)
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none survive
+			expect(err.message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+			expect(err.message).toContain('?')
+		}
+		const long = 'X'.repeat(500)
+		const err = await migrateToChangesets(
+			await fixture(),
+			{ ...PKG, name: long },
+			npm('1.0.0')
+		).catch((e) => e)
+		expect(err.message.length).toBeLessThan(200)
+	})
+
 	it('drops `npx semantic-release` style release scripts too', async () => {
 		for (const release of ['npx semantic-release', 'pnpm exec semantic-release --dry-run']) {
 			const pkg = { ...PKG, scripts: { release, test: 'vitest' } }

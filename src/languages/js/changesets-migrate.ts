@@ -27,13 +27,18 @@ const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const SR_SCRIPT =
 	/^(?:(?:npx|bunx|yarn|pnpm (?:exec|dlx))\s+)?(?:-\S+\s+)*semantic-release(?:\s+-[^\s;&|<>()$`]+)*\s*$/
 
+/** Untrusted text made safe for a terminal: C0/C1 controls (ESC, BEL, CSI) become `?`, cut to `max` chars. */
+const printable = (s: string, max = 80) =>
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+	s.slice(0, max).replace(/[\u0000-\u001f\u007f-\u009f]/g, '?')
+
 /** The newest version npm serves for `name`; null when it was never published. */
 export async function publishedVersion(name: string, npm: NpmExec): Promise<string | null> {
 	// package.json is untrusted: refuse a name npm could parse as a flag.
 	if (!NPM_NAME.test(name)) {
 		throw new FixerAbort(
 			'invalid-package-name',
-			`package.json \`name\` (${name}) is not a valid npm package name`,
+			`package.json \`name\` (${printable(name)}) is not a valid npm package name`,
 			'fix the name, then re-run `fix changesets-migrate`'
 		)
 	}
@@ -44,7 +49,7 @@ export async function publishedVersion(name: string, npm: NpmExec): Promise<stri
 		if (!SEMVER.test(version)) {
 			throw new FixerAbort(
 				'npm-view-failed',
-				`npm returned an unexpected version for ${name}: ${version.slice(0, 40)}`,
+				`npm returned an unexpected version for ${name}: ${printable(version, 40)}`,
 				're-run `fix changesets-migrate`, or set `version` by hand'
 			)
 		}
@@ -54,7 +59,7 @@ export async function publishedVersion(name: string, npm: NpmExec): Promise<stri
 	// Fail closed: guessing here would seed Changesets with the wrong base version.
 	throw new FixerAbort(
 		'npm-view-failed',
-		`could not read the published version of ${name} from npm: ${res.stderr.trim().split('\n')[0] ?? 'no output'}`,
+		`could not read the published version of ${name} from npm: ${printable(res.stderr.trim().split('\n')[0] ?? 'no output', 200)}`,
 		'check the network and `npm view` access, then re-run `fix changesets-migrate`'
 	)
 }
