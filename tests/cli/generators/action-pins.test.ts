@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { PINS, pinActions } from '../../../src/base/action-pins.js'
 
 /**
  * Guard against the drift loop in #340: the generators embed action pins as
@@ -22,12 +23,18 @@ import { describe, expect, it } from 'vitest'
  */
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..')
-const PIN = /\b([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*)@v(\d+)/g
+// A pin is `@vN` in a template, or `@<sha> # vN.x.y` once it is immutable (#985).
+const PIN = /\b([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*)@(?:v(\d+)|[0-9a-f]{40}[ \t]*#[ \t]*v(\d+))/g
 
 const pinsIn = (files: string[]) => {
 	const found = new Map<string, Map<string, string[]>>()
 	for (const file of files) {
-		for (const [, action, major] of readFileSync(path.join(repoRoot, file), 'utf8').matchAll(PIN)) {
+		for (const [, action, tagMajor, shaMajor] of readFileSync(
+			path.join(repoRoot, file),
+			'utf8'
+		).matchAll(PIN)) {
+			const major = tagMajor ?? shaMajor
+			if (!action || !major) continue
 			const majors = found.get(action) ?? new Map()
 			majors.set(major, [...(majors.get(major) ?? []), file])
 			found.set(action, majors)
@@ -67,4 +74,30 @@ describe("emitted action pins track this repo's own workflows", () => {
 			)
 		})
 	}
+})
+
+describe('emitted workflows pin every action to a commit SHA (#985)', () => {
+	it('rewrites a known tag to its SHA and leaves the rest alone', () => {
+		const out = pinActions(
+			'      - uses: actions/checkout@v7\n      - uses: "pnpm/action-setup@v6"\n      - uses: ./\n      - uses: acme/unknown@v1\n'
+		)
+		expect(out).toMatch(/uses: actions\/checkout@[0-9a-f]{40} # v7\.\d+\.\d+\n/)
+		expect(out).toMatch(/uses: "pnpm\/action-setup@[0-9a-f]{40} # v6\.\d+\.\d+"\n/)
+		expect(out).toContain('uses: ./\n')
+		expect(out).toContain('uses: acme/unknown@v1\n')
+	})
+
+	// A new `uses: org/action@vN` in a generator with no table entry would ship
+	// as a mutable tag, so fail here until it gets one.
+	it('has a table entry for every action a generator emits', () => {
+		const emitted = new Set<string>()
+		for (const file of glob('src/**/*.ts')) {
+			if (file.endsWith('action-pins.ts')) continue
+			const text = readFileSync(path.join(repoRoot, file), 'utf8')
+			for (const [, ref] of text.matchAll(/uses:\s*['"]?([\w.-]+\/[\w./-]+@v[\w.]+)/g))
+				emitted.add(ref ?? '')
+		}
+		expect(emitted.size).toBeGreaterThan(0)
+		expect([...emitted].filter((ref) => !(ref in PINS))).toEqual([])
+	})
 })

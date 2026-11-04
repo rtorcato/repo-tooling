@@ -400,8 +400,11 @@ describe('fix targeted', () => {
 		await fs.outputFile(join(dir, '.github', 'dependabot.yml'), DEPENDABOT_CONFIG)
 		const fetchPin = `dependabot/fetch-metadata@${'a'.repeat(40)} # v3.1.0`
 		const checkoutPin = `actions/checkout@${'b'.repeat(40)} # v7.0.1`
-		const drifted = DEPENDABOT_AUTOMERGE_WORKFLOW.replace('dependabot/fetch-metadata@v3', fetchPin)
-			.replace('actions/checkout@v7', checkoutPin)
+		const drifted = DEPENDABOT_AUTOMERGE_WORKFLOW.replace(
+			/dependabot\/fetch-metadata@[^\n]+/,
+			fetchPin
+		)
+			.replace(/actions\/checkout@[^\n]+/, checkoutPin)
 			// drop the hand-off step so there is drift for the fixer to repair
 			.replace("steps.merge.outcome == 'skipped'", "steps.merge.outcome == 'nope'")
 		await fs.outputFile(join(dir, '.github', 'workflows', 'dependabot-automerge.yml'), drifted)

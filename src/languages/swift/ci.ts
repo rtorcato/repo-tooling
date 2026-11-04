@@ -9,6 +9,7 @@
  */
 import path from 'node:path'
 import fs from 'fs-extra'
+import { pinActions } from '../../base/action-pins.js'
 import { type CiJob, type GitLabSpec, renderGitHubWorkflow, renderGitLabCI } from '../../base/ci.js'
 
 /** SwiftPM runs on macOS runners — Xcode isn't available anywhere else. */
@@ -197,7 +198,7 @@ export function renderSwiftWorkflow(pkg: SwiftPackage): string {
  * isn't actually pushed.
  */
 export function renderSwiftReleaseWorkflow(): string {
-	return `name: 🏷️  Release
+	return pinActions(`name: 🏷️  Release
 
 on:
   push:
@@ -223,7 +224,7 @@ ${XCODE_SETUP}
         env:
           GH_TOKEN: \${{ github.token }}
         run: gh release create "\${{ github.ref_name }}" --generate-notes --verify-tag
-`
+`)
 }
 
 /**

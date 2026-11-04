@@ -147,15 +147,17 @@ export async function checkCommunityHealth(dir: string): Promise<CheckResult> {
 }
 
 /**
- * `org/action@vN`, the only form the generators emit. Same shape as the scan in
+ * `org/action@vN`, or `org/action@<sha> # vN.x.y` once pinned (#985). Same shape as the scan in
  * tests/cli/generators/action-pins.test.ts — major-only, because that's the
  * granularity every emitted pin uses.
  */
-const ACTION_PIN = /\b([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*)@v(\d+)/g
+const ACTION_PIN =
+	/\b([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*)@(?:v(\d+)|[0-9a-f]{40}[ \t]*#[ \t]*v(\d+))/g
 
 function actionPins(yaml: string): Map<string, string> {
 	const pins = new Map<string, string>()
-	for (const [, action, major] of yaml.matchAll(ACTION_PIN)) {
+	for (const [, action, tagMajor, shaMajor] of yaml.matchAll(ACTION_PIN)) {
+		const major = tagMajor ?? shaMajor
 		if (action && major) pins.set(action, major)
 	}
 	return pins

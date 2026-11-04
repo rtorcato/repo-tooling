@@ -1,3 +1,4 @@
+import { pinActions } from '../../base/action-pins.js'
 import fs from '../../base/safe-fs.js'
 import path from 'node:path'
 import type { ProjectConfig } from '../commands/setup.js'
@@ -288,7 +289,7 @@ export async function generateReleasePleaseConfig(targetDir: string): Promise<st
 	const workflowPath = path.join(targetDir, '.github', 'workflows', 'release-please.yml')
 	if (!(await fs.pathExists(workflowPath))) {
 		await fs.ensureDir(path.dirname(workflowPath))
-		await fs.writeFile(workflowPath, RELEASE_PLEASE_WORKFLOW)
+		await fs.writeFile(workflowPath, pinActions(RELEASE_PLEASE_WORKFLOW))
 	}
 	written.push('.github/workflows/release-please.yml')
 

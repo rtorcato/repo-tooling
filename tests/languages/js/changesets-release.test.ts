@@ -62,7 +62,7 @@ describe('generated Changesets release workflow (#938)', () => {
 	it('an ordinary push only opens the Version Packages PR, with no approval', () => {
 		const version = workflowJobs(render()).get('version') ?? ''
 		expect(jobEnvironment(version)).toBeNull()
-		expect(version).toContain('changesets/action@v2.1.2')
+		expect(version).toMatch(/changesets\/action@[0-9a-f]{40} # v2\.1\.2/)
 		expect(version).not.toMatch(/^\s*publish(-script)?:/m)
 		expect(version).not.toContain('id-token')
 		// Ungated with RELEASE_TOKEN in reach: no dependency install scripts.

@@ -11,6 +11,8 @@
  * serializer to maintain.
  */
 
+import { pinActions } from './action-pins.js'
+
 /** Every job is gated on the skip-CI check; extra conditions are ANDed on. */
 const SKIP_GUARD = "needs.check-skip.outputs.should-skip != 'true'"
 
@@ -192,7 +194,7 @@ function gateJob(ids: readonly string[]): string {
 export function renderGitHubWorkflow(jobs: readonly CiJob[]): string {
 	const header = workflowHeader(jobs.some((job) => job.id === 'commitlint'))
 	const gate = gateJob(['check-skip', ...jobs.map((job) => job.id)])
-	return `${header}${[CHECK_SKIP_JOB, ...jobs.map(renderJob), gate].join('\n\n')}\n`
+	return pinActions(`${header}${[CHECK_SKIP_JOB, ...jobs.map(renderJob), gate].join('\n\n')}\n`)
 }
 
 /**
@@ -200,7 +202,7 @@ export function renderGitHubWorkflow(jobs: readonly CiJob[]): string {
  * here and each language module contributes its `codeqlLanguages`.
  */
 export function renderCodeQLWorkflow(languages: readonly string[]): string {
-	return `name: CodeQL
+	return pinActions(`name: CodeQL
 
 on:
   push:
@@ -237,7 +239,7 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:\${{ matrix.language }}"
-`
+`)
 }
 
 /** A GitLab CI job. Reachable to callers as `GitLabSpec['jobs']`. */

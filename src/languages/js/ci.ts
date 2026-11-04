@@ -6,6 +6,7 @@
  * pnpm-store cache, the `pnpm <script>` commands. The shell around it lives in
  * `src/base/ci.ts` and is shared with Swift/Perl/Python (#287/#289/#290).
  */
+import { pinActions } from '../../base/action-pins.js'
 import {
 	CHANGESET_JOB,
 	type CiJob,
@@ -421,7 +422,7 @@ export function renderReleaseWorkflow(config: ProjectConfig, opts: JobOptions = 
         run: pnpm test
 `
 			: ''
-	return `${RELEASE_WORKFLOW_HEADER}  release:
+	return pinActions(`${RELEASE_WORKFLOW_HEADER}  release:
 ${RELEASE_JOB_GATE.map((l) => `    ${l}`).join('\n')}
     environment: ${opts.releaseEnvironment || 'release'}
     runs-on: ubuntu-latest
@@ -490,7 +491,7 @@ ${build}${test}
               echo "::warning::main moved on; nothing was published. Re-run via workflow_dispatch."
             fi
           fi
-`
+`)
 }
 
 /**
@@ -553,7 +554,7 @@ function renderChangesetsRelease(config: ProjectConfig, opts: JobOptions): strin
           version-script: pnpm changeset version
           commit-message: 'chore(release): version packages'
           pr-title: 'chore(release): version packages'`
-	return `name: 🚀 Release
+	return pinActions(`name: 🚀 Release
 
 # Changesets, batched (rtorcato/repo-tooling#938). Every push to main opens or
 # updates the "Version Packages" PR and publishes nothing. Merging that PR is
@@ -657,7 +658,7 @@ ${setup(true)}${build}
         with:
           publish-script: pnpm changeset publish
 ${changesetsInputs}
-`
+`)
 }
 
 /**
