@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { pinActions } from '../../base/action-pins.js'
 import fs from '../../base/safe-fs.js'
 import { renderCodeQLWorkflow } from '../../base/ci.js'
 import { LANGUAGES } from '../../languages/registry.js'
@@ -208,7 +209,7 @@ function renderAutomergeWorkflow(onPr: DependabotOnPr, label: string): string {
 	// Only `gh pr merge` needs contents: write. Labelling, commenting and
 	// assigning are all pull-requests: write, so label mode drops it (#819).
 	const contents = labelMode ? 'read' : 'write'
-	return `name: Dependabot auto-merge
+	return pinActions(`name: Dependabot auto-merge
 
 on: pull_request
 
@@ -331,7 +332,7 @@ jobs:
 
           # An organisation login cannot be assigned; the comment still stands.
           gh pr edit "$PR_URL" --add-assignee "$OWNER" || echo "::warning::could not assign $OWNER"
-`
+`)
 }
 
 /** The default workflow: auto-merge (\`dependabot.onPr\` unset). */
@@ -377,12 +378,12 @@ const usesByAction = (workflow: string) => {
  */
 export function keepActionPins(rendered: string, existing: string): string {
 	const prev = usesByAction(existing)
-	return rendered.replace(USES, (line, action: string, ref: string) => {
+	return rendered.replace(USES, (line, action: string, ref: string, comment?: string) => {
 		const old = prev.get(action)
 		if (!old?.[2]) return line
 		if (isSha(old[2])) return old[0]
 		const have = refMajor(old[2])
-		const want = refMajor(ref)
+		const want = refMajor(ref, comment)
 		return have !== null && want !== null && have >= want ? old[0] : line
 	})
 }
@@ -395,11 +396,11 @@ export function keepActionPins(rendered: string, existing: string): string {
 export function behindShaPins(rendered: string, existing: string): string[] {
 	const prev = usesByAction(existing)
 	const behind: string[] = []
-	for (const [, action, ref] of rendered.matchAll(USES)) {
+	for (const [, action, ref, comment] of rendered.matchAll(USES)) {
 		const old = action && prev.get(action)
 		if (!old?.[2] || !ref || !isSha(old[2])) continue
 		const have = refMajor(old[2], old[3])
-		const want = refMajor(ref)
+		const want = refMajor(ref, comment)
 		if (have !== null && want !== null && have < want)
 			behind.push(`${action} (${old[3]?.replace(/^[ \t]*#\s*/, '').trim()} < v${want})`)
 	}

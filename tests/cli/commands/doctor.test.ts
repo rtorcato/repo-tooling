@@ -1239,7 +1239,7 @@ describe('doctor security checks', () => {
 		await generateDependabotConfig(dir)
 		const wf = join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
 		const pinned = (await fs.readFile(wf, 'utf8')).replace(
-			/uses: actions\/checkout@v\d+/,
+			/uses: actions\/checkout@[^\n]+/,
 			`uses: actions/checkout@${'c'.repeat(40)} # v1.0.0`
 		)
 		await fs.writeFile(wf, pinned)

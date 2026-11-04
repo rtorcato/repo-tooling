@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { pinActions } from '../../base/action-pins.js'
 import fs from '../../base/safe-fs.js'
 
 type Pkg = Record<string, unknown> | null
@@ -42,6 +43,6 @@ export async function generateTypedocWorkflow(targetDir: string): Promise<string
 	const rel = '.github/workflows/docs.yml'
 	const workflowPath = path.join(targetDir, rel)
 	if (await fs.pathExists(workflowPath)) return null
-	await fs.outputFile(workflowPath, DOCS_WORKFLOW)
+	await fs.outputFile(workflowPath, pinActions(DOCS_WORKFLOW))
 	return rel
 }
