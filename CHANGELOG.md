@@ -1,5 +1,24 @@
 # @rtorcato/repo-tooling
 
+## 6.3.0
+
+### Minor Changes
+
+- 1dccde3: The scaffolded `ci.yml` for a Changesets repo gets a `changeset` job: a PR that changes `src/` (or `packages/<name>/src/`) with no new `.changeset/*.md` fails. It skips the Version Packages PR and PRs titled `docs`, `chore`, `ci`, `test`, `build`, `style` or `refactor`; `pnpm changeset --empty` covers anything else that ships nothing. `doctor` reports `GitHub Actions` drift when a Changesets repo's `ci.yml` lacks the job, and `fix github-actions` scaffolds it. semantic-release repos get no new job.
+- 3fea8af: `doctor` now reports a public package still on semantic-release as `Release tool` (`optional-missing`, so it never fails the exit code), and the new `fix changesets-migrate` moves it to Changesets. It deletes the semantic-release config, `release` field and deps, adds `.changeset/config.json` and `@changesets/cli`, sets `package.json` `version` to the latest on npm (left alone when the package is not published yet), lists the root in `pnpm-workspace.yaml`, and rewrites `release.yml` as the two-job Version Packages flow, keeping its `environment:` and dropping the `milestone: closed` trigger. It records `semanticRelease: false, changesets: true` in `.repo-tooling.json`. It runs only when named, never from a bare `fix`.
+- ed257eb: `.repo-tooling.json` takes an optional `extends`: a relative path, an npm package path or `github:<owner>/<repo>/<path>[#<ref>]` pointing at a shared base of `rules`. The base comes first and the repo's own `rules` are deep-merged on top, so the repo always wins. `doctor` adds an `Extends` row and reports an unreadable base as drift; `fix` and `doctor --snapshot` never write into the base, and `--snapshot` lists the rules still inherited from it. Without `extends`, nothing changes.
+
+### Patch Changes
+
+- 3c82d8e: The shared Biome preset now leaves `pnpm-lock.yaml` and `CHANGELOG.md` out of `files.includes`, so `biome check --write` no longer reflows the lockfile or fails on the Changesets-generated changelog.
+- 549c62c: The shared Biome preset now keeps `.md`, `.mdx`, `.yaml` and `.yml` out of the formatter. Biome 2.6 started formatting them and turns changeset frontmatter into a heading.
+- 471508c: `fix changesets-migrate` no longer prints terminal control characters from an untrusted `package.json` `name`, npm's `version` output or npm's error line in its abort messages. They become `?`, and each value is truncated.
+- 5e5a6dd: `fix changesets-migrate` is hardened. It validates the package name and passes `--` to `npm view`, and rejects a non-semver version from npm before writing it. It also drops `npx semantic-release` and `pnpm exec semantic-release` release scripts, not only the bare one, keeps a tab-indented `package.json`, and points to `fix release-environment` when the old release workflow had no `environment:`.
+- 3bade23: Scaffolded projects now depend on `@commitlint/config-conventional` `^21.2.4`, matching this package's peer range.
+- cc6d9bd: The workflows `setup` and `fix` generate now pin every GitHub Action to a commit SHA with a `# vX.Y.Z` comment, instead of a mutable tag such as `actions/checkout@v7`. The shipped workflow templates and `action.yml` are pinned the same way. `doctor` reads the major from either form, so an older pin that disagrees with the preset is still reported. A workflow that already pins a SHA keeps it.
+- d1b624e: Add a Releasing guide that walks through a Changesets release, from the PR changeset to the approved publish.
+- bfd4ece: `doctor` no longer silently ignores a `.repo-tooling.json` that holds only `rules` (or isn't valid JSON): it reports `lockfile` drift saying the rules are ignored, and `fix lockfile` now writes the record around the existing `rules` instead of replacing them with the empty scaffold. A non-boolean `rules.github` merge toggle now reads `config error: …` in the `Merge settings` row. The `.repo-tooling.json` reference says `rules` must sit in a full lockfile.
+
 ## 6.2.2
 
 ### Patch Changes
