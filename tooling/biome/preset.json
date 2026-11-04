@@ -16,7 +16,9 @@
       "!**/coverage",
       "!**/.git",
       "!**/.github",
-      "!**/.vscode"
+      "!**/.vscode",
+      "!**/pnpm-lock.yaml",
+      "!**/CHANGELOG.md"
     ]
   },
   "formatter": {
