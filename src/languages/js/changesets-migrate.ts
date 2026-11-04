@@ -23,9 +23,9 @@ import { renderReleaseWorkflow, scriptsOf } from './ci.js'
 const CHANGESETS_CONFIG = '.changeset/config.json'
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
-/** `semantic-release`, bare or behind a runner (`npx`, `pnpm exec`, ...) and its flags. */
+/** `semantic-release`, bare or behind a runner (`npx`, `pnpm exec`, ...) and only flags after it: a chained command (`&& node notify.js`) keeps the script. */
 const SR_SCRIPT =
-	/^(?:(?:npx|bunx|yarn|pnpm (?:exec|dlx))\s+)?(?:-\S+\s+)*semantic-release(?:\s.*)?$/
+	/^(?:(?:npx|bunx|yarn|pnpm (?:exec|dlx))\s+)?(?:-\S+\s+)*semantic-release(?:\s+-[^\s;&|<>()$`]+)*\s*$/
 
 /** The newest version npm serves for `name`; null when it was never published. */
 export async function publishedVersion(name: string, npm: NpmExec): Promise<string | null> {

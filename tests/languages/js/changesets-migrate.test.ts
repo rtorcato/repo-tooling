@@ -161,12 +161,18 @@ describe('migrateToChangesets (#967)', () => {
 			await migrateToChangesets(dir, pkg, npm('1.0.0'))
 			expect((await fs.readJson(join(dir, 'package.json'))).scripts.release).toBeUndefined()
 		}
-		const keep = { ...PKG, scripts: { release: 'node scripts/release.js' } }
-		const dir = await fixture(keep)
-		await migrateToChangesets(dir, keep, npm('1.0.0'))
-		expect((await fs.readJson(join(dir, 'package.json'))).scripts.release).toBe(
-			'node scripts/release.js'
-		)
+		for (const release of [
+			'node scripts/release.js',
+			'semantic-release && node notify.js',
+			'semantic-release; node notify.js',
+			'semantic-release | tee log',
+			'semantic-release --dry-run $(whoami)',
+		]) {
+			const keep = { ...PKG, scripts: { release } }
+			const dir = await fixture(keep)
+			await migrateToChangesets(dir, keep, npm('1.0.0'))
+			expect((await fs.readJson(join(dir, 'package.json'))).scripts.release).toBe(release)
+		}
 	})
 
 	it('keeps a tab-indented package.json', async () => {
