@@ -274,7 +274,7 @@ type TrustContext =
 	| { skip: string; unpublished?: boolean; guide?: NpmPublishGuide }
 	| { guide: NpmPublishGuide; nwo: string; job: NpmPublishJob }
 
-const NPM_NAME = /^(@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/
+export const NPM_NAME = /^(@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/
 const ENV_NAME = /^[\w.-]+$/
 
 /** What the check and the fixer both need, or why it can't be had. Network only past the offline gates. */

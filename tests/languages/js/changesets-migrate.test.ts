@@ -137,6 +137,56 @@ describe('migrateToChangesets (#967)', () => {
 		expect((await fs.readJson(join(dir, 'package.json'))).scripts.release).toBe('semantic-release')
 	})
 
+	it('guards the npm view call and checks the name and version', async () => {
+		const dir = await fixture()
+		const exec = npm('6.1.0')
+		await migrateToChangesets(dir, PKG, exec)
+		expect(exec).toHaveBeenCalledWith(['view', '--', '@x/lib', 'version'])
+
+		for (const [name, out] of [
+			['--registry=http://evil', '1.0.0'],
+			['@x/lib', 'not-a-version'],
+		] as const) {
+			const bad = await fixture({ ...PKG, name })
+			const err = await migrateToChangesets(bad, { ...PKG, name }, npm(out)).catch((e) => e)
+			expect(err).toBeInstanceOf(FixerAbort)
+			expect(await fs.pathExists(join(bad, 'release.config.mjs'))).toBe(true)
+		}
+	})
+
+	it('drops `npx semantic-release` style release scripts too', async () => {
+		for (const release of ['npx semantic-release', 'pnpm exec semantic-release --dry-run']) {
+			const pkg = { ...PKG, scripts: { release, test: 'vitest' } }
+			const dir = await fixture(pkg)
+			await migrateToChangesets(dir, pkg, npm('1.0.0'))
+			expect((await fs.readJson(join(dir, 'package.json'))).scripts.release).toBeUndefined()
+		}
+		const keep = { ...PKG, scripts: { release: 'node scripts/release.js' } }
+		const dir = await fixture(keep)
+		await migrateToChangesets(dir, keep, npm('1.0.0'))
+		expect((await fs.readJson(join(dir, 'package.json'))).scripts.release).toBe(
+			'node scripts/release.js'
+		)
+	})
+
+	it('keeps a tab-indented package.json', async () => {
+		const dir = await fixture()
+		await fs.writeFile(join(dir, 'package.json'), JSON.stringify(PKG, null, '\t'))
+		await migrateToChangesets(dir, PKG, npm('1.0.0'))
+		expect(await fs.readFile(join(dir, 'package.json'), 'utf-8')).toMatch(/^\{\n\t"name"/)
+	})
+
+	it('suggests `fix release-environment` when the old workflow had no environment', async () => {
+		const dir = await fixture()
+		await fs.writeFile(
+			join(dir, '.github/workflows/release.yml'),
+			RELEASE.replace('    environment: release\n', '')
+		)
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+		await migrateToChangesets(dir, PKG, npm('1.0.0'))
+		expect(err.mock.calls.flat().join('\n')).toContain('fix release-environment')
+	})
+
 	it('refuses while ci.yml still runs semantic-release', async () => {
 		const dir = await fixture()
 		await fs.outputFile(
