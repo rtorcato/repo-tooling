@@ -1465,6 +1465,17 @@ describe('doctor + lockfile', () => {
 		expect(lock?.hint).toMatch(/fix lockfile/)
 	})
 
+	it('does not promise to keep the rules of a file that is not valid JSON (#987)', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir)
+		await fs.writeFile(join(dir, '.repo-tooling.json'), '{ "rules": { "github": {} }, }')
+		const lock = (await runDoctor(dir)).find((r) => r.check === 'lockfile')
+		expect(lock?.status).toBe('drift')
+		expect(lock?.detail).toMatch(/isn't valid JSON.*rules.*ignored/)
+		expect(lock?.hint).toMatch(/by hand/)
+		expect(lock?.hint).not.toMatch(/around the rules/)
+	})
+
 	it('reports lockfile drift when version is from a newer CLI', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

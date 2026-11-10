@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { FixerAbort } from '../../base/fixer-abort.js'
 import fs from '../../base/safe-fs.js'
 import { CONFIG_SCHEMA, validateProjectConfig } from '../commands/setup-presets.js'
 import type { ProjectConfig } from '../commands/setup.js'
@@ -549,19 +550,37 @@ export async function lockfilePath(dir: string): Promise<string | null> {
 	return (await fs.pathExists(legacy)) ? legacy : null
 }
 
-/** The `rules` object from a file that isn't a valid lockfile, if it has one (#959). */
+/** Why the file at `filepath` doesn't parse as JSON, or null when it does (#987). */
+export async function jsonParseError(filepath: string): Promise<string | null> {
+	try {
+		// JSON.parse, not readJson: readJson prefixes the message with the path.
+		JSON.parse(await fs.readFile(filepath, 'utf8'))
+		return null
+	} catch (err) {
+		return err instanceof Error ? err.message : String(err)
+	}
+}
+
+/**
+ * The `rules` object from a file that isn't a valid lockfile, if it has one (#959).
+ * Throws when the file isn't valid JSON (#987): its rules can't be read, so
+ * writing over it would replace them with the empty scaffold, unannounced.
+ */
 async function strayRules(dir: string): Promise<LockfileRules | undefined> {
 	const filepath = await lockfilePath(dir)
 	if (!filepath) return undefined
-	try {
-		const raw = (await fs.readJson(filepath)) as { rules?: unknown }
-		const rules = raw?.rules
-		return typeof rules === 'object' && rules !== null && !Array.isArray(rules)
-			? (rules as LockfileRules)
-			: undefined
-	} catch {
-		return undefined
+	const error = await jsonParseError(filepath)
+	if (error) {
+		throw new FixerAbort(
+			'invalid-lockfile-json',
+			`refusing to overwrite ${path.basename(filepath)}: it isn't valid JSON (${error}), so the rules in it would be lost`,
+			'Fix the JSON by hand, then run this again.'
+		)
 	}
+	const rules = ((await fs.readJson(filepath)) as { rules?: unknown })?.rules
+	return typeof rules === 'object' && rules !== null && !Array.isArray(rules)
+		? (rules as LockfileRules)
+		: undefined
 }
 
 export async function readLockfile(dir: string): Promise<Lockfile | null> {

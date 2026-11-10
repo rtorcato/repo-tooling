@@ -254,6 +254,18 @@ describe('rules survive a rewrite', () => {
 		expect((await readLockfile(dir))?.rules).toEqual(rules)
 	})
 
+	// #987: a trailing comma made the rules unreadable, so the write replaced
+	// them with the empty scaffold. It must refuse and leave the file alone.
+	it('refuses to overwrite a file that is not valid JSON', async () => {
+		const dir = newTmpDir()
+		const file = join(dir, '.repo-tooling.json')
+		const broken = '{ "rules": { "github": { "autoMerge": false } }, }\n'
+		await fs.writeFile(file, broken)
+
+		await expect(writeLockfile(dir, baseConfig())).rejects.toThrow(/isn't valid JSON/)
+		expect(await fs.readFile(file, 'utf8')).toBe(broken)
+	})
+
 	// #571: a greenfield repo used to get `record` only, so there was nothing to
 	// edit and nothing for `doctor --rules-from` to compare against.
 	it('writes the empty scaffold when nothing set it', async () => {
