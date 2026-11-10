@@ -207,6 +207,8 @@ export function inferProjectConfig(pkg: Pkg, dir?: string): ProjectConfig {
 		semanticRelease: pkg?.private !== true,
 		securityAutomation: true,
 		bundler: detectBundler(deps, dir),
+		// Declared, not installed: a `--skip-install` repo has no node_modules (#988).
+		...('publint' in deps && { publint: true }),
 	}
 }
 
