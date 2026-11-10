@@ -17,7 +17,7 @@ torcato.dev repos off Biome, tsup and esbuild.
 git init   # first, so `vp config` can install the git hooks
 
 # A published library (ESM + CJS, .d.ts, exports map, publint, attw, semantic-release)
-npx @rtorcato/repo-tooling setup --preset vite-plus -d ./my-lib --yes
+npx @rtorcato/repo-tooling setup --preset vite-plus -d ./acme-lib --yes
 
 # An app (index.html, vp dev / vp build / vp preview)
 npx @rtorcato/repo-tooling setup --preset vite-plus-app -d ./my-app --yes

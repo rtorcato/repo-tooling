@@ -15,12 +15,12 @@ All commands take `-d <path>` for the target directory (defaults to `process.cwd
 
 ```bash
 # Sane defaults per project type. --yes guarantees no prompts even from a terminal.
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install --yes
 npx @rtorcato/repo-tooling setup --preset react-app -d ./my-app --skip-install --yes
 npx @rtorcato/repo-tooling setup --preset nextjs-app -d ./my-site --skip-install --yes
 
 # Any preset, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes --no-ai-setup
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install --yes --no-ai-setup
 
 # Full control via a JSON config file
 npx @rtorcato/repo-tooling setup --config ./project.json --skip-install
@@ -47,8 +47,8 @@ never prompts.
 
 ```json
 {
-  "directory": "/Users/x/projects/my-lib",
-  "config": { "projectName": "my-lib", "projectType": "library", "...": "..." },
+  "directory": "/Users/x/projects/acme-lib",
+  "config": { "projectName": "acme-lib", "projectType": "library", "...": "..." },
   "files": [
     "package.json",
     ".editorconfig",

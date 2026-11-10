@@ -1094,7 +1094,7 @@ export async function checkReleaseTool(dir: string, pkg: Pkg | null): Promise<Ch
 	return {
 		check: RELEASE_TOOL_CHECK,
 		status: 'optional-missing',
-		detail: `still on semantic-release (${file}); the torcato.dev libraries release with Changesets`,
+		detail: `still on semantic-release (${file}); \`fix changesets-migrate\` moves it to Changesets`,
 		hint: 'Run `npx @rtorcato/repo-tooling fix changesets-migrate`',
 	}
 }
