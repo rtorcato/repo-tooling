@@ -2161,6 +2161,28 @@ describe('fix github-actions packageManager', () => {
 		expect(workflow).not.toContain('run: pnpm knip')
 		expect(workflow).not.toContain('run: pnpm coverage')
 	})
+
+	// #988: publint is declared but never installed on a --skip-install repo.
+	it('keeps the publint step when publint is declared, installed or not', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, {
+			scripts: { build: 'tsc' },
+			devDependencies: { '@rtorcato/repo-tooling': '^2.0.0', publint: '^0.3.0' },
+		})
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		const workflow = await fs.readFile(join(dir, '.github/workflows/ci.yml'), 'utf-8')
+		expect(workflow).toContain('run: pnpm exec publint --strict')
+	})
+
+	it('adds no publint step when publint is not declared', async () => {
+		const dir = newTmpDir()
+		await seedPackageJson(dir, { scripts: { build: 'tsc' } })
+		await fixCommand('github-actions', { directory: dir, yes: true })
+
+		const workflow = await fs.readFile(join(dir, '.github/workflows/ci.yml'), 'utf-8')
+		expect(workflow).not.toContain('publint')
+	})
 })
 
 // #871: a release.yml-only finding regenerated ci.yml too, dropping its jobs,
