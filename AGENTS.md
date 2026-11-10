@@ -36,7 +36,7 @@ Every command supports `--json` and a non-interactive mode. Combine with `--yes`
 ### Scaffolding a new project from scratch
 
 ```bash
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install
 ```
 
 For full control:
@@ -48,7 +48,7 @@ npx @rtorcato/repo-tooling setup --config-schema > project-config.schema.json
 # 2. Write a config matching it
 cat > project.json <<EOF
 {
-  "projectName": "my-lib",
+  "projectName": "@your-scope/acme-lib",
   "projectType": "library",
   "typescript": {"enabled": true, "config": "base"},
   "linting": {"tool": "biome"},
@@ -64,7 +64,7 @@ EOF
 
 # 3. Preview, then scaffold
 npx @rtorcato/repo-tooling setup --config project.json --dry-run
-npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-install
+npx @rtorcato/repo-tooling setup --config project.json -d ./acme-lib --skip-install
 ```
 
 ### Auditing an existing project

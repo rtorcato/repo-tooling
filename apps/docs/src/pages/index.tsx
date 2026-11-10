@@ -230,7 +230,7 @@ const EXAMPLES: Example[] = [
  ◯ README status badges
  ◯ AI agent rules (AGENTS.md, CLAUDE.md, Cursor, Copilot)
 
-🛠️  Scaffolding library in ~/my-lib
+🛠️  Scaffolding library in ~/acme-lib
 
 📝 Generating configuration files...
 
@@ -244,7 +244,7 @@ const EXAMPLES: Example[] = [
 		language: 'bash',
 		code: `$ npx @rtorcato/repo-tooling doctor
 
-🩺 Diagnosing ~/my-lib against @rtorcato/repo-tooling presets...
+🩺 Diagnosing ~/acme-lib against @rtorcato/repo-tooling presets...
 
   ❌ TypeScript — missing
      no tsconfig.json found

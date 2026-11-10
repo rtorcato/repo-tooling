@@ -34,10 +34,10 @@ $ npx @rtorcato/repo-tooling setup
 
 🛠️  Welcome to repo-tooling setup!
 
-Setting up tooling in: /home/user/my-lib
+Setting up tooling in: /home/user/acme-lib
 
 ✔ 🗣️  What is the primary language of this repo? JavaScript/TypeScript
-✔ 📦 What is your project name? my-lib
+✔ 📦 What is your project name? acme-lib
 ✔ 🏗️  What type of project are you building? 📚 Library/Package
 ✔ 📘 Do you want to use TypeScript? Yes
 ✔ ⚙️  Which TypeScript configuration? 🔧 Base (General purpose)
@@ -119,10 +119,10 @@ Python and Perl write nothing and point you at `doctor`. For **Python** that's n
 Skip the prompts entirely by scaffolding from a named preset:
 
 ```bash
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install --yes
 
 # The same, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes --no-ai-setup
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install --yes --no-ai-setup
 ```
 
 Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `vite-plus`, `vite-plus-app`.
@@ -140,7 +140,7 @@ For full control, drive setup from a `ProjectConfig` JSON file — print the sch
 ```bash
 npx @rtorcato/repo-tooling setup --config-schema > project-config.schema.json
 npx @rtorcato/repo-tooling setup --config project.json --dry-run   # preview file list
-npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-install
+npx @rtorcato/repo-tooling setup --config project.json -d ./acme-lib --skip-install
 ```
 
 ## Files generated

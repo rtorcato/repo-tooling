@@ -16,7 +16,7 @@
 // Two runs:
 // 1. No pnpm on PATH: `setup` must refuse before writing anything and tell the
 //    stranger how to get pnpm (#825).
-// 2. With pnpm: the README's one-liner (`setup --preset library -d ./my-lib
+// 2. With pnpm: the README's one-liner (`setup --preset library -d ./acme-lib
 //    --yes`), installing for real, then the scaffold's own `pnpm verify` and
 //    `pnpm build`, then `doctor` and `fix --yes`. Every exit code is asserted.
 //
@@ -173,7 +173,7 @@ if (!pnpmDir) {
 	console.error('\n❌ pnpm is not on PATH; the second run needs it')
 	process.exit(1)
 }
-const projectDir = path.join(workDir, 'my-lib')
+const projectDir = path.join(workDir, 'acme-lib')
 const setup = stranger(BIN, ['setup', '--preset', 'library', '-d', projectDir, '--yes'])
 assert(setup.status === 0, 'setup exits 0 with an empty HOME and no git config')
 assert(fs.existsSync(path.join(projectDir, 'biome.json')), 'setup scaffolded into the project')

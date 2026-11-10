@@ -55,12 +55,12 @@ npx @rtorcato/repo-tooling fix <target> --diff           # unified diff before c
 ```bash
 # Quick: from a named preset (minimal | library | web-app | node-api | nextjs-app | react-app | swift-library | vite-plus | vite-plus-app)
 # --yes skips the interactive file-list review; without it, a terminal lets you deselect.
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --skip-install --yes
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install --yes
 
 # Full control: validate a config against the schema, preview, then write
 npx @rtorcato/repo-tooling setup --config-schema > project-config.schema.json
 npx @rtorcato/repo-tooling setup --config project.json --dry-run    # preview file list
-npx @rtorcato/repo-tooling setup --config project.json -d ./my-lib --skip-install
+npx @rtorcato/repo-tooling setup --config project.json -d ./acme-lib --skip-install
 ```
 
 ## Drift policy (don't surprise the user)

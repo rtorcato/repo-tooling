@@ -37,11 +37,11 @@ The wizard asks about each piece and scaffolds the project. To skip the
 questions, start from a preset:
 
 ```bash
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --yes
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --yes
 # presets: minimal | library | web-app | node-api | nextjs-app | react-app | swift-library | vite-plus | vite-plus-app
 
 # The same, without the AI agent files (AGENTS.md, CLAUDE.md, .claude/, .cursor/, Copilot, .mcp.json.example)
-npx @rtorcato/repo-tooling setup --preset library -d ./my-lib --yes --no-ai-setup
+npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --yes --no-ai-setup
 ```
 
 `minimal` is tsconfig + Biome + Vitest and nothing else. `swift-library`
