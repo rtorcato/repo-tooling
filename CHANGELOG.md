@@ -1,5 +1,13 @@
 # @rtorcato/repo-tooling
 
+## 6.3.1
+
+### Patch Changes
+
+- 6f9b719: `fix github-actions` keeps the `publint --strict` CI step when `publint` is declared in `package.json`, instead of dropping it on repos without installed packages (#988).
+- 87bb867: `fix lockfile` no longer overwrites a `.repo-tooling.json` that isn't valid JSON, which used to replace its `rules` with the empty scaffold. It now refuses and names the parse error, and `doctor` tells you to fix the JSON by hand instead of promising to keep rules it cannot read.
+- 0f02a25: `doctor`'s `Release tool` line now says `fix changesets-migrate` moves a semantic-release package to Changesets, instead of naming one owner's libraries. The docs' example package is now `acme-lib` (scoped `@your-scope/acme-lib` in config examples), since `my-lib` is a real npm package and `fix changesets-migrate` would pick up its published version.
+
 ## 6.3.0
 
 ### Minor Changes
