@@ -2104,20 +2104,19 @@ export async function applyGithubSettings(
 	}
 	const wp = await checkWorkflowPermissions(gh, info.nwo, rules, false)
 	const sec = await readSecurityUpdates(gh, info.nwo)
-	let protection = bp.status === 'optional-missing' || bp.status === 'drift'
+	const protection = bp.status === 'optional-missing' || bp.status === 'drift'
 	// Requiring a `ci` check that no workflow reports would block every PR (#816).
 	const produced = await workflowCheckNames(dir)
 	const unreported = (rules.requiredChecks ?? GITHUB_STANDARD.requiredContexts).filter(
 		(c) => !produced?.has(c)
 	)
-	if (protection && unreported.length > 0) {
-		console.error(
-			chalk.yellow(
-				`   not changing branch protection — no CI job reports ${unreported.join(', ')} yet, so requiring it would block every PR. Run \`fix github-actions\` (or add the gate job), merge it, then re-run.`
-			)
+	// Refuse rather than skip quietly: a silent skip exits 0 and reads as success (#1007).
+	if (protection && unreported.length > 0)
+		throw new FixerAbort(
+			'unproduced-required-check',
+			`no CI job reports ${unreported.map((c) => `\`${c}\``).join(', ')}, so requiring it would leave every PR blocked on a check that never runs. Nothing was changed.`,
+			'Scaffold the `ci` gate job with `fix github-actions` and merge it, or declare the checks your workflows do report in `rules.github.requiredChecks`, then re-run'
 		)
-		protection = false
-	}
 	const commands = buildGhApplyCommands({
 		nwo: info.nwo,
 		branch: info.branch,
