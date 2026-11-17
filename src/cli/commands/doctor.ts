@@ -29,8 +29,10 @@ import {
 	checkGitHubSettings,
 	departuresFromStandard,
 	GITHUB_SETTINGS_CHECKS,
+	type GhExec,
 	gitRoot,
 	opensReleasePr,
+	realGhExec,
 	isPrivatePackage,
 	releaseConfigFile,
 	readGithubSnapshot,
@@ -124,6 +126,8 @@ export interface DoctorOptions {
 	offline?: boolean
 	/** `--snapshot`: write the live GitHub settings into `rules.github` instead of auditing (#863). */
 	snapshot?: boolean
+	/** `--strict`: exit non-zero when any check was skipped (#1005). */
+	strict?: boolean
 }
 
 export interface RunDoctorOptions {
@@ -829,6 +833,36 @@ export function summarize(results: CheckResult[]): {
 	}
 }
 
+/** Drift and missing always fail; a skipped check fails only under `--strict` (#1005). */
+export function doctorExitCode(summary: ReturnType<typeof summarize>, strict?: boolean): 0 | 1 {
+	return summary.drift > 0 || summary.missing > 0 || (strict && summary.skipped > 0) ? 1 : 0
+}
+
+/** Who `gh` authenticates as, or null when it can't say (no gh, not logged in). */
+export async function ghLogin(exec: GhExec): Promise<string | null> {
+	const r = await exec(['api', 'user', '--jq', '.login'])
+	const login = r.stdout.trim()
+	return r.ok && login ? login : null
+}
+
+/**
+ * The checks that did not run, and who doctor ran as (#1005). A skipped check
+ * is not a pass: on shared-docs the skipped one was the misconfiguration.
+ */
+export function skippedReport(results: CheckResult[], ranAs: string | null) {
+	const skipped = results
+		.filter((r) => r.status === 'skipped')
+		.map((r) => ({ check: r.check, reason: r.detail }))
+	const who = ranAs ? ` as ${ranAs}` : ''
+	const needsAdmin = skipped.some((s) => /admin/i.test(s.reason))
+	const names = skipped.map((s) => s.check).join(', ')
+	const line =
+		skipped.length === 0
+			? null
+			: `${skipped.length} check${skipped.length === 1 ? '' : 's'} could not run${who}${needsAdmin ? ' (needs admin)' : ''}: ${names}${needsAdmin ? ' — re-run as a repo admin' : ''}`
+	return { ranAs, skipped, line }
+}
+
 /**
  * Print the `--rules-from` comparison (#563). Deliberately not a CheckResult:
  * two repos legitimately differ, so a difference is never a finding about either
@@ -930,6 +964,10 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 	const dir = options.directory ?? process.cwd()
 	if (options.snapshot) return snapshotCommand(dir, options)
 	const results = await runDoctor(dir, { offline: options.offline })
+	const ranAs = options.offline
+		? null
+		: await ghLogin((args, stdin) => realGhExec(args, stdin, path.resolve(dir)))
+	const skippedInfo = skippedReport(results, ranAs)
 	const comparison = options.rulesFrom
 		? await compareRulesWithReference(dir, options.rulesFrom)
 		: null
@@ -940,6 +978,8 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 				{
 					directory: path.resolve(dir),
 					results,
+					ranAs: skippedInfo.ranAs,
+					skipped: skippedInfo.skipped,
 					...(comparison ? { rulesReference: comparison } : {}),
 				},
 				null,
@@ -960,6 +1000,7 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 		console.log(
 			`  Summary: ${chalk.green(`${summary.ok} ok`)}, ${chalk.yellow(`${summary.drift} drift`)}, ${chalk.red(`${summary.missing} missing`)}, ${chalk.gray(`${summary.optionalMissing} not configured`)}, ${chalk.blue(`${summary.declared} declared`)}${summary.skipped ? `, ${chalk.gray(`${summary.skipped} skipped`)}` : ''}\n`
 		)
+		if (skippedInfo.line) console.log(chalk.yellow(`  ${skippedInfo.line}\n`))
 		const suggestions = nextStepSuggestions(results, await detectAuditLanguage(dir), {
 			fresh: await isFreshDir(dir),
 		})
@@ -974,6 +1015,5 @@ export async function doctorCommand(options: DoctorOptions = {}) {
 	}
 
 	const summary = summarize(results)
-	const exitCode = summary.drift > 0 || summary.missing > 0 ? 1 : 0
-	process.exitCode = exitCode
+	process.exitCode = doctorExitCode(summary, options.strict)
 }
