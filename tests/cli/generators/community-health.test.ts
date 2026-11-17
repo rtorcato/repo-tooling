@@ -39,3 +39,24 @@ describe('generateCommunityHealth', () => {
 		expect(await generateCommunityHealth(dir)).toEqual([])
 	})
 })
+
+describe('generateCommunityHealth on a repo with no language marker (#1008)', () => {
+	it('writes no pnpm commands and no example.com placeholder', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'run.sh'), '#!/bin/sh\n')
+		const written = await generateCommunityHealth(dir)
+		expect(written).toHaveLength(5)
+		for (const rel of written) {
+			const text = await fs.readFile(join(dir, rel), 'utf-8')
+			expect(text, rel).not.toMatch(/pnpm|example\.com/)
+		}
+	})
+
+	it('never ships the example.com placeholder, even for a JS repo', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, 'package.json'), { name: 'x' })
+		await generateCommunityHealth(dir)
+		expect(await fs.readFile(join(dir, 'SECURITY.md'), 'utf-8')).not.toContain('example.com')
+		expect(await fs.readFile(join(dir, 'CONTRIBUTING.md'), 'utf-8')).toContain('pnpm')
+	})
+})
