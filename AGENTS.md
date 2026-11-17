@@ -109,6 +109,10 @@ A fixer may also **refuse** — the target file holds something the generator ca
 - `src/cli/generators/` — one file per concern (linting, testing, build, git, github-actions, security, misc)
 - `tooling/` — every shipped preset, mirrored 1:1 with `package.json` `exports`
 
+## Freeze: no new `rules.*` keys (#1021)
+
+Do not add new `rules.*` keys to `.repo-tooling.json` until the reference-model ADR is accepted. `rules.github` already behaves like a GitHub-settings manager inside a scaffolder (`src/base/github-settings.ts`), and every new key adds drift surface, admin-token edge cases and migration work. Defer requests such as #998 (`rules.flow`) and anything similar: loop agents must not pick those issues up, and should leave them for a human. Bug fixes to existing keys are still fine.
+
 ## Conventions in this repo
 
 - Conventional commits enforced via commitlint; header max 100 chars, body/footer line length unenforced
