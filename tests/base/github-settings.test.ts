@@ -1121,10 +1121,13 @@ describe('applyGithubSettings', () => {
 		expect(protectionPut?.stdin).toContain('required_status_checks')
 	})
 
-	it('leaves protection alone while no CI job reports `ci` (#816)', async () => {
-		vi.spyOn(console, 'error').mockImplementation(() => {})
+	it('refuses while no CI job reports `ci`, naming it (#816, #1007)', async () => {
 		const { exec, calls } = recordingGh({ protection: fail('gh: Not Found (HTTP 404)') })
-		expect(await applyGithubSettings(gitRepo(), exec)).not.toContain('branch protection on main')
+		const err = await applyGithubSettings(gitRepo(), exec).catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(FixerAbort)
+		expect((err as FixerAbort).code).toBe('unproduced-required-check')
+		expect((err as FixerAbort).message).toContain('`ci`')
+		expect(calls.every((c) => !c.args.includes('PUT') && !c.args.includes('PATCH'))).toBe(true)
 		expect(
 			calls.some((c) => c.args.includes('--input') && c.args[3]?.endsWith('/protection'))
 		).toBe(false)
@@ -1138,15 +1141,15 @@ describe('applyGithubSettings', () => {
 		['a templated name', 'name: test (node ${{ inputs.node }})\n'],
 		['a static name', 'name: Unit tests\n'],
 	])('will not require `test` when its only job is %s (#865)', async (_, extra) => {
-		vi.spyOn(console, 'error').mockImplementation(() => {})
 		const dir = gitRepo()
 		fs.outputFileSync(
 			join(dir, '.github/workflows/ci.yml'),
 			`jobs:\n  test:\n    runs-on: ubuntu-latest\n    ${extra}`
 		)
 		const { exec, calls } = recordingGh({ protection: fail('gh: Not Found (HTTP 404)') })
-		const labels = await applyGithubSettings(dir, exec, { requiredChecks: ['test'] })
-		expect(labels).not.toContain('branch protection on main')
+		await expect(
+			applyGithubSettings(dir, exec, { requiredChecks: ['test'] })
+		).rejects.toBeInstanceOf(FixerAbort)
 		expect(
 			calls.some((c) => c.args.includes('--input') && c.args[3]?.endsWith('/protection'))
 		).toBe(false)
@@ -1769,12 +1772,21 @@ jobs:
 			}
 			return fallback(args, stdin)
 		})
-		const applied = await applyGithubSettings(gitRepo(), exec, {
+		const dir = gitRepo()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/ci.yml'),
+			'jobs:\n  lint:\n    runs-on: x\n  typecheck:\n    runs-on: x\n  build:\n    runs-on: x\n  test:\n    runs-on: x\n'
+		)
+		const applied = await applyGithubSettings(dir, exec, {
 			requiredChecks: ['lint', 'typecheck', 'build', 'test'],
 			automatedSecurityFixes: false,
 		})
-		expect(applied).toEqual(['automated security fixes off (rules.github)'])
-		expect(calls).toEqual([['api', '-X', 'DELETE', 'repos/owner/repo/automated-security-fixes']])
+		// Protection now applies too: the workflow reports every declared check.
+		expect(applied).toEqual([
+			'branch protection on main',
+			'automated security fixes off (rules.github)',
+		])
+		expect(calls.map((c) => c[2])).toEqual(['PUT', 'DELETE'])
 	})
 
 	it('says a 404 on a write means the token lacks admin rights', async () => {
