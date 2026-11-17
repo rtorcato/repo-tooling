@@ -70,6 +70,13 @@ describe('generated Changesets release workflow (#938)', () => {
 		expect(version).toContain("if: steps.changesets.outputs.has-changesets == 'false'")
 	})
 
+	it('warns in the version job when RELEASE_TOKEN is unset (#1006)', () => {
+		const version = workflowJobs(render()).get('version') ?? ''
+		expect(version).toContain('RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}')
+		expect(version).toContain('::warning title=RELEASE_TOKEN is not set::')
+		expect(version.indexOf('::warning')).toBeLessThan(version.indexOf('actions/checkout'))
+	})
+
 	it('only the Version Packages PR merge or a dispatch reaches the gated publish job', () => {
 		const yml = render()
 		expect(publishingJob(yml)).toBe('publish')

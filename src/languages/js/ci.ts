@@ -585,6 +585,16 @@ jobs:
     outputs:
       release: \${{ steps.unpublished.outputs.release }}
     steps:
+      # GitHub runs no workflows for events a GITHUB_TOKEN causes, so a Version
+      # Packages PR opened with the fallback never gets its required CI check.
+      - name: ⚠️ Warn when RELEASE_TOKEN is unset
+        env:
+          RELEASE_TOKEN: \${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::warning title=RELEASE_TOKEN is not set::Version Packages PRs opened with GITHUB_TOKEN run no CI and sit blocked on the required check. Set a RELEASE_TOKEN secret (PAT or GitHub App token)."
+          fi
+
       - name: 📦 Checkout repository
         uses: actions/checkout@v7
         with:
