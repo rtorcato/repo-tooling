@@ -1830,6 +1830,37 @@ export default { ...preset, plugins: preset.plugins.filter((p) => !DROPPED.has(A
 		expect(rt?.status).toBe('ok')
 	})
 
+	describe('Changesets workflows (#1006)', () => {
+		async function releaseToken(token: string, extraStep = '') {
+			const dir = newTmpDir()
+			await seedPackageJson(dir)
+			await fs.outputFile(
+				join(dir, '.github', 'workflows', 'release.yml'),
+				`jobs:\n  version:\n    steps:\n${extraStep}      - uses: changesets/action@v2.1.2\n        with:\n          github-token: ${token}\n`
+			)
+			return (await runDoctor(dir)).find((r) => r.check === 'Release token')
+		}
+
+		it('flags Version Packages PRs opened with bare GITHUB_TOKEN', async () => {
+			const rt = await releaseToken('${{ secrets.GITHUB_TOKEN }}')
+			expect(rt?.status).toBe('drift')
+			expect(rt?.hint).toMatch(/won't run CI/)
+		})
+
+		it('is ok with the RELEASE_TOKEN fallback', async () => {
+			const rt = await releaseToken('${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}')
+			expect(rt?.status).toBe('ok')
+		})
+
+		it('is ok with a GitHub App token', async () => {
+			const rt = await releaseToken(
+				'${{ steps.app.outputs.token }}',
+				'      - id: app\n        uses: actions/create-github-app-token@v2\n'
+			)
+			expect(rt?.status).toBe('ok')
+		})
+	})
+
 	it('ignores a workflow that only mentions semantic-release in a comment', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)

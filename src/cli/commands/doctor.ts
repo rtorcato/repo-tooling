@@ -202,6 +202,26 @@ async function checkReleaseToken(target: string, offline?: boolean): Promise<Che
 				.split('\n')
 				.filter((l) => !l.trimStart().startsWith('#'))
 				.join('\n')
+			// Changesets (#1006): the action opens the Version Packages PR with
+			// the token it is given, and a PR a GITHUB_TOKEN opens runs no CI, so
+			// it sits blocked on the required check.
+			if (/changesets\/action/.test(live)) {
+				if (/create-github-app-token/.test(live) || /RELEASE_TOKEN/.test(live)) {
+					return {
+						check: 'Release token',
+						status: 'ok',
+						detail: /create-github-app-token/.test(live)
+							? `${f} opens Version Packages PRs with a GitHub App token`
+							: `${f} opens Version Packages PRs with RELEASE_TOKEN (GITHUB_TOKEN fallback; the Repository secrets check says whether it is set)`,
+					}
+				}
+				return {
+					check: 'Release token',
+					status: 'drift',
+					detail: `${f} opens Version Packages PRs with bare GITHUB_TOKEN, so they run no CI`,
+					hint: "Version Packages PRs won't run CI; set RELEASE_TOKEN (the changesets/action `github-token:` and checkout `token:` become `${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}`) or use a GitHub App token",
+				}
+			}
 			if (!/semantic-release/.test(live)) continue
 			if (/RELEASE_TOKEN/.test(content)) {
 				return {
