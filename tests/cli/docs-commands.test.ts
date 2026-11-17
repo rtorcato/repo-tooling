@@ -12,7 +12,7 @@ const ROOT = join(import.meta.dirname, '..', '..')
 
 /**
  * Targets the docs name only to say they moved: to @rtorcato/shared-docs (#718,
- * still caught by the CLI's pointer) and to @infrazero/repo-ai (#658, the 3.x
+ * still caught by the CLI's pointer) and to @rtorcato/repo-ai (#658, the 3.x
  * migration table).
  */
 const MOVED = new Set(['docs-site', 'brand', 'claude-skills', 'labels', 'ai-loop-identity'])

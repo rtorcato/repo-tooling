@@ -125,9 +125,9 @@ export interface LockfileRules {
 	/** The GitHub settings this repo says it has (#817). See `GithubRules`. */
 	github?: GithubRules
 	/**
-	 * @deprecated Moved to `.repo-ai.json`, owned by `@infrazero/repo-ai` (#689).
+	 * @deprecated Moved to `.repo-ai.json`, owned by `@rtorcato/repo-ai` (#689).
 	 * Still accepted so existing lockfiles validate; removed in the next major.
-	 * `npx @infrazero/repo-ai fix config` moves it across.
+	 * `npx @rtorcato/repo-ai fix config` moves it across.
 	 */
 	aiLoop?: {
 		/**
@@ -138,7 +138,7 @@ export interface LockfileRules {
 		agentUser?: string
 	}
 	/**
-	 * @deprecated Moved to `.repo-ai.json`, owned by `@infrazero/repo-ai` (#689).
+	 * @deprecated Moved to `.repo-ai.json`, owned by `@rtorcato/repo-ai` (#689).
 	 * Still accepted so existing lockfiles validate; removed in the next major.
 	 */
 	requiredSkills?: string[]
@@ -297,7 +297,7 @@ export function lockfileSchema() {
 						additionalProperties: false,
 						deprecated: true,
 						description:
-							'Deprecated: moved to `.repo-ai.json`, owned by @infrazero/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @infrazero/repo-ai fix config` moves it across.',
+							'Deprecated: moved to `.repo-ai.json`, owned by @rtorcato/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @rtorcato/repo-ai fix config` moves it across.',
 						properties: {
 							agentUser: {
 								type: 'string',
@@ -387,7 +387,7 @@ export function lockfileSchema() {
 						items: { type: 'string' },
 						deprecated: true,
 						description:
-							'Deprecated: moved to `.repo-ai.json`, owned by @infrazero/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @infrazero/repo-ai fix config` moves it across.',
+							'Deprecated: moved to `.repo-ai.json`, owned by @rtorcato/repo-ai. Still accepted so existing files validate; removed in the next major. `npx @rtorcato/repo-ai fix config` moves it across.',
 					},
 					mcp: {
 						type: 'object',
