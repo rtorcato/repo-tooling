@@ -21,6 +21,7 @@ import { generateCodeowners, generateEditorConfig } from '../cli/generators/misc
 import {
 	dependabotConfigDeltas,
 	dependabotEcosystemFor,
+	detectContainerEcosystems,
 	findDependabotIgnoreRules,
 	generateCodeQLWorkflow,
 	generateDependabotConfig,
@@ -179,11 +180,15 @@ export const BASE_FIXERS: Fixer[] = [
 		canFixDrift: true,
 		async run({ targetDir }) {
 			const ecosystem = await dependabotEcosystemFor(targetDir)
+			const containers = await detectContainerEcosystems(targetDir)
 			// The config is already canonical for this repo's ecosystem, so only the
 			// workflow half drifts. Leave the config — and its repo-authored comments
 			// — alone rather than regenerate a file with nothing to change (#631).
 			const existing = await readDependabotConfig(targetDir)
-			if (existing && dependabotConfigDeltas(existing.content, ecosystem).length === 0) {
+			if (
+				existing &&
+				dependabotConfigDeltas(existing.content, ecosystem, containers).length === 0
+			) {
 				await fs.outputFile(
 					path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml'),
 					await renderAutomergeWorkflowOver(targetDir)
@@ -204,7 +209,7 @@ export const BASE_FIXERS: Fixer[] = [
 					`re-add the \`ignore:\` block after regenerating, or delete it from ${ignored.file} to accept the loss — then re-run \`fix dependabot\``
 				)
 			}
-			return { filesWritten: await generateDependabotConfig(targetDir, ecosystem) }
+			return { filesWritten: await generateDependabotConfig(targetDir, ecosystem, containers) }
 		},
 	},
 	{

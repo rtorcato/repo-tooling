@@ -5,6 +5,8 @@ import {
 	DEPENDABOT_AUTOMERGE_WORKFLOW,
 	dependabotAutomergeWorkflowFor,
 	DEPENDABOT_CONFIG,
+	dependabotConfigDeltas,
+	detectContainerEcosystems,
 	dependabotIgnoreRules,
 	findDependabotIgnoreRules,
 	generateCodeQLWorkflow,
@@ -16,6 +18,48 @@ import {
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
+
+// #1009: a Dockerfile's base images get no updates without a `docker` entry.
+describe('Dependabot docker ecosystem', () => {
+	it('adds an ungrouped build-prefixed docker entry when a Dockerfile exists', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'Dockerfile'), 'FROM ubuntu:22.04\n')
+		await generateDependabotConfig(dir)
+		const content = await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')
+		expect(content).toMatch(/package-ecosystem: docker\n {4}directory: \//)
+		expect(content).toMatch(/package-ecosystem: docker[\s\S]*prefix: build/)
+	})
+
+	it('lists nested Dockerfile directories and a docker-compose entry', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, 'services', 'api', 'Dockerfile'), 'FROM node:22\n')
+		await fs.outputFile(join(dir, 'docker-compose.yml'), 'services: {}\n')
+		await generateDependabotConfig(dir)
+		const content = await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')
+		expect(content).toMatch(/package-ecosystem: docker\n {4}directory: \/services\/api/)
+		expect(content).toMatch(/package-ecosystem: docker-compose/)
+	})
+
+	it('adds nothing without container files, and ignores node_modules', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, 'node_modules', 'x', 'Dockerfile'), 'FROM a\n')
+		await generateDependabotConfig(dir)
+		const content = await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')
+		expect(content).not.toMatch(/package-ecosystem: docker/)
+	})
+
+	it('reports a delta only when the config lacks a needed ecosystem', async () => {
+		const dir = newTmpDir()
+		await fs.writeFile(join(dir, 'Dockerfile'), 'FROM alpine\n')
+		const containers = await detectContainerEcosystems(dir)
+		expect(dependabotConfigDeltas(DEPENDABOT_CONFIG, 'npm', containers)).toEqual([
+			'missing `docker` ecosystem',
+		])
+		await generateDependabotConfig(dir)
+		const content = await fs.readFile(join(dir, '.github', 'dependabot.yml'), 'utf-8')
+		expect(dependabotConfigDeltas(content, 'npm', containers)).toEqual([])
+	})
+})
 
 describe('generateDependabotConfig', () => {
 	it('writes .github/dependabot.yml with npm and github-actions ecosystems', async () => {

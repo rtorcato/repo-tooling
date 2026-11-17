@@ -7,6 +7,7 @@ import {
 	dependabotConfigDeltas,
 	dependabotEcosystemFor,
 	dependabotIgnoreRules,
+	detectContainerEcosystems,
 } from '../cli/generators/security.js'
 import { type DetectedLanguage, detectNestedLanguages } from '../cli/utils/detect-language.js'
 import { behindShaPins, dependabotAutomergeWorkflowFor } from '../cli/generators/security.js'
@@ -350,7 +351,11 @@ export async function checkDependabot(dir: string): Promise<CheckResult> {
 			// depends on it. Flag any config that predates it so `fix dependabot` can
 			// bring the pair up to standard.
 			const content = await fs.readFile(candidatePath, 'utf8')
-			const deltas = dependabotConfigDeltas(content, await dependabotEcosystemFor(dir))
+			const deltas = dependabotConfigDeltas(
+				content,
+				await dependabotEcosystemFor(dir),
+				await detectContainerEcosystems(dir)
+			)
 			const automergePath = path.join(dir, '.github', 'workflows', 'dependabot-automerge.yml')
 			let behind: string[] = []
 			if (await fs.pathExists(automergePath)) {
