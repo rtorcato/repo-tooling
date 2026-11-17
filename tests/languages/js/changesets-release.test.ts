@@ -56,7 +56,10 @@ describe('generated Changesets release workflow (#938)', () => {
 		expect(jobs.get('publish')).toContain(
 			'    concurrency:\n      group: release\n      cancel-in-progress: false\n'
 		)
-		expect([...workflowJobs(yml).keys()]).toEqual(['version', 'publish'])
+		expect(jobs.get('gate')).toContain(
+			'    concurrency:\n      group: release\n      cancel-in-progress: false\n'
+		)
+		expect([...workflowJobs(yml).keys()]).toEqual(['version', 'gate', 'publish'])
 	})
 
 	it('an ordinary push only opens the Version Packages PR, with no approval', () => {
@@ -81,10 +84,9 @@ describe('generated Changesets release workflow (#938)', () => {
 		const yml = render()
 		expect(publishingJob(yml)).toBe('publish')
 		const publish = workflowJobs(yml).get('publish') ?? ''
-		expect(publish).toContain('    needs: version\n')
-		expect(publish).toContain(
-			"    if: github.event_name == 'workflow_dispatch' || needs.version.outputs.release == 'true'\n"
-		)
+		expect(publish).toContain('    needs: [version, gate]\n')
+		expect(publish).toContain("github.event_name == 'workflow_dispatch'")
+		expect(publish).toContain("needs.gate.outputs.release == 'true'")
 		expect(jobEnvironment(publish)).toBe('release')
 		expect(publish).toContain('      id-token: write\n')
 		expect(publish).toContain('publish-script: pnpm changeset publish')
@@ -92,6 +94,14 @@ describe('generated Changesets release workflow (#938)', () => {
 		// approval wait would turn the publish into a VPR update (react-common#261).
 		expect(publish).not.toContain('ref:')
 		expect(isTwoJobChangesetsRelease(yml)).toBe(true)
+	})
+
+	it('re-checks npm in an ungated gate job before the approval is requested (#996)', () => {
+		const gate = workflowJobs(render()).get('gate') ?? ''
+		expect(jobEnvironment(gate)).toBeNull()
+		expect(gate).toContain("if: needs.version.outputs.release == 'true'")
+		expect(gate).toContain('npm view')
+		expect(gate).not.toContain('id-token')
 	})
 
 	it('carries the release environment', () => {

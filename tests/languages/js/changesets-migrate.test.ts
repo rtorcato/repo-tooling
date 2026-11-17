@@ -105,7 +105,7 @@ describe('migrateToChangesets (#967)', () => {
 		const yml = await fs.readFile(join(dir, '.github/workflows/release.yml'), 'utf-8')
 		expect(yml).not.toContain('milestone')
 		expect(yml).not.toContain('semantic-release')
-		expect([...workflowJobs(yml).keys()]).toEqual(['version', 'publish'])
+		expect([...workflowJobs(yml).keys()]).toEqual(['version', 'gate', 'publish'])
 		expect(jobEnvironment(workflowJobs(yml).get('publish') ?? '')).toBe('release')
 	})
 
