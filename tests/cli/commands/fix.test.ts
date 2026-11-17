@@ -342,11 +342,19 @@ describe('fix targeted', () => {
 		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
 	})
 
-	it('fix without a TTY skips instead of prompting', async () => {
+	it('fix <target> without a TTY or --yes exits 1 instead of prompting (#1004)', async () => {
 		const dir = newTmpDir()
 		await seedPackageJson(dir)
 		setStdinTTY(undefined)
-		await fixCommand('dependabot', { directory: dir })
+		const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('exit')
+		}) as never)
+		try {
+			await expect(fixCommand('dependabot', { directory: dir })).rejects.toThrow('exit')
+			expect(exitSpy).toHaveBeenCalledWith(1)
+		} finally {
+			exitSpy.mockRestore()
+		}
 		expect(promptMock).not.toHaveBeenCalled()
 		expect(await fs.pathExists(join(dir, '.github', 'dependabot.yml'))).toBe(false)
 	})
