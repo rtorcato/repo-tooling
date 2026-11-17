@@ -1,3 +1,4 @@
+import nodeFs from 'node:fs/promises'
 import path from 'node:path'
 import { pinActions } from '../../base/action-pins.js'
 import fs from '../../base/safe-fs.js'
@@ -14,7 +15,10 @@ import type { DependabotOnPr } from '../utils/lockfile.js'
  * for a language Dependabot doesn't support, which drops the manifest block and
  * leaves only the github-actions one.
  */
-function dependabotConfig(ecosystem: string | null): string {
+function dependabotConfig(
+	ecosystem: string | null,
+	containers: ContainerEcosystems = NO_CONTAINERS
+): string {
 	const manifest =
 		ecosystem === null
 			? ''
@@ -71,7 +75,68 @@ ${manifest}  - package-ecosystem: github-actions
     commit-message:
       prefix: ci
       include: scope
+${containerBlock('docker', containers.docker)}${containerBlock('docker-compose', containers.compose)}`
+}
+
+/** Directories (Dependabot form, `/` = root) holding container files. */
+export interface ContainerEcosystems {
+	docker: string[]
+	compose: string[]
+}
+
+const NO_CONTAINERS: ContainerEcosystems = { docker: [], compose: [] }
+
+/**
+ * A `docker` / `docker-compose` block (#1009). Deliberately ungrouped with a
+ * `build` prefix: base-image bumps ship in the image, so the auto-merge
+ * workflow (which only takes the dev-minor group and github-actions) leaves
+ * them for a human.
+ */
+function containerBlock(ecosystem: string, dirs: string[]): string {
+	if (dirs.length === 0) return ''
+	const where =
+		dirs.length === 1
+			? `    directory: ${dirs[0]}`
+			: `    directories:\n${dirs.map((d) => `      - ${d}`).join('\n')}`
+	return `  - package-ecosystem: ${ecosystem}
+${where}
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+      include: scope
 `
+}
+
+const CONTAINER_SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'vendor', 'coverage'])
+const CONTAINER_MAX_DEPTH = 3
+const DOCKERFILE = /^(?:Dockerfile(?:\..+)?|.+\.Dockerfile)$/
+const COMPOSE = /^(?:docker-)?compose(?:\..+)?\.ya?ml$/
+
+/**
+ * Where a repo keeps Dockerfiles and compose files, shallowly scanned (#1009).
+ * Dependabot's `docker` ecosystem needs the directory of each Dockerfile.
+ */
+export async function detectContainerEcosystems(dir: string): Promise<ContainerEcosystems> {
+	const found: ContainerEcosystems = { docker: [], compose: [] }
+	async function walk(rel: string, depth: number): Promise<void> {
+		let entries: import('node:fs').Dirent[]
+		try {
+			entries = await nodeFs.readdir(path.join(dir, rel), { withFileTypes: true })
+		} catch {
+			return
+		}
+		const where = rel === '' ? '/' : `/${rel.split(path.sep).join('/')}`
+		if (entries.some((e) => e.isFile() && DOCKERFILE.test(e.name))) found.docker.push(where)
+		if (entries.some((e) => e.isFile() && COMPOSE.test(e.name))) found.compose.push(where)
+		if (depth >= CONTAINER_MAX_DEPTH) return
+		for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+			if (e.isDirectory() && !e.name.startsWith('.') && !CONTAINER_SKIP.has(e.name))
+				await walk(path.join(rel, e.name), depth + 1)
+		}
+	}
+	await walk('', 0)
+	return found
 }
 
 /** The JS flavour — the historical default, kept for the generators that don't
@@ -100,11 +165,26 @@ export async function dependabotEcosystemFor(dir: string): Promise<string | null
  * The canonical groups live on the manifest block, so a repo with no manifest
  * ecosystem is not expected to carry them (#631).
  */
-export function dependabotConfigDeltas(content: string, ecosystem: string | null): string[] {
-	if (ecosystem === null) return []
-	return ['production-minor', 'dev-minor', 'major-updates']
-		.filter((group) => !new RegExp(`^\\s*${group}:`, 'm').test(content))
-		.map((group) => `missing \`${group}\` group`)
+export function dependabotConfigDeltas(
+	content: string,
+	ecosystem: string | null,
+	containers: ContainerEcosystems = NO_CONTAINERS
+): string[] {
+	const deltas =
+		ecosystem === null
+			? []
+			: ['production-minor', 'dev-minor', 'major-updates']
+					.filter((group) => !new RegExp(`^\\s*${group}:`, 'm').test(content))
+					.map((group) => `missing \`${group}\` group`)
+	// #1009: a repo with a Dockerfile gets no base-image updates without this.
+	for (const [name, dirs] of [
+		['docker', containers.docker],
+		['docker-compose', containers.compose],
+	] as const) {
+		const has = new RegExp(`package-ecosystem:\\s*["']?${name}["']?\\s*$`, 'm')
+		if (dirs.length > 0 && !has.test(content)) deltas.push(`missing \`${name}\` ecosystem`)
+	}
+	return deltas
 }
 
 /** The existing dependabot config, in Dependabot's resolution order, or null. */
@@ -442,10 +522,14 @@ export async function findDependabotIgnoreRules(
  */
 export async function generateDependabotConfig(
 	targetDir: string,
-	ecosystem: string | null = 'npm'
+	ecosystem: string | null = 'npm',
+	containers?: ContainerEcosystems
 ) {
 	await fs.ensureDir(path.join(targetDir, '.github', 'workflows'))
-	await fs.writeFile(path.join(targetDir, '.github', 'dependabot.yml'), dependabotConfig(ecosystem))
+	await fs.writeFile(
+		path.join(targetDir, '.github', 'dependabot.yml'),
+		dependabotConfig(ecosystem, containers ?? (await detectContainerEcosystems(targetDir)))
+	)
 	const workflow = await renderAutomergeWorkflowOver(targetDir)
 	await fs.writeFile(
 		path.join(targetDir, '.github', 'workflows', 'dependabot-automerge.yml'),
