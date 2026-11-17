@@ -89,6 +89,7 @@ program
 	.option('--json', 'Emit machine-readable JSON output')
 	// CI gates (#755): live GitHub state depends on timing and on who runs it.
 	.option('--offline', 'Skip checks that read live GitHub state via `gh` (for CI gates)')
+	.option('--strict', 'Exit non-zero when any check was skipped (no admin access, --offline)')
 	// Rules are per-repo (#563): this compares them against another repo's, and
 	// only reports. Never drift, never a fixer, never part of the exit code.
 	.option(
