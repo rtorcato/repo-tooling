@@ -165,6 +165,9 @@ npx @rtorcato/repo-tooling setup --preset $PRESET -d . --skip-install --yes
 
 # 4. Install deps yourself (the CLI skips install when --skip-install is set)
 pnpm install
+
+# 5. Format the generated files (skipped along with the install), or `biome check .` fails
+pnpm biome check --write .
 ```
 
 ### "Bring this existing repo up to spec"
