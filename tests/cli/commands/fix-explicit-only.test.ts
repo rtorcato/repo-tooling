@@ -44,3 +44,39 @@ describe('github-settings is explicitOnly (#866)', () => {
 		expect(run).toHaveBeenCalledTimes(1)
 	})
 })
+
+describe('a named fixer with no TTY and no --yes fails (#1004)', () => {
+	const fixer = getFixers().find((f) => f.target === 'github-settings')
+	if (!fixer) throw new Error('github-settings fixer not registered')
+	const run = vi.spyOn(fixer, 'run').mockResolvedValue({ filesWritten: [] })
+	const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+	vi.spyOn(console, 'log').mockImplementation(() => {})
+	const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+		throw new Error(`exit ${code}`)
+	}) as never)
+	const original = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+
+	afterEach(() => {
+		run.mockClear()
+		err.mockClear()
+		exit.mockClear()
+		if (original) Object.defineProperty(process.stdin, 'isTTY', original)
+		else Reflect.deleteProperty(process.stdin, 'isTTY')
+	})
+
+	it('exits 1 with the --yes hint and applies nothing', async () => {
+		Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+		await expect(fixCommand('github-settings', { directory: newTmpDir() })).rejects.toThrow(
+			'exit 1'
+		)
+		expect(run).not.toHaveBeenCalled()
+		const printed = err.mock.calls.map((c) => String(c[0])).join('\n')
+		expect(printed).toContain('github-settings needs confirmation: re-run with --yes')
+	})
+
+	it('applies with --yes', async () => {
+		Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+		await fixCommand('github-settings', { directory: newTmpDir(), yes: true })
+		expect(run).toHaveBeenCalledTimes(1)
+	})
+})
