@@ -155,7 +155,7 @@ labels: bug
 
 const BUG_REPORT_NEUTRAL = BUG_REPORT.replace(
 	'- Package version:\n- Node version (`node -v`):\n- Package manager + version:\n',
-	'- Version:\n',
+	'- Version:\n'
 )
 
 const FEATURE_REQUEST = `---
