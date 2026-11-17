@@ -394,6 +394,17 @@ async function confirmApply(
 	return confirm === true
 }
 
+/**
+ * A named fixer (or --resync) that needs a confirmation nobody can give must fail,
+ * not print "skipped" and exit 0, which reads as "nothing to do" (#1004).
+ */
+function failNeedsConfirmation(name: string): never {
+	console.error(
+		chalk.red(`\n❌ ${name} needs confirmation: re-run with --yes (no TTY to prompt)\n`)
+	)
+	process.exit(1)
+}
+
 function recordFor(
 	target: string | null,
 	check: string,
@@ -469,6 +480,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			}
 			return
 		}
+		if (!assumeYes && !process.stdin.isTTY) failNeedsConfirmation('fix --resync')
 		if (!assumeYes) {
 			const { confirm } = !process.stdin.isTTY
 				? { confirm: false }
@@ -600,6 +612,7 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 			const previews = await previewFixer(fixer, effectiveResult, targetDir, pkg, lock)
 			printPreviews(previews)
 		}
+		if (!assumeYes && !dryRun && !process.stdin.isTTY) failNeedsConfirmation(fixer.target)
 		const ok = await confirmApply(fixer, effectiveResult, assumeYes, dryRun)
 		if (!ok) {
 			actions.push(
