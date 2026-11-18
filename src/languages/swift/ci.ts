@@ -196,6 +196,10 @@ export function renderSwiftWorkflow(pkg: SwiftPackage): string {
  * `gh` (preinstalled on the runner) rather than a release action: one fewer
  * third-party pin to track, and `--verify-tag` refuses to invent a tag that
  * isn't actually pushed.
+ *
+ * `environment: release` (#1031): the job waits for the environment's required
+ * reviewer, so pushing a tag alone cuts no release. `fix release-environment`
+ * creates the environment and lets tag runs into it.
  */
 export function renderSwiftReleaseWorkflow(): string {
 	return pinActions(`name: 🏷️  Release
@@ -208,6 +212,7 @@ on:
 
 jobs:
   release:
+    environment: release
     runs-on: ${MACOS}
     permissions:
       contents: write

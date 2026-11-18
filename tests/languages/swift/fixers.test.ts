@@ -10,6 +10,7 @@ import {
 	checkSwiftRelease,
 	runSwiftChecks,
 } from '../../../src/languages/swift/checks.js'
+import { renderSwiftReleaseWorkflow } from '../../../src/languages/swift/ci.js'
 import { SWIFT_FIXERS } from '../../../src/languages/swift/fixers.js'
 import { ensureSwiftGitignore } from '../../../src/languages/swift/gitignore.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
@@ -139,6 +140,19 @@ describe('swift fixers', () => {
 
 	it('docc refuses a package with no Sources/ directory', async () => {
 		await expect(fixer('docc').run(ctx(newTmpDir()))).rejects.toThrow(/Sources/)
+	})
+
+	it('swift-release gates an old ungated release.yml behind the release environment (#1031)', async () => {
+		const dir = newTmpDir()
+		const old = renderSwiftReleaseWorkflow().replace('    environment: release\n', '')
+		await fs.outputFile(join(dir, '.github/workflows/release.yml'), old)
+		const before = await checkSwiftRelease(dir)
+		expect(before.status).toBe('drift')
+		expect(before.hint).toContain('fix swift-release')
+		await fixer('swift-release').run(ctx(dir))
+		const yaml = await fs.readFile(join(dir, '.github/workflows/release.yml'), 'utf-8')
+		expect(yaml).toContain('  release:\n    environment: release\n')
+		expect((await checkSwiftRelease(dir)).status).toBe('ok')
 	})
 
 	it('swift-release writes a workflow the Release automation check accepts', async () => {
