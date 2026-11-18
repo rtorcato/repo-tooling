@@ -3,6 +3,10 @@ title: Nx
 description: Starter nx.json task orchestrator for pnpm-workspace monorepos. Alternative to Turborepo.
 ---
 
+:::caution Unsupported
+Nx is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
+:::
+
 [Nx](https://nx.dev) is a monorepo task orchestrator with an affected-build model
 and a deep plugin ecosystem. repo-tooling scaffolds a minimal `nx.json` with a
 `targetDefaults` pipeline covering build/lint/typecheck/test — a peer to

@@ -3,6 +3,10 @@ title: Vite+ preset
 description: Opt-in setup presets that put a repo on Vite+ (vite-plus, the vp CLI) instead of Biome, tsup and a separate Vitest, and what doctor does differently on one.
 ---
 
+:::caution Unsupported
+Vite+ is outside the [supported stack](./supported-stack.md). It still works, with no guarantees.
+:::
+
 [Vite+](https://viteplus.dev) (`vite-plus`, the `vp` CLI) bundles Vite and
 Rolldown (build), Oxlint, Oxfmt and tsgo (`vp check`), Vitest (`vp test`) and
 tsdown (`vp pack`), all configured from one `vite.config.ts`. repo-tooling can

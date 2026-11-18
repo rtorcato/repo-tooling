@@ -13,6 +13,10 @@ One package. Full dev toolchain. TypeScript, linting, testing, commits, releases
 [![Bundle size](https://img.shields.io/bundlephobia/minzip/@rtorcato/repo-tooling)](https://bundlephobia.com/package/@rtorcato/repo-tooling)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+:::info Supported stack
+**Supported:** pnpm, Biome, Vitest, tsup, Changesets, GitHub Actions, and the trunk and staged flows. Swift, Python and Perl are **partial**. Everything else is **unsupported**: usable through `rules.exceptions`, with no guarantees. See the [supported stack](./guides/supported-stack.md).
+:::
+
 ## Why this exists
 
 Most tooling libraries give you one piece — just TypeScript configs, or just an ESLint preset. **repo-tooling** covers the entire lifecycle: TypeScript, Biome/ESLint, Vitest/Jest, Commitlint, Husky, Semantic Release, GitHub Actions CI, and supply-chain security (Dependabot + CodeQL) — all wired together and validated against each other.
@@ -55,6 +59,7 @@ non-interactive CLI contract.
 
 ## Next steps
 
+- [Supported stack](./guides/supported-stack.md) — what is supported, partial and unsupported.
 - [Get started](./guides/getting-started.mdx) — install and scaffold a project.
 - [CLI reference](./guides/cli.md) — every command and flag.
 - [For AI agents](./guides/for-ai-agents.md) — non-interactive usage from automated agents and CI bots.
