@@ -26,7 +26,19 @@ async function shipsJs(dir: string): Promise<boolean> {
 	return Boolean(pkg && (pkg.main || pkg.exports || pkg.bin))
 }
 
+/**
+ * True when the repo's lockfile declares `language: "none"` (#1010): a shell or
+ * Docker repo saying it has no language stack. That declaration beats any marker,
+ * so a stray `package.json` for a docs site doesn't pull in the JS suite. Read
+ * raw rather than through `readLockfile`, which imports this module's callers.
+ */
+async function declaresNoLanguage(dir: string): Promise<boolean> {
+	const raw = await fs.readJson(path.join(dir, '.repo-tooling.json')).catch(() => null)
+	return (raw?.record?.config ?? raw?.config)?.language === 'none'
+}
+
 export async function detectLanguage(dir: string): Promise<DetectedLanguage> {
+	if (await declaresNoLanguage(dir)) return 'unknown'
 	if ((await fs.pathExists(path.join(dir, 'Package.swift'))) && !(await shipsJs(dir)))
 		return 'swift'
 	for (const [language, candidates] of MARKERS) {
@@ -47,6 +59,8 @@ export async function detectLanguage(dir: string): Promise<DetectedLanguage> {
 export async function detectAuditLanguage(dir: string): Promise<DetectedLanguage> {
 	const language = await detectLanguage(dir)
 	if (language !== 'unknown') return language
+	// Declared `none`: audit the base suite, never the fresh-dir JS default.
+	if (await declaresNoLanguage(dir)) return 'unknown'
 	return (await onlyDotfiles(dir)) ? 'js' : 'unknown'
 }
 
@@ -61,7 +75,11 @@ async function onlyDotfiles(dir: string): Promise<boolean> {
  * at `setup`, because piecemeal fixers can't create a project (#827).
  */
 export async function isFreshDir(dir: string): Promise<boolean> {
-	return (await detectLanguage(dir)) === 'unknown' && (await onlyDotfiles(dir))
+	return (
+		(await detectLanguage(dir)) === 'unknown' &&
+		!(await declaresNoLanguage(dir)) &&
+		(await onlyDotfiles(dir))
+	)
 }
 
 /** Never worth descending into, and expensive when we do. */

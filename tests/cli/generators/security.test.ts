@@ -473,6 +473,19 @@ describe('dependabotAutomergeWorkflowFor', () => {
 		expect(wf).toMatch(/steps\.gate\.outputs\.safe == 'true'/)
 	})
 
+	// #1010 acceptance: a repo that declared language none can set label mode.
+	it('honours onPr label in a language-none repo', async () => {
+		const dir = newTmpDir()
+		await fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 4,
+			record: { config: { language: 'none' }, assets: {}, writtenBy: 'x', writtenAt: 'y' },
+			rules: { dependabot: { onPr: 'label', label: 'ai-review' } },
+		})
+		const wf = await dependabotAutomergeWorkflowFor(dir)
+		expect(wf).not.toMatch(/gh pr merge/)
+		expect(wf).toMatch(/LABEL: "ai-review"/)
+	})
+
 	it('falls back to a default label', async () => {
 		expect(await workflowFor({ dependabot: { onPr: 'label' } })).toMatch(/LABEL: "needs-review"/)
 	})

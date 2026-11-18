@@ -11,6 +11,30 @@ import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
 
+// #1010: a repo declares it has no language stack, and the declaration wins.
+describe('language: none', () => {
+	const declare = (dir: string) =>
+		fs.writeJson(join(dir, '.repo-tooling.json'), {
+			version: 4,
+			record: { config: { language: 'none' }, writtenBy: 'x', writtenAt: 'y' },
+		})
+
+	it('reads unknown, even beside a marker file', async () => {
+		const dir = newTmpDir()
+		await declare(dir)
+		await fs.writeFile(join(dir, 'package.json'), '{}')
+		expect(await detectLanguage(dir)).toBe('unknown')
+		expect(await detectAuditLanguage(dir)).toBe('unknown')
+	})
+
+	it('is not a fresh dir and is not audited as JS', async () => {
+		const dir = newTmpDir()
+		await declare(dir)
+		expect(await isFreshDir(dir)).toBe(false)
+		expect(await detectAuditLanguage(dir)).toBe('unknown')
+	})
+})
+
 describe('detectLanguage', () => {
 	it('returns unknown for a bare dir with no marker files', async () => {
 		expect(await detectLanguage(newTmpDir())).toBe('unknown')
