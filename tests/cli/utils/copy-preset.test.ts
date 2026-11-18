@@ -17,19 +17,22 @@ const pkg = fs.readJsonSync(join(repoRoot, 'package.json'))
  */
 describe('shipped preset paths', () => {
 	let published: Set<string>
+	// npm pack takes well over Vitest's 10s default hook timeout on a slow local
+	// disk, which failed pre-push verify (#1035). Match the spawn timeout below.
+	const PACK_TIMEOUT_MS = 120_000
 
 	beforeAll(() => {
 		// --ignore-scripts skips the build; nothing asserted here lives in dist.
 		const run = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
 			cwd: repoRoot,
 			encoding: 'utf8',
-			timeout: 120_000,
+			timeout: PACK_TIMEOUT_MS,
 		})
 		// Without this, a failed pack surfaces as an opaque JSON.parse error.
 		if (run.status !== 0) throw new Error(`npm pack failed (${run.status}): ${run.stderr}`)
 		const files = JSON.parse(run.stdout)[0].files as { path: string }[]
 		published = new Set(files.map((f) => f.path))
-	})
+	}, PACK_TIMEOUT_MS)
 
 	it('publishes every file `copy <preset>` reads from', () => {
 		for (const [name, preset] of Object.entries(PRESETS)) {
