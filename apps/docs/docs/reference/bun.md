@@ -3,6 +3,11 @@ title: Bun
 description: Bun runtime/test-runner support — a Bun-typed tsconfig preset and a bunfig.toml template.
 ---
 
+:::caution Unsupported
+Bun is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
+:::
+
+
 [Bun](https://bun.sh) is a JavaScript runtime, test runner, and bundler. Even
 teams shipping Node-targeted libraries increasingly use Bun for the dev loop.
 repo-tooling ships a Bun-typed TypeScript preset and a `bunfig.toml` template so

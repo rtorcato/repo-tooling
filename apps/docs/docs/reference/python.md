@@ -3,6 +3,11 @@ title: Python
 description: Ruff, mypy and pytest configs, plus the Python checks doctor runs on a pyproject.toml repo.
 ---
 
+:::note Partial support
+Python is a partial language module: see the [supported stack](../guides/supported-stack.md). `doctor` and `fix` work, with no `setup` preset and no guarantees.
+:::
+
+
 `doctor` and `fix` detect a Python repo from `pyproject.toml` (or a legacy `setup.py`) and layer Python-specific checks on top of the language-agnostic ones (CI, CodeQL, Dependabot, GitHub repo settings).
 
 The standard here is **Ruff for lint *and* format, mypy for types, pytest for tests** — four tools' worth of coverage from three configs.

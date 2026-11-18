@@ -3,6 +3,11 @@ title: Semantic Release
 description: Automated versioning and publishing configuration.
 ---
 
+:::caution Unsupported
+semantic-release is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
+:::
+
+
 ## Usage
 
 ```javascript

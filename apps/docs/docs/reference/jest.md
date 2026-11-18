@@ -3,6 +3,11 @@ title: Jest
 description: Jest testing framework presets for browser and Node.js environments.
 ---
 
+:::caution Unsupported
+Jest is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
+:::
+
+
 ## Presets
 
 Two presets are available — pick the one that matches your test environment.

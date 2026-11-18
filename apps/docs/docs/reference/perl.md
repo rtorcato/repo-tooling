@@ -3,6 +3,11 @@ title: Perl
 description: Perl::Critic and perltidy configs, plus the Perl checks doctor runs on a cpanfile distribution.
 ---
 
+:::note Partial support
+Perl is a partial language module: see the [supported stack](../guides/supported-stack.md). `doctor` and `fix` work, with no `setup` preset and no guarantees.
+:::
+
+
 `doctor` and `fix` detect a Perl distribution from `cpanfile`, `Makefile.PL` or `dist.ini` and layer Perl-specific checks on top of the language-agnostic ones (CI, Dependabot, GitHub repo settings).
 
 The standard here is **Perl::Critic for lint, perltidy for format, prove for tests**. Unlike the Swift and Python modules there's no overlap to arbitrate: Perl::Critic only reports, it never rewrites, so the linter and the formatter can both run without fighting.

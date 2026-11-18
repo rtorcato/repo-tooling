@@ -23,6 +23,12 @@ Most tooling libraries give you one piece — just TypeScript configs, or just a
 
 **[Full documentation →](https://docs.torcato.dev/repo-tooling/)**
 
+> **Supported stack:** pnpm, Biome, Vitest, tsup, Changesets, GitHub Actions,
+> and the trunk and staged flows. Swift, Python and Perl are **partial**
+> (`doctor` and `fix`, no guarantees). Everything else is **unsupported**:
+> still usable through `rules.exceptions`, with no guarantees. See the
+> [supported stack](https://docs.torcato.dev/repo-tooling/docs/guides/supported-stack/).
+
 > **Package manager: pnpm, by design.** Every generator scaffolds pnpm
 > workflows, workspace files, and scripts. repo-tooling targets pnpm only for
 > now — npm, yarn, and Bun aren't generated.
