@@ -11,6 +11,7 @@ export type PresetName =
 	| 'nextjs-app'
 	| 'react-app'
 	| 'swift-library'
+	| 'none'
 	| 'vite-plus'
 	| 'vite-plus-app'
 
@@ -22,6 +23,7 @@ export const PRESET_NAMES: readonly PresetName[] = [
 	'nextjs-app',
 	'react-app',
 	'swift-library',
+	'none',
 	'vite-plus',
 	'vite-plus-app',
 ] as const
@@ -167,6 +169,26 @@ export function buildPresetConfig(name: PresetName, projectName: string): Projec
 				badges: false,
 				aiSetup: true,
 			}
+		// A repo with no language stack: shell, Docker, docs (#1010). Only
+		// `.repo-tooling.json` is written, so every JS-shaped field is "off". They are
+		// set because ProjectConfig requires them and the lockfile records them.
+		case 'none':
+			return {
+				projectName,
+				language: 'none',
+				projectType: 'node-api',
+				typescript: { enabled: false, config: 'base' },
+				linting: { tool: 'none' },
+				formatting: { tool: 'none' },
+				testing: { framework: 'none' },
+				gitHooks: false,
+				commitLint: false,
+				semanticRelease: false,
+				securityAutomation: false,
+				bundler: 'none',
+				badges: false,
+				aiSetup: false,
+			}
 		// Opt-in Vite+ (#897). Linting and formatting are 'none' because `vp check`
 		// does both: the toolchain is the `vitePlus` flag, which doctor reads.
 		case 'vite-plus':
@@ -204,7 +226,7 @@ export const CONFIG_SCHEMA = {
 	],
 	properties: {
 		projectName: { type: 'string', minLength: 1 },
-		language: { type: 'string', enum: ['js', 'swift', 'perl', 'python'] },
+		language: { type: 'string', enum: ['js', 'swift', 'perl', 'python', 'none'] },
 		projectType: {
 			type: 'string',
 			enum: ['library', 'web-app', 'node-api', 'nextjs-app', 'react-app'],
@@ -362,6 +384,8 @@ export function computeFileList(config: ProjectConfig): string[] {
 	// ones, so its list is built by the Swift scaffolder rather than filtered out
 	// of this one condition by condition.
 	if (config.language === 'swift') return swiftFileList(config)
+	// `none` writes the lockfile alone (#1010).
+	if (config.language === 'none') return ['.repo-tooling.json']
 
 	const files: string[] = ['package.json', '.repo-tooling.json']
 	files.push('.editorconfig', '.nvmrc', '.gitignore', 'knip.json', '.vscode/extensions.json')

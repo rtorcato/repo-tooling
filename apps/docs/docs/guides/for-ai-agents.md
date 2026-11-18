@@ -32,7 +32,7 @@ npx @rtorcato/repo-tooling setup --config-schema > project-config.schema.json
 npx @rtorcato/repo-tooling setup --preset library --dry-run
 ```
 
-Available presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `vite-plus`, `vite-plus-app`.
+Available presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `none`, `vite-plus`, `vite-plus-app`.
 
 `minimal` is tsconfig + Biome + Vitest and nothing else. Pass `--yes` whenever a
 human might be at the terminal: without it, `--preset` prints its file list and

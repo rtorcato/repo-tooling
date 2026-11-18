@@ -218,6 +218,30 @@ describe('setup-presets', () => {
 	})
 })
 
+// #1010: a repo with no language stack can still declare rules.
+describe('setup --preset none', () => {
+	it('records language none and lists only the lockfile', () => {
+		const config = buildPresetConfig('none', 'demo')
+		expect(config.language).toBe('none')
+		expect(validateProjectConfig(config).valid).toBe(true)
+		expect(computeFileList(config)).toEqual(['.repo-tooling.json'])
+	})
+
+	it('writes the lockfile alone: no package.json, no install', async () => {
+		const dir = newTmpDir()
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+		try {
+			await setupProject({ directory: dir, preset: 'none' })
+		} finally {
+			logSpy.mockRestore()
+		}
+		expect(await fs.readdir(dir)).toEqual(['.repo-tooling.json'])
+		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
+		expect(lock.record.config.language).toBe('none')
+		expect(installDependencies).not.toHaveBeenCalled()
+	})
+})
+
 describe('validateProjectConfig', () => {
 	it('rejects unknown fields', () => {
 		const result = validateProjectConfig({

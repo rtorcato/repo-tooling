@@ -127,7 +127,7 @@ npx @rtorcato/repo-tooling setup --preset library -d ./acme-lib --skip-install -
 
 `--skip-install` also skips the step that formats the generated files, so `biome check .` reports `biome.json`, `knip.json`, `tsup.config.ts` and `vitest.config.ts` as unformatted on a fresh scaffold. Run `pnpm install && pnpm biome check --write .` once before the first check.
 
-Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `vite-plus`, `vite-plus-app`.
+Presets: `minimal`, `library`, `web-app`, `node-api`, `nextjs-app`, `react-app`, `swift-library`, `none`, `vite-plus`, `vite-plus-app`.
 
 `minimal` is tsconfig + Biome + Vitest and nothing else — no git hooks, no commitlint, no release pipeline, no Dependabot/CodeQL, no AI agent files.
 

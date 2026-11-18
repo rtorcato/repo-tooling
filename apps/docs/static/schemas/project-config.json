@@ -29,7 +29,8 @@
 				"js",
 				"swift",
 				"perl",
-				"python"
+				"python",
+				"none"
 			]
 		},
 		"projectType": {

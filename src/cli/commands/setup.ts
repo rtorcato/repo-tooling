@@ -34,8 +34,10 @@ export interface ProjectConfig {
 	 * Primary language of the repo. Optional for backward compat — lockfiles
 	 * written before v2 lack it and are migrated to 'js' on read. New setups
 	 * always record it. Part of the multi-language seam (#139/#140).
+	 * `none` is a repo with no language stack (shell, Docker, docs): setup writes
+	 * only this file, so the repo can declare `rules` (#1010).
 	 */
-	language?: 'js' | 'swift' | 'perl' | 'python'
+	language?: 'js' | 'swift' | 'perl' | 'python' | 'none'
 	projectType: 'library' | 'web-app' | 'node-api' | 'nextjs-app' | 'react-app'
 	typescript: {
 		enabled: boolean
@@ -303,6 +305,19 @@ export async function setupProject(options: SetupOptions) {
 					{ directory: targetDir, config, files, ...(npmPublish && { npmPublish }) },
 					null,
 					2
+				)
+			)
+			return
+		}
+
+		// A repo with no language stack gets the lockfile and nothing else (#1010):
+		// no package.json, hooks or install. It exists so `rules` have a home.
+		if (config.language === 'none') {
+			await writeLockfile(targetDir, config)
+			console.log(chalk.green(`\n✅ Wrote ${LOCKFILE_NAME} with language "none".\n`))
+			console.log(
+				chalk.gray(
+					'   Declare rules.* in it, then run `npx @rtorcato/repo-tooling doctor` and `fix`.\n'
 				)
 			)
 			return
