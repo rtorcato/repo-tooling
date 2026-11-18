@@ -50,7 +50,9 @@ export function renderVersionWorkflow(): string {
 # Changesets for versioning only. Every push to main
 # opens or updates the "Version Packages" PR and releases nothing. Merging that
 # PR is the release: its push tags the new version, and the tag runs the release
-# workflow, which waits for one \`release\` approval.
+# workflow, which waits for one \`release\` approval. Version 0.0.0 is the
+# scaffold's placeholder, never a release, so nothing is tagged until the first
+# Version Packages PR merges.
 on:
   push:
     branches: [main]
@@ -99,7 +101,7 @@ jobs:
         with:
           github-token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           version-script: npx --no-install changeset version
-          publish-script: npx --no-install changeset tag
+          publish-script: npm run --silent changeset:tag
           commit-message: 'chore(release): version packages'
           pr-title: 'chore(release): version packages'
 `)
@@ -128,6 +130,36 @@ export function latestSemverTag(dir: string): string | null {
 	return best ? best.join('.') : null
 }
 
+/** Runs `changeset tag` unless the version is still the scaffold's 0.0.0 placeholder. */
+const TAG_SCRIPT =
+	"node -e \"if(require('./package.json').version!=='0.0.0')require('child_process').execSync('changeset tag',{stdio:'inherit'})\""
+
+/**
+ * `changeset tag` names a single-package repo's tag `vX.Y.Z`. A repo whose latest
+ * release tag is unprefixed (`1.2.0`, what the old Swift README told people to
+ * push) would get a second tag, `v1.2.0`, for a version that already shipped, and
+ * the tag-triggered release would run again. Create the prefixed tag on the same
+ * commit, locally; the caller tells the user to push it before merging.
+ *
+ * @returns the tag created, or null when none was needed.
+ */
+export function ensurePrefixedTag(dir: string): string | null {
+	const latest = latestSemverTag(dir)
+	if (!latest) return null
+	const git = (...args: string[]) =>
+		execFileSync('git', args, { cwd: dir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+	try {
+		const tags = git('tag', '--list')
+			.split('\n')
+			.map((t) => t.trim())
+		if (tags.includes(`v${latest}`) || !tags.includes(latest)) return null
+		git('tag', `v${latest}`, `${latest}^{commit}`)
+		return `v${latest}`
+	} catch {
+		return null
+	}
+}
+
 export interface VersioningOptions {
 	/** The private root package's name. */
 	name: string
@@ -152,6 +184,8 @@ export async function scaffoldVersioning(dir: string, opts: VersioningOptions): 
 	const version = opts.version ?? latestSemverTag(dir) ?? '0.0.0'
 	const scripts = { ...((existing?.scripts ?? {}) as Record<string, string>) }
 	scripts.changeset ??= 'changeset'
+	// `changeset tag` on the scaffold's 0.0.0 would tag v0.0.0 and start a release.
+	scripts['changeset:tag'] ??= TAG_SCRIPT
 	const devDependencies = {
 		...((existing?.devDependencies ?? {}) as Record<string, string>),
 	}

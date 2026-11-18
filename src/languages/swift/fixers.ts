@@ -5,7 +5,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from '../../base/safe-fs.js'
 import type { Fixer } from '../../base/fixers.js'
-import { scaffoldVersioning, VERSION_WORKFLOW } from '../../base/versioning.js'
+import { ensurePrefixedTag, scaffoldVersioning, VERSION_WORKFLOW } from '../../base/versioning.js'
 import { buildPresetConfig } from '../../cli/commands/setup-presets.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { LOCKFILE_NAME, writeLockfile } from '../../cli/utils/lockfile.js'
@@ -174,6 +174,14 @@ export const SWIFT_FIXERS: Fixer[] = [
 			await fs.ensureDir(workflowsDir)
 			await fs.writeFile(path.join(workflowsDir, 'release.yml'), renderSwiftReleaseWorkflow())
 			const versioning = await scaffoldVersioning(targetDir, { name: path.basename(targetDir) })
+			const prefixed = ensurePrefixedTag(targetDir)
+			if (prefixed) {
+				console.error(
+					chalk.yellow(
+						`   created ${prefixed} locally: your latest tag is unprefixed, and Changesets tags \`vX.Y.Z\`. Push it before merging the Version Packages PR: git push origin ${prefixed}`
+					)
+				)
+			}
 			return { filesWritten: ['.github/workflows/release.yml', ...versioning] }
 		},
 	},
