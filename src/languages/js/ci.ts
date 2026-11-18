@@ -623,11 +623,44 @@ ${UNPUBLISHED_CHECK.split('\n')
 	.map((l) => `          ${l}`)
 	.join('\n')}
 
-  publish:
+  # No environment, so it never asks for an approval. It queues in the \`release\`
+  # group behind any publish still waiting for one, then re-runs the npm check:
+  # a push that landed during that wait saw the version as unpublished (the
+  # \`version\` job is outside the group on purpose), and without this it would
+  # queue a duplicate approval request for a publish that already happened.
+  # A newer gate replaces an older pending one, which is safe: its own check
+  # sees whatever is still unpublished at its commit.
+  gate:
     needs: version
+    if: needs.version.outputs.release == 'true'
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release: \${{ steps.unpublished.outputs.release }}
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v7
+
+${setup(false)}
+      - name: 🔎 Re-check for a version not on npm yet
+        id: unpublished
+        run: |
+${UNPUBLISHED_CHECK.split('\n')
+	.map((l) => `          ${l}`)
+	.join('\n')}
+
+  publish:
+    needs: [version, gate]
     # The Version Packages PR merge, or a dispatch. Any other push skips this
-    # job, so it never queues an approval request.
-    if: github.event_name == 'workflow_dispatch' || needs.version.outputs.release == 'true'
+    # job, so it never queues an approval request; a push whose version a
+    # publish ahead of it already shipped is skipped by \`gate\`.
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      (github.event_name == 'workflow_dispatch' || needs.gate.outputs.release == 'true')
     # Holds the run until a required reviewer approves it. npm trusted
     # publishing is bound to release.yml + this environment, or the OIDC
     # publish fails with E404.

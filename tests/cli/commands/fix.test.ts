@@ -2251,7 +2251,9 @@ describe('fix github-actions on a single-job Changesets release', () => {
 		await fixCommand('github-actions', { directory: dir, yes: true })
 		const ciPath = join(dir, '.github/workflows/ci.yml')
 		const releasePath = join(dir, '.github/workflows/release.yml')
-		expect(await fs.readFile(releasePath, 'utf-8')).toContain('  publish:\n    needs: version\n')
+		expect(await fs.readFile(releasePath, 'utf-8')).toContain(
+			'  publish:\n    needs: [version, gate]\n'
+		)
 		const ci = `${await fs.readFile(ciPath, 'utf-8')}
   docs-build:
     runs-on: ubuntu-latest
