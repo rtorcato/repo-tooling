@@ -28,8 +28,20 @@ export interface RequiredSecret {
 
 const WHERE_TO_GET: Record<string, string> = {
 	RELEASE_TOKEN:
-		'a fine-grained PAT with contents: write (or a GitHub App token) that can push past branch protection',
+		'a fine-grained PAT with contents: write that can push past branch protection (not needed with the RELEASE_APP_* secrets)',
+	RELEASE_APP_ID: "the release GitHub App's App ID or Client ID",
+	RELEASE_APP_PRIVATE_KEY: "a private key (.pem) generated in the release GitHub App's settings",
 }
+
+/**
+ * Release credentials (#1030): a GitHub App (both `RELEASE_APP_*` secrets) or
+ * `RELEASE_TOKEN`. Either one fully set covers the other, so a repo on the App
+ * is not nagged for a PAT. With neither, every use falls back to GITHUB_TOKEN.
+ */
+const RELEASE_APP_SECRETS = ['RELEASE_APP_ID', 'RELEASE_APP_PRIVATE_KEY']
+const RELEASE_CREDENTIALS = new Set([...RELEASE_APP_SECRETS, 'RELEASE_TOKEN'])
+const NO_RELEASE_CREDENTIALS_HINT =
+	"Version Packages PRs opened with GITHUB_TOKEN wait on 'Approve and run workflows' and their required check never runs. Set RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY (one GitHub App installed on every repo), or RELEASE_TOKEN"
 
 const withoutComments = (s: string) =>
 	s
@@ -43,7 +55,10 @@ function usesIn(text: string, file: string, job: string, environment: string | n
 	for (const m of clean.matchAll(/secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
 		const name = m[1] as string
 		if (name === 'GITHUB_TOKEN' || found.has(name)) continue
-		const fallback = new RegExp(`secrets\\.${name}\\s*\\|\\|\\s*secrets\\.GITHUB_TOKEN`).test(clean)
+		// The App secrets only mint a token, and the job falls back past it.
+		const fallback =
+			new RegExp(`secrets\\.${name}\\s*\\|\\|\\s*secrets\\.GITHUB_TOKEN`).test(clean) ||
+			(RELEASE_APP_SECRETS.includes(name) && /\|\|\s*secrets\.GITHUB_TOKEN/.test(clean))
 		found.set(name, { name, file, job, environment, fallback })
 	}
 	return [...found.values()]
@@ -129,13 +144,17 @@ export async function checkRepositorySecrets(dir: string, exec?: GhExec): Promis
 		envs.set(e, await listNames(gh, `repos/{owner}/{repo}/environments/${e}/secrets`))
 	}
 
-	const missing = uses.filter((u) => {
+	const unset = uses.filter((u) => {
 		if (repo.has(u.name) || org.has(u.name)) return false
 		if (!u.environment) return true
 		const env = envs.get(u.environment)
 		// An unreadable environment can't prove absence.
 		return env ? !env.has(u.name) : false
 	})
+	const referenced = new Set(uses.map((u) => u.name))
+	const isSet = (name: string) => referenced.has(name) && !unset.some((u) => u.name === name)
+	const releaseCredentials = RELEASE_APP_SECRETS.every(isSet) || isSet('RELEASE_TOKEN')
+	const missing = releaseCredentials ? unset.filter((u) => !RELEASE_CREDENTIALS.has(u.name)) : unset
 	if (missing.length === 0) {
 		return { check: CHECK, status: 'ok', detail: 'all referenced secrets are set' }
 	}
@@ -148,6 +167,12 @@ export async function checkRepositorySecrets(dir: string, exec?: GhExec): Promis
 		check: CHECK,
 		status: hard ? 'missing' : 'drift',
 		detail: `not set: ${names}. Dependabot-triggered runs read Dependabot secrets, not these`,
-		hint: secretHints(requiredSecrets(missing)).join('\n'),
+		hint: [
+			// Only a workflow that mints the App token opens Version Packages PRs.
+			...(missing.some((u) => RELEASE_APP_SECRETS.includes(u.name))
+				? [NO_RELEASE_CREDENTIALS_HINT]
+				: []),
+			...secretHints(requiredSecrets(missing)),
+		].join('\n'),
 	}
 }

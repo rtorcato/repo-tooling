@@ -4,6 +4,8 @@ import fs from 'fs-extra'
 import { describe, expect, it } from 'vitest'
 import type { GhExec, GhResult } from '../../src/base/github-settings.js'
 import { checkRepositorySecrets } from '../../src/base/secrets.js'
+import { buildPresetConfig } from '../../src/cli/commands/setup-presets.js'
+import { renderReleaseWorkflow } from '../../src/languages/js/ci.js'
 
 const ok = (names: string[]): GhResult => ({
 	ok: true,
@@ -90,5 +92,60 @@ describe('checkRepositorySecrets', () => {
 			gh({ repo: ok(['API_KEY', 'RELEASE_TOKEN']), env: fail })
 		)
 		expect(r.status).toBe('ok')
+	})
+})
+
+// The generated Changesets release.yml: an App token, then RELEASE_TOKEN, then
+// GITHUB_TOKEN (#1030).
+describe('checkRepositorySecrets on a Changesets release workflow (#1030)', () => {
+	async function changesetsRepo(): Promise<string> {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'secrets-cs-'))
+		await fs.ensureDir(path.join(dir, '.git'))
+		const yml = renderReleaseWorkflow({ ...buildPresetConfig('library', 'x'), changesets: true })
+		await fs.outputFile(path.join(dir, '.github/workflows/release.yml'), yml ?? '')
+		return dir
+	}
+
+	it('flags a repo with no release credentials, naming the held-workflows symptom', async () => {
+		const r = await checkRepositorySecrets(await changesetsRepo(), gh({}))
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('RELEASE_APP_ID')
+		expect(r.detail).toContain('RELEASE_TOKEN')
+		expect(r.hint).toContain('Approve and run workflows')
+		expect(r.hint).toContain('gh secret set RELEASE_APP_PRIVATE_KEY')
+	})
+
+	it('passes a repo with the App secrets and no RELEASE_TOKEN', async () => {
+		const r = await checkRepositorySecrets(
+			await changesetsRepo(),
+			gh({ repo: ok(['RELEASE_APP_ID', 'RELEASE_APP_PRIVATE_KEY']) })
+		)
+		expect(r.status).toBe('ok')
+	})
+
+	it('counts org-scoped App secrets', async () => {
+		const r = await checkRepositorySecrets(
+			await changesetsRepo(),
+			gh({ org: ok(['RELEASE_APP_ID', 'RELEASE_APP_PRIVATE_KEY']) })
+		)
+		expect(r.status).toBe('ok')
+	})
+
+	it('passes a repo with RELEASE_TOKEN and no App', async () => {
+		const r = await checkRepositorySecrets(
+			await changesetsRepo(),
+			gh({ repo: ok(['RELEASE_TOKEN']) })
+		)
+		expect(r.status).toBe('ok')
+	})
+
+	it('needs both App secrets: an App ID alone is still no credential', async () => {
+		const r = await checkRepositorySecrets(
+			await changesetsRepo(),
+			gh({ repo: ok(['RELEASE_APP_ID']) })
+		)
+		expect(r.status).toBe('drift')
+		expect(r.detail).toContain('RELEASE_APP_PRIVATE_KEY')
+		expect(r.detail).not.toContain('RELEASE_APP_ID (')
 	})
 })

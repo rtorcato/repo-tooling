@@ -734,6 +734,57 @@ jobs:
 		expect(check(await checkGitHubSettings(repoWithReleaseJob(), exec))?.status).toBe('ok')
 	})
 
+	it('does not flag release credentials an ungated job also reads (#1030)', async () => {
+		const dir = repoWithReleaseJob()
+		fs.outputFileSync(
+			join(dir, '.github/workflows/ci.yml'),
+			`name: CI
+
+on: workflow_dispatch
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        with:
+          client-id: \${{ secrets.RELEASE_APP_ID }}
+          private-key: \${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/create-github-app-token@v3
+        with:
+          client-id: \${{ secrets.RELEASE_APP_ID }}
+          private-key: \${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - run: npx semantic-release
+        env:
+          NPM_EXTRA: \${{ secrets.PUBLISH_ONLY }}
+`
+		)
+		const passed = check(
+			await checkGitHubSettings(
+				dir,
+				fakeGh({ repoSecrets: secrets('RELEASE_APP_ID', 'RELEASE_APP_PRIVATE_KEY') })
+			)
+		) as { status: string; detail?: string } | undefined
+		expect(passed?.status).toBe('ok')
+		expect(passed?.detail).toContain('ungated job')
+		// A secret only the gated job reads is still flagged.
+		const drift = check(
+			await checkGitHubSettings(
+				dir,
+				fakeGh({
+					repoSecrets: secrets('RELEASE_APP_ID', 'RELEASE_APP_PRIVATE_KEY', 'PUBLISH_ONLY'),
+				})
+			)
+		)
+		expect(drift?.status).toBe('drift')
+		expect(drift?.hint).toContain('PUBLISH_ONLY')
+		expect(drift?.hint).not.toContain('RELEASE_APP_ID')
+	})
+
 	it('is optional-missing without admin access to list secrets', async () => {
 		const c = check(await checkGitHubSettings(repoWithReleaseJob(), fakeGh()))
 		expect(c?.status).toBe('optional-missing')
