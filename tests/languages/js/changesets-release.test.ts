@@ -81,6 +81,8 @@ describe('generated Changesets release workflow (#938)', () => {
 			expect(job).toContain("if: steps.creds.outputs.app == 'true'")
 			expect(job).toContain('client-id: ${{ secrets.RELEASE_APP_ID }}')
 			expect(job).toContain('private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}')
+			expect(job).toContain('permission-contents: write')
+			expect(job).toContain('permission-pull-requests: write')
 			const token =
 				'${{ steps.app-token.outputs.token || secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}'
 			expect(job).toContain(`token: ${token}`)

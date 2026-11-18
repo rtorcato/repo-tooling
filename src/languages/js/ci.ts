@@ -554,6 +554,9 @@ const RELEASE_CREDENTIAL_STEPS = `      # A GitHub App token opens the Version P
         with:
           client-id: \${{ secrets.RELEASE_APP_ID }}
           private-key: \${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Scope the token to what Changesets needs, not every App permission.
+          permission-contents: write
+          permission-pull-requests: write
 `
 
 /**
