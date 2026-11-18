@@ -7,7 +7,6 @@ description: Starter turbo.json task pipeline for pnpm-workspace monorepos.
 Turborepo is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
 :::
 
-
 [Turborepo](https://turborepo.com) caches and parallelizes tasks across a
 pnpm-workspace monorepo. repo-tooling scaffolds a starter `turbo.json` with a
 sensible build/lint/typecheck/test/dev pipeline — you tune the `outputs` to

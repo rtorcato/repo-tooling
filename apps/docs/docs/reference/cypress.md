@@ -7,7 +7,6 @@ description: Cypress end-to-end testing preset — a peer to the Playwright pres
 Cypress is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
 :::
 
-
 Cypress is offered as a peer to Playwright for end-to-end testing. Pick it in
 the setup wizard (`🌲 Cypress (E2E)`) or scaffold it into an existing project
 with `repo-tooling fix cypress`.

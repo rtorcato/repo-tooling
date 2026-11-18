@@ -7,7 +7,6 @@ description: Rust-based linter additive to Biome. 50–100× faster than ESLint.
 oxlint is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
 :::
 
-
 [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) is a Rust-based linter that's 50–100× faster than ESLint. We position it as **additive** to Biome — Biome stays the source of truth for formatting and the broad lint baseline; Oxlint adds a faster pass for type-aware and import rules Biome doesn't cover yet.
 
 ## Setup

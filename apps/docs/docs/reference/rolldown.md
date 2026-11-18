@@ -7,7 +7,6 @@ description: Rolldown bundler configuration factory for TypeScript libraries. Ru
 Rolldown is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
 :::
 
-
 [Rolldown](https://rolldown.rs) is the Rust-based, Rollup-API-compatible bundler
 that Vite uses internally. It's offered as a bundler peer to [Rollup](./rollup.md),
 [tsup](./tsup.md), and [esbuild](./esbuild.md). The preset produces unbundled,

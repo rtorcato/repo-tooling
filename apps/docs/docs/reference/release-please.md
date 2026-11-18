@@ -7,7 +7,6 @@ description: Google's release-PR-driven release tool. Alternative to semantic-re
 release-please is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
 :::
 
-
 [Release Please](https://github.com/googleapis/release-please) automates
 releases by maintaining a "release PR" that accumulates conventional-commit
 changes into a changelog and version bump. Merging that PR tags the release and

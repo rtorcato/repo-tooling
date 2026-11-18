@@ -25,7 +25,7 @@ Most tooling libraries give you one piece — just TypeScript configs, or just a
 
 > **Supported stack:** pnpm, Biome, Vitest, tsup, Changesets, GitHub Actions,
 > and the trunk and staged flows. Swift, Python and Perl are **partial**
-> (`doctor` and `fix`, no guarantees). Everything else is **unsupported**:
+> (`doctor` and `fix`, plus a `swift-library` preset; no guarantees). Everything else is **unsupported**:
 > still usable through `rules.exceptions`, with no guarantees. See the
 > [supported stack](https://docs.torcato.dev/repo-tooling/docs/guides/supported-stack/).
 

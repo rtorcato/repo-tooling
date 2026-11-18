@@ -7,7 +7,6 @@ description: Rollup bundler configuration factory for TypeScript libraries.
 Rollup is outside the [supported stack](../guides/supported-stack.md). It still works through `rules.exceptions`, with no guarantees.
 :::
 
-
 Rollup is the de-facto library bundler, offered as a peer to [tsup](./tsup.md)
 and [esbuild](./esbuild.md). The preset produces unbundled, per-file ESM + CJS
 output with `.d.ts` declarations — the same shape as the tsup preset — and

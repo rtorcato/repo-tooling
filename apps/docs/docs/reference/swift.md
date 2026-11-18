@@ -7,7 +7,6 @@ description: SwiftLint and Periphery configs, plus the Swift checks doctor runs 
 Swift is a partial language module: see the [supported stack](../guides/supported-stack.md). `doctor`, `fix` and the `swift-library` preset work, with no guarantees.
 :::
 
-
 Swift is the first non-JavaScript language module. `doctor` and `fix` detect a Swift repo from `Package.swift` and layer Swift-specific checks on top of the language-agnostic ones (CI, CodeQL, Dependabot, GitHub repo settings).
 
 The standard here is the one [`swift-common`](https://github.com/rtorcato/swift-common) actually runs — SwiftLint for lint *and* formatting, Periphery for dead code.
