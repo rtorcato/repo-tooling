@@ -16,6 +16,7 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import { type FileCheck, type GitHooksProfile, checkFile } from '../../base/checks.js'
+import { cutsRelease, jobEnvironment, workflowJobs } from '../../base/github-settings.js'
 import type { CheckResult } from '../../base/types.js'
 import { parsePackageSwift } from './ci.js'
 import { SWIFT_HOOKS_DIR } from './git-hooks.js'
@@ -312,6 +313,10 @@ export async function checkSwiftTests(dir: string): Promise<CheckResult> {
  * Only the trigger section is searched (everything above `jobs:`), because
  * `tags:` also appears inside job steps — docker/metadata-action emits one — and
  * a step that mentions tags is not a release trigger.
+ *
+ * A job in that workflow that cuts the release with no `environment:` is drift
+ * (#1031): anyone who can push a tag releases. The older template had none, so
+ * `fix swift-release` is the way back to the gated one.
  */
 export async function checkSwiftRelease(dir: string): Promise<CheckResult> {
 	const check = 'Release automation'
@@ -327,6 +332,18 @@ export async function checkSwiftRelease(dir: string): Promise<CheckResult> {
 			const contents = await fs.readFile(path.join(workflowsDir, file), 'utf-8')
 			const triggers = contents.split(/^jobs:/m)[0] ?? ''
 			if (/^\s+tags:/m.test(triggers)) {
+				const ungated = [...workflowJobs(contents)].find(
+					([, body]) =>
+						cutsRelease(body.replace(/^[ \t]*#.*$/gm, '')) && jobEnvironment(body) === null
+				)
+				if (ungated) {
+					return {
+						check,
+						status: 'drift',
+						detail: `.github/workflows/${file} \`${ungated[0]}\` cuts the release with no \`environment:\` — anyone who can push a tag releases`,
+						hint: 'Run `npx @rtorcato/repo-tooling fix swift-release` to regenerate release.yml with `environment: release`, then `fix release-environment` to give that environment a required reviewer',
+					}
+				}
 				return {
 					check,
 					status: 'ok',

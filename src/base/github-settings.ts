@@ -1002,8 +1002,38 @@ export function publishes(text: string): boolean {
 	return PUBLISH_COMMAND.test(t)
 }
 
+/**
+ * A release with no registry behind it (#1031): a GitHub Release, or a tag
+ * pushed from the job. A SwiftPM release *is* a tag, and a firmware repo ships
+ * its binaries as Release assets, so either one is as permanent as a publish.
+ */
+export const RELEASE_COMMAND =
+	/gh\s+release\s+create|softprops\/action-gh-release|actions\/create-release|ncipollo\/release-action|github-tag-action|git\s+push\b[^\n]*(?:--tags|--follow-tags|refs\/tags\/)/
+
+/** Does this job text cut a GitHub Release or push a tag? See {@link RELEASE_COMMAND}. */
+export function cutsRelease(text: string): boolean {
+	if (RELEASE_COMMAND.test(text)) return true
+	// `git tag v1.2.3` then `git push origin v1.2.3`: the push names no `--tags`.
+	return (
+		/\bgit\s+tag\s+(?!-l\b|--list\b|-d\b|--delete\b)\S/.test(text) && /\bgit\s+push\b/.test(text)
+	)
+}
+
+/** Publishes to a registry, or cuts a release without one (#1031). */
+export function releases(text: string): boolean {
+	return publishes(text) || cutsRelease(text)
+}
+
+/** Does this workflow fire on a tag push? Only the trigger section, above `jobs:`, counts. */
+export function tagTriggered(yaml: string): boolean {
+	return /^\s+tags:/m.test(withoutComments(yaml.split(/^jobs:/m)[0] ?? ''))
+}
+
+const NOTHING_RELEASES =
+	'no workflow job publishes to a registry, creates a GitHub Release or pushes a tag'
+
 const GATE_HINT =
-	'Run `npx @rtorcato/repo-tooling fix release-environment` to create the `release` environment with required reviewers (you) and add `environment: release` to the publishing job — a merge to the default branch then leaves the run `waiting` instead of publishing'
+	'Run `npx @rtorcato/repo-tooling fix release-environment` to create the `release` environment with required reviewers (you) and add `environment: release` to the releasing job — the run then waits for a reviewer instead of publishing or cutting the release'
 
 const ENV_HINT =
 	'Add `environment: release` to the publishing job, or delete the environment — whichever was meant. An environment nothing references still lists under Settings → Environments as though it gates something'
@@ -1525,32 +1555,44 @@ interface PublishJob {
 	environment: string | null
 	/** `secrets.NAME` the job references, GITHUB_TOKEN excluded. */
 	secrets: string[]
+	/** The workflow fires on a tag push, so the gate must admit tag refs (#1031). */
+	tags: boolean
 }
 
 /**
- * The first workflow job that runs a publish command, or null if none does.
+ * The first workflow job that releases, or null if none does (#1031): one that
+ * publishes to a registry, creates a GitHub Release or pushes a tag. With
+ * `registry` false (a private package) only the last two count, since a
+ * private package never reaches a registry but can still cut a Release.
  *
  * `'skip'` when the directory exists but can't be read — a permission error or a
  * broken symlink must not read as "nothing publishes", which would report the
  * gate as `ok` on a repo whose workflows were never inspected. Same shape as
  * `readEnvironments`: absent is an answer, unreadable is not.
  */
-async function findPublishJob(dir: string): Promise<PublishJob | null | 'skip'> {
+async function findPublishJob(dir: string, registry = true): Promise<PublishJob | null | 'skip'> {
+	const matches = registry ? releases : cutsRelease
 	const workflowsDir = path.join(dir, '.github', 'workflows')
 	if (!(await fs.pathExists(workflowsDir))) return null
 	try {
 		for (const f of (await fs.readdir(workflowsDir)).sort()) {
 			if (!/\.ya?ml$/.test(f)) continue
 			const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
-			if (!publishes(content)) continue
+			if (!matches(content)) continue
 			for (const [job, raw] of workflowJobs(content)) {
 				const body = withoutComments(raw)
-				if (publishes(body)) {
+				if (matches(body)) {
 					const secrets = new Set(
 						[...body.matchAll(/secrets\.([A-Za-z_]\w*)/g)].map((m) => m[1] as string)
 					)
 					secrets.delete('GITHUB_TOKEN')
-					return { file: f, job, environment: jobEnvironment(body), secrets: [...secrets] }
+					return {
+						file: f,
+						job,
+						environment: jobEnvironment(body),
+						secrets: [...secrets],
+						tags: tagTriggered(content),
+					}
 				}
 			}
 		}
@@ -1636,17 +1678,21 @@ const releaseBranches = (rules: GithubRules, defaultBranch: string) =>
  * run in the environment and request the release approval. A protected-branches
  * policy counts as restricted. A custom one is read back and matched by exact
  * name, so a wildcard pattern reads as missing.
+ *
+ * `noTag` (#1031): the policy is custom and admits no tag at all, so a
+ * tag-triggered release is rejected before it reaches the reviewer. Only the
+ * caller knows whether the workflow fires on tags, so it decides if that matters.
  */
 async function releaseBranchGap(
 	gh: GhExec,
 	nwo: string,
 	env: Environment | undefined,
 	wanted: string[]
-): Promise<{ unrestricted: boolean; missing: string[] } | 'skip'> {
+): Promise<{ unrestricted: boolean; missing: string[]; noTag: boolean } | 'skip'> {
 	const policy = env ? env.branchPolicy : null
 	if (policy === undefined || policy?.protected_branches)
-		return { unrestricted: false, missing: [] }
-	if (policy === null) return { unrestricted: true, missing: wanted }
+		return { unrestricted: false, missing: [], noTag: false }
+	if (policy === null) return { unrestricted: true, missing: wanted, noTag: true }
 	const r = await gh([
 		'api',
 		`repos/${nwo}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies?per_page=100`,
@@ -1654,14 +1700,24 @@ async function releaseBranchGap(
 	if (!r.ok) return 'skip'
 	try {
 		const d = JSON.parse(r.stdout) as { branch_policies?: Array<{ name?: string; type?: string }> }
-		const names = new Set(
-			(d.branch_policies ?? []).flatMap((b) => ((b.type ?? 'branch') === 'branch' ? [b.name] : []))
-		)
-		return { unrestricted: false, missing: wanted.filter((b) => !names.has(b)) }
+		const all = d.branch_policies ?? []
+		const names = new Set(all.flatMap((b) => ((b.type ?? 'branch') === 'branch' ? [b.name] : [])))
+		return {
+			unrestricted: false,
+			missing: wanted.filter((b) => !names.has(b)),
+			noTag: !all.some((b) => b.type === 'tag'),
+		}
 	} catch {
 		return 'skip'
 	}
 }
+
+/**
+ * The tag rule `fix release-environment` adds for a tag-triggered release
+ * (#1031). Any tag: the required reviewer is the gate, and a narrower pattern
+ * would silently reject a tag scheme this package didn't anticipate.
+ */
+const RELEASE_TAG_PATTERN = '*'
 
 const CUSTOM_BRANCH_POLICY: BranchPolicy = {
 	protected_branches: false,
@@ -1685,7 +1741,11 @@ const CUSTOM_BRANCH_POLICY: BranchPolicy = {
  * environment" is the gate check's; "no `environment:` but a `release`
  * environment exists" is the environment check's, and the gate check defers.
  *
- * A repo that publishes nothing is `ok` — not applicable, not drift. The fixer
+ * "Publishing" covers any release (#1031): a registry publish, a GitHub
+ * Release, or a tag pushed from the job. A SwiftPM release is only a tag, and
+ * without the gate anyone who can push one releases.
+ *
+ * A repo that releases nothing is `ok` — not applicable, not drift. The fixer
  * is `fix release-environment` (`applyReleaseEnvironment` below), which uses
  * the authenticated user as the required reviewer.
  */
@@ -1696,7 +1756,7 @@ async function checkReleaseGate(
 	rules: GithubRules = {},
 	defaultBranch = 'main'
 ): Promise<[CheckResult, CheckResult, CheckResult]> {
-	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
+	const publish = await findPublishJob(dir, !(await isPrivatePackage(dir)))
 	if (publish === 'skip') {
 		const reason = 'could not read .github/workflows'
 		return [
@@ -1706,7 +1766,7 @@ async function checkReleaseGate(
 		]
 	}
 	if (!publish) {
-		const detail = 'not applicable — no workflow job publishes to a registry'
+		const detail = `not applicable — ${NOTHING_RELEASES}`
 		return [
 			{ check: RELEASE_GATE_CHECK, status: 'ok', detail },
 			{ check: RELEASE_ENV_CHECK, status: 'ok', detail },
@@ -1736,7 +1796,7 @@ async function checkReleaseGate(
 			: {
 					check: RELEASE_GATE_CHECK,
 					status: 'drift',
-					detail: `${where} publishes with no \`environment:\` and the repo has no \`${RELEASE_ENVIRONMENT}\` environment — anything that lands on the default branch publishes`,
+					detail: `${where} releases with no \`environment:\` and the repo has no \`${RELEASE_ENVIRONMENT}\` environment — ${publish.tags ? 'anyone who can push a tag cuts a release' : 'anything that lands on the default branch publishes'}`,
 					hint: GATE_HINT,
 				}
 	} else if (!envs.has(named)) {
@@ -1799,6 +1859,13 @@ async function checkReleaseGate(
 				status: 'drift',
 				detail: `the \`${named}\` environment's branch policy does not allow ${gap.missing.map((b) => `\`${b}\``).join(', ')}${rules.releaseBranches ? declaredBy('releaseBranches', rules.releaseBranches) : ''}`,
 				hint,
+			}
+		} else if (publish.tags && gap.noTag) {
+			gate = {
+				check: RELEASE_GATE_CHECK,
+				status: 'drift',
+				detail: `${where} fires on a tag push, but the \`${named}\` environment's deployment policy admits no tag — the release is rejected before it reaches the reviewer`,
+				hint: `Run \`npx @rtorcato/repo-tooling fix release-environment\` to add a \`${RELEASE_TAG_PATTERN}\` tag rule to \`${RELEASE_ENVIRONMENT}\``,
 			}
 		}
 	}
@@ -2238,8 +2305,12 @@ export function addJobEnvironment(yaml: string, jobId: string, env: string): str
  *    and each missing `rules.github.releaseBranches` entry (default: the
  *    default branch) is then added to it. A protected-branches policy is left
  *    alone, and a custom one only gains branches.
- * 2. `environment: release` on the publishing job, so the merge leaves the run
- *    `waiting` instead of publishing.
+ * 2. `environment: release` on the releasing job, so the merge (or tag push)
+ *    leaves the run `waiting` instead of publishing.
+ *
+ * A tag-triggered release (#1031) also gets a `*` tag rule on a custom branch
+ * policy that has none; without one GitHub rejects the run before the reviewer
+ * ever sees it.
  *
  * A job already behind some *other* environment is a warning, not a rename —
  * this fixer scaffolds the standard, it does not migrate a custom setup.
@@ -2262,13 +2333,13 @@ export async function applyReleaseEnvironment(
 	}
 	const { nwo, branch } = probe.info
 
-	const publish = (await isPrivatePackage(dir)) ? null : await findPublishJob(dir)
+	const publish = await findPublishJob(dir, !(await isPrivatePackage(dir)))
 	if (publish === 'skip') {
 		console.error(chalk.yellow('   skipped — could not read .github/workflows'))
 		return []
 	}
 	if (!publish) {
-		console.error(chalk.gray('   skipped — no workflow job publishes to a registry'))
+		console.error(chalk.gray(`   skipped — ${NOTHING_RELEASES}`))
 		return []
 	}
 	if (publish.environment !== null && publish.environment !== RELEASE_ENVIRONMENT) {
@@ -2388,6 +2459,27 @@ export async function applyReleaseEnvironment(
 				'-',
 			],
 			JSON.stringify({ name, type: 'branch' })
+		)
+		if (r.ok) applied.push(label)
+		else {
+			console.error(chalk.yellow(`   could not add ${label}: ${r.stderr.trim() || 'gh error'}`))
+			return applied
+		}
+	}
+
+	// A custom policy with no tag rule rejects a tag-triggered run outright (#1031).
+	if (publish.tags && gap.noTag) {
+		const label = `\`${RELEASE_TAG_PATTERN}\` tags on the \`${RELEASE_ENVIRONMENT}\` deployment policy`
+		const r = await gh(
+			[
+				'api',
+				'-X',
+				'POST',
+				`repos/${nwo}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies`,
+				'--input',
+				'-',
+			],
+			JSON.stringify({ name: RELEASE_TAG_PATTERN, type: 'tag' })
 		)
 		if (r.ok) applied.push(label)
 		else {

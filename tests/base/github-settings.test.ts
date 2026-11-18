@@ -8,6 +8,7 @@ import {
 	applyReleaseEnvironment,
 	buildGhApplyCommands,
 	checkGitHubSettings,
+	cutsRelease,
 	departuresFromStandard,
 	type GhExec,
 	type GhResult,
@@ -18,6 +19,7 @@ import {
 	workflowJobs,
 } from '../../src/base/github-settings.js'
 import type { GithubRules } from '../../src/cli/utils/lockfile.js'
+import { renderSwiftReleaseWorkflow } from '../../src/languages/swift/ci.js'
 import { useTmpDir } from '../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -476,6 +478,150 @@ jobs:
 		}
 	})
 
+	describe('releases with no registry (#1031)', () => {
+		/** The Swift release job as shipped before #1031: no `environment:`. */
+		const oldSwiftRelease = () =>
+			renderSwiftReleaseWorkflow().replace('    environment: release\n', '')
+
+		/** A repo with only this workflow and no language marker at all. */
+		function bareRepo(yaml: string): string {
+			const dir = gitRepo()
+			fs.outputFileSync(join(dir, '.github/workflows/release.yml'), yaml)
+			return dir
+		}
+
+		it('drifts on the old Swift template, which releases on a tag push', async () => {
+			const dir = bareRepo(oldSwiftRelease())
+			fs.outputFileSync(join(dir, 'Package.swift'), '// swift-tools-version: 5.9\n')
+			const g = gate(await checkGitHubSettings(dir, fakeGh()))
+			expect(g?.status).toBe('drift')
+			expect(g?.detail).toContain('release.yml `release`')
+			expect(g?.detail).toContain('anyone who can push a tag')
+		})
+
+		it('checks a no-language repo whose release.yml runs gh release create', async () => {
+			const dir = bareRepo(`name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make
+      - run: gh release create "$GITHUB_REF_NAME" build/*.bin
+`)
+			const results = await checkGitHubSettings(dir, fakeGh())
+			expect(gate(results)?.status).toBe('drift')
+			expect(gate(results)?.detail).toContain('`firmware`')
+			// The decorative-environment check applies to it too.
+			const withEnv = await checkGitHubSettings(
+				dir,
+				fakeGh({ environments: environments(['release', true]) })
+			)
+			expect(env(withEnv)?.status).toBe('drift')
+		})
+
+		it('checks a private package that cuts a GitHub Release', async () => {
+			const dir = repoWithWorkflow(
+				`name: Release
+
+on: workflow_dispatch
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: softprops/action-gh-release@v2
+`,
+				{ private: true }
+			)
+			expect(gate(await checkGitHubSettings(dir, fakeGh()))?.status).toBe('drift')
+		})
+
+		it('ignores a release command that only appears in a comment', async () => {
+			const dir = bareRepo(`name: CI
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # gh release create runs in another repo
+      - run: make
+`)
+			expect(gate(await checkGitHubSettings(dir, fakeGh()))?.detail).toContain('not applicable')
+		})
+
+		it('drifts when a tag-triggered release meets a custom policy with no tag rule', async () => {
+			const dir = bareRepo(renderSwiftReleaseWorkflow())
+			const g = gate(
+				await checkGitHubSettings(
+					dir,
+					fakeGh({
+						environments: ok(
+							JSON.stringify({
+								environments: [
+									{
+										name: 'release',
+										protection_rules: [{ type: 'required_reviewers' }],
+										deployment_branch_policy: {
+											protected_branches: false,
+											custom_branch_policies: true,
+										},
+									},
+								],
+							})
+						),
+						branchPolicies: ok(
+							JSON.stringify({ branch_policies: [{ name: 'main', type: 'branch' }] })
+						),
+					})
+				)
+			)
+			expect(g?.status).toBe('drift')
+			expect(g?.detail).toContain('admits no tag')
+			expect(g?.hint).toContain('fix release-environment')
+		})
+
+		it('is ok once the custom policy carries a tag rule', async () => {
+			const dir = bareRepo(renderSwiftReleaseWorkflow())
+			const g = gate(
+				await checkGitHubSettings(
+					dir,
+					fakeGh({
+						environments: ok(
+							JSON.stringify({
+								environments: [
+									{
+										name: 'release',
+										protection_rules: [{ type: 'required_reviewers' }],
+										deployment_branch_policy: {
+											protected_branches: false,
+											custom_branch_policies: true,
+										},
+									},
+								],
+							})
+						),
+						branchPolicies: ok(
+							JSON.stringify({
+								branch_policies: [
+									{ name: 'main', type: 'branch' },
+									{ name: '*', type: 'tag' },
+								],
+							})
+						),
+					})
+				)
+			)
+			expect(g?.status).toBe('ok')
+		})
+	})
+
 	describe('deployment branch policy (#960)', () => {
 		const withPolicy = (deployment_branch_policy: unknown) =>
 			ok(
@@ -599,6 +745,28 @@ jobs:
 		const c = check(await checkGitHubSettings(repoWithReleaseJob(), exec))
 		expect(c?.status).toBe('optional-missing')
 	})
+})
+
+describe('cutsRelease (#1031)', () => {
+	it.each([
+		'gh release create v1.0.0 --generate-notes',
+		'uses: softprops/action-gh-release@v2',
+		'uses: actions/create-release@v1',
+		'uses: ncipollo/release-action@v1',
+		'git push origin --tags',
+		'git push --follow-tags',
+		'git push origin refs/tags/v1.0.0',
+		'git tag v1.0.0\n      - run: git push origin v1.0.0',
+	])('counts %s', (text) => {
+		expect(cutsRelease(text)).toBe(true)
+	})
+
+	it.each(['gh release view v1.0.0', 'git tag --list', 'git push origin main', 'npm test'])(
+		'does not count %s',
+		(text) => {
+			expect(cutsRelease(text)).toBe(false)
+		}
+	)
 })
 
 describe('workflowJobs / jobEnvironment', () => {
@@ -1395,6 +1563,27 @@ ${env ? `    environment: ${env}\n` : ''}    steps:
 			releaseBranches: ['main', 'next'],
 		})
 		expect(posts.map((p) => JSON.parse(p.stdin ?? '').name)).toEqual(['main', 'next'])
+	})
+
+	it('gates a tag-triggered GitHub Release and lets tag runs into the environment (#1031)', async () => {
+		const dir = gitRepo()
+		const old = renderSwiftReleaseWorkflow().replace('    environment: release\n', '')
+		fs.outputFileSync(join(dir, '.github/workflows/release.yml'), old)
+		const { exec, posts } = applyGh()
+		const applied = await applyReleaseEnvironment(dir, exec)
+		expect(posts.map((p) => JSON.parse(p.stdin ?? ''))).toEqual([
+			{ name: 'main', type: 'branch' },
+			{ name: '*', type: 'tag' },
+		])
+		const yaml = fs.readFileSync(join(dir, '.github/workflows/release.yml'), 'utf-8')
+		expect(yaml).toContain('  release:\n    environment: release\n')
+		expect(applied).toHaveLength(4)
+	})
+
+	it('adds no tag rule for a release that only runs on a merge (#1031)', async () => {
+		const { exec, posts } = applyGh({ environments: gatedEnv(null) })
+		await applyReleaseEnvironment(publishRepo('release'), exec)
+		expect(posts.map((p) => JSON.parse(p.stdin ?? '').type)).toEqual(['branch'])
 	})
 
 	it('leaves a protected-branches policy alone (#960)', async () => {
