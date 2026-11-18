@@ -210,20 +210,26 @@ async function checkReleaseToken(target: string, offline?: boolean): Promise<Che
 			// the token it is given, and a PR a GITHUB_TOKEN opens runs no CI, so
 			// it sits blocked on the required check.
 			if (/changesets\/action/.test(live)) {
-				if (/create-github-app-token/.test(live) || /RELEASE_TOKEN/.test(live)) {
+				// Whether the secrets are set is the Repository secrets check's
+				// job: it needs gh, and this one reads only the files (#1030).
+				const app = /create-github-app-token/.test(live)
+				if (app || /RELEASE_TOKEN/.test(live)) {
 					return {
 						check: 'Release token',
 						status: 'ok',
-						detail: /create-github-app-token/.test(live)
-							? `${f} opens Version Packages PRs with a GitHub App token`
-							: `${f} opens Version Packages PRs with RELEASE_TOKEN (GITHUB_TOKEN fallback; the Repository secrets check says whether it is set)`,
+						detail:
+							app && /RELEASE_TOKEN/.test(live)
+								? `${f} opens Version Packages PRs with a GitHub App token, falling back to RELEASE_TOKEN then GITHUB_TOKEN (the Repository secrets check says which is set)`
+								: app
+									? `${f} opens Version Packages PRs with a GitHub App token`
+									: `${f} opens Version Packages PRs with RELEASE_TOKEN (GITHUB_TOKEN fallback; the Repository secrets check says whether it is set)`,
 					}
 				}
 				return {
 					check: 'Release token',
 					status: 'drift',
 					detail: `${f} opens Version Packages PRs with bare GITHUB_TOKEN, so they run no CI`,
-					hint: "Version Packages PRs won't run CI; set RELEASE_TOKEN (the changesets/action `github-token:` and checkout `token:` become `${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}`) or use a GitHub App token",
+					hint: "Version Packages PRs won't run CI: they wait on 'Approve and run workflows'. Mint a token with actions/create-github-app-token from RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, and pass the changesets/action `github-token:` and checkout `token:` `${{ steps.app-token.outputs.token || secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}`",
 				}
 			}
 			if (!/semantic-release/.test(live)) continue

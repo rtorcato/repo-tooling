@@ -21,6 +21,7 @@ export const PINS: Record<string, string> = {
 	'actions/upload-pages-artifact@v3': '56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1',
 	'actions/deploy-pages@v4': 'd6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5',
 	'dependabot/fetch-metadata@v3': '25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0',
+	'actions/create-github-app-token@v3': '64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0',
 	'changesets/action@v2.1.2': 'ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2',
 	'actions/setup-python@v6': 'ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0',
 	'actions/github-script@v7': 'f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0',

@@ -1555,6 +1555,12 @@ interface PublishJob {
 	environment: string | null
 	/** `secrets.NAME` the job references, GITHUB_TOKEN excluded. */
 	secrets: string[]
+	/**
+	 * Of those, the ones an ungated job in the same workflow also reads (#1030),
+	 * e.g. the release credentials a Changesets `version` job opens the Version
+	 * Packages PR with. Moving them onto the environment would break that job.
+	 */
+	sharedUngated: string[]
 	/** The workflow fires on a tag push, so the gate must admit tag refs (#1031). */
 	tags: boolean
 }
@@ -1586,11 +1592,20 @@ async function findPublishJob(dir: string, registry = true): Promise<PublishJob 
 						[...body.matchAll(/secrets\.([A-Za-z_]\w*)/g)].map((m) => m[1] as string)
 					)
 					secrets.delete('GITHUB_TOKEN')
+					const ungated = new Set<string>()
+					for (const [other, otherRaw] of workflowJobs(content)) {
+						const otherBody = withoutComments(otherRaw)
+						if (other === job || jobEnvironment(otherBody)) continue
+						for (const m of otherBody.matchAll(/secrets\.([A-Za-z_]\w*)/g)) {
+							ungated.add(m[1] as string)
+						}
+					}
 					return {
 						file: f,
 						job,
 						environment: jobEnvironment(body),
 						secrets: [...secrets],
+						sharedUngated: [...secrets].filter((n) => ungated.has(n)),
 						tags: tagTriggered(content),
 					}
 				}
@@ -1951,12 +1966,19 @@ async function checkReleaseSecrets(
 	// Access is proved above, so a 404 means no `release` environment: holds nothing.
 	const env = listed === 'not-found' ? new Set<string>() : listed
 
-	const exposed = publish.secrets.filter((n) => repo.has(n) && !env.has(n))
+	// A secret an ungated job also needs can't move onto the environment, so it
+	// is reported, not flagged (#1030).
+	const exposed = publish.secrets.filter(
+		(n) => repo.has(n) && !env.has(n) && !publish.sharedUngated.includes(n)
+	)
 	if (exposed.length === 0) {
+		const shared = publish.sharedUngated.filter((n) => repo.has(n) && !env.has(n))
 		return {
 			check,
 			status: 'ok',
-			detail: `no secret ${where} reads is a repo secret outside \`${RELEASE_ENVIRONMENT}\``,
+			detail: shared.length
+				? `${shared.join(', ')} ${shared.length === 1 ? 'is a repo secret' : 'are repo secrets'} because an ungated job in ${publish.file} reads ${shared.length === 1 ? 'it' : 'them'} too; no other secret ${where} reads is outside \`${RELEASE_ENVIRONMENT}\``
+				: `no secret ${where} reads is a repo secret outside \`${RELEASE_ENVIRONMENT}\``,
 		}
 	}
 	const names = exposed.join(', ')

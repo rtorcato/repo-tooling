@@ -214,7 +214,14 @@ Shipping is **merge the Version Packages PR, then one approval**:
   waiting for approval never holds up the next push's Version Packages PR
   update. There is no milestone trigger: the Version Packages PR is the batch.
 - `version` installs with `--ignore-scripts`. It runs ungated on every push
-  with `RELEASE_TOKEN` checked out, so no dependency install script runs there.
+  with the release token checked out, so no dependency install script runs there.
+- **The release token is a GitHub App token when one is configured.** Both
+  jobs mint it with `actions/create-github-app-token` from the
+  `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` secrets, then fall back to
+  `RELEASE_TOKEN`, then to `GITHUB_TOKEN` with a `No release credentials`
+  warning. A Version Packages PR opened with `GITHUB_TOKEN` runs no CI until
+  someone clicks **Approve and run workflows**. The
+  [releasing guide](../guides/releasing.md#release-credentials) covers setup.
 
 The file name and the environment name stay the same: npm trusted publishing
 is bound to `release.yml` plus the `release` environment. `doctor` flags the old

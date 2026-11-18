@@ -73,11 +73,31 @@ describe('generated Changesets release workflow (#938)', () => {
 		expect(version).toContain("if: steps.changesets.outputs.has-changesets == 'false'")
 	})
 
-	it('warns in the version job when RELEASE_TOKEN is unset (#1006)', () => {
+	it('pushes and opens PRs with the App token, then RELEASE_TOKEN, then GITHUB_TOKEN (#1030)', () => {
+		const jobs = workflowJobs(render())
+		for (const name of ['version', 'publish']) {
+			const job = jobs.get(name) ?? ''
+			expect(job).toMatch(/create-github-app-token@[0-9a-f]{40} # v3\.3\.0/)
+			expect(job).toContain("if: steps.creds.outputs.app == 'true'")
+			expect(job).toContain('client-id: ${{ secrets.RELEASE_APP_ID }}')
+			expect(job).toContain('private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}')
+			const token =
+				'${{ steps.app-token.outputs.token || secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}'
+			expect(job).toContain(`token: ${token}`)
+			expect(job).toContain(`github-token: ${token}`)
+			expect(job).not.toMatch(/token: \$\{\{ secrets\./)
+			// Minted before anything uses it.
+			expect(job.indexOf('id: app-token')).toBeLessThan(job.indexOf('actions/checkout'))
+		}
+		// No secret value reaches the shell, only whether it is set.
+		expect(credentialsStep()).not.toMatch(/: \$\{\{ secrets\.\w+ \}\}/)
+	})
+
+	it('names no specific owner, bot or App in the credential steps (#1030)', () => {
 		const version = workflowJobs(render()).get('version') ?? ''
-		expect(version).toContain('RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}')
-		expect(version).toContain('::warning title=RELEASE_TOKEN is not set::')
-		expect(version.indexOf('::warning')).toBeLessThan(version.indexOf('actions/checkout'))
+		const steps = version.slice(0, version.indexOf('actions/checkout'))
+		expect(steps).toContain('create-github-app-token')
+		expect(steps).not.toMatch(/rtorcato|\[bot\]|owner:|repositories:|app-slug/)
 	})
 
 	it('only the Version Packages PR merge or a dispatch reaches the gated publish job', () => {
@@ -134,6 +154,63 @@ describe('doctor on a Changesets release.yml (#938)', () => {
 		expect(r.detail).toContain('release.yml: one job opens the Version Packages PR and publishes')
 		expect(r.hint).toContain('fix github-actions')
 		expect(r.hint).toContain('`release` environment')
+	})
+})
+
+// The release-credentials step's shell, as the version job renders it.
+function credentialsStep(): string {
+	const version = workflowJobs(render()).get('version') ?? ''
+	const step = version.slice(version.indexOf('id: creds'), version.indexOf('id: app-token'))
+	return step
+}
+function credentialsScript(): string {
+	const step = credentialsStep()
+	return step
+		.slice(step.indexOf('run: |\n') + 'run: |\n'.length)
+		.split('\n')
+		.filter((l) => l.startsWith('          '))
+		.map((l) => l.slice(10))
+		.join('\n')
+}
+
+describe('picking the release credentials (#1030)', () => {
+	const run = (set: { appId?: boolean; appKey?: boolean; token?: boolean }) => {
+		const dir = newTmpDir()
+		const output = join(dir, 'out')
+		fs.outputFileSync(output, '')
+		const stdout = execFileSync('bash', ['-e', '-c', credentialsScript()], {
+			env: {
+				...process.env,
+				GITHUB_OUTPUT: output,
+				HAS_APP_ID: String(Boolean(set.appId)),
+				HAS_APP_KEY: String(Boolean(set.appKey)),
+				HAS_RELEASE_TOKEN: String(Boolean(set.token)),
+			},
+			encoding: 'utf-8',
+		})
+		return { output: fs.readFileSync(output, 'utf-8'), stdout }
+	}
+
+	it('uses the App token when both App secrets are set', () => {
+		expect(run({ appId: true, appKey: true, token: true })).toEqual({
+			output: 'app=true\n',
+			stdout: '',
+		})
+		expect(run({ appId: true, appKey: true }).output).toBe('app=true\n')
+	})
+
+	it('falls back to RELEASE_TOKEN, quietly, without both App secrets', () => {
+		expect(run({ token: true })).toEqual({ output: '', stdout: '' })
+		expect(run({ appId: true, token: true })).toEqual({ output: '', stdout: '' })
+	})
+
+	it('warns when only GITHUB_TOKEN is left', () => {
+		for (const set of [{}, { appKey: true }]) {
+			const r = run(set)
+			expect(r.output).toBe('')
+			expect(r.stdout).toContain('::warning title=No release credentials::')
+			expect(r.stdout).toContain('Approve and run workflows')
+		}
 	})
 })
 

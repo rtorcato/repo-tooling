@@ -1852,6 +1852,21 @@ export default { ...preset, plugins: preset.plugins.filter((p) => !DROPPED.has(A
 			expect(rt?.status).toBe('ok')
 		})
 
+		it('is ok with the generated App token and its RELEASE_TOKEN fallback (#1030)', async () => {
+			const rt = await releaseToken(
+				'${{ steps.app-token.outputs.token || secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}',
+				'      - id: app-token\n        uses: actions/create-github-app-token@v3\n'
+			)
+			expect(rt?.status).toBe('ok')
+			expect(rt?.detail).toContain('falling back to RELEASE_TOKEN')
+		})
+
+		it('names the held-workflows symptom and the App secrets in the drift hint (#1030)', async () => {
+			const rt = await releaseToken('${{ secrets.GITHUB_TOKEN }}')
+			expect(rt?.hint).toContain('Approve and run workflows')
+			expect(rt?.hint).toContain('RELEASE_APP_PRIVATE_KEY')
+		})
+
 		it('is ok with a GitHub App token', async () => {
 			const rt = await releaseToken(
 				'${{ steps.app.outputs.token }}',

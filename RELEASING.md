@@ -2,7 +2,8 @@
 
 This package releases with [Changesets](https://github.com/changesets/changesets)
 (#940; it used semantic-release until 6.1.1). A merge to `main` never publishes.
-Shipping is one Version Packages PR merge plus one `release` approval.
+Shipping is one Version Packages PR merge plus one `release` approval, and
+only the approval needs a person.
 
 Asking an agent "how do I release" or "cut a release"? The `npm-publish` skill
 (`skills/npm-publish/SKILL.md`) covers this flow.
@@ -71,18 +72,49 @@ npm publishing uses **OIDC trusted publishing**; there is no `NPM_TOKEN`. The
 environment `release`. Rename either and the publish fails with `E404`, so keep
 both names. OIDC needs npm >= 11.5.1, which the job installs.
 
-`RELEASE_TOKEN` (optional admin PAT) lets the `version` job push the Version
-Packages branch so its PR runs CI; a PR opened with `GITHUB_TOKEN` starts no
-workflows. The `version` job has no environment, so it sees `RELEASE_TOKEN`
-only as a repository secret; stored on `release` as below, only `publish`
-gets it. Without it the job falls back to `GITHUB_TOKEN`, which needs
-"Allow GitHub Actions to create and approve pull requests" on (Settings →
-Actions → General; `doctor` checks it for Changesets repos, #946).
+### Release credentials: one GitHub App for every repo (#1030)
+
+A pull request opened with `GITHUB_TOKEN` starts no workflows, so a Version
+Packages PR opened with it waits on **Approve and run workflows** and never gets
+its required check. Both release jobs therefore push and open PRs with the first
+of these that is set:
+
+1. **A GitHub App token**, minted by `actions/create-github-app-token` from
+   `RELEASE_APP_ID` (the App ID or Client ID) and `RELEASE_APP_PRIVATE_KEY`.
+   One App installed on all of your repos covers every one of them. Give it
+   **Contents: read and write** and **Pull requests: read and write**, and leave
+   it off branch-protection bypass lists: it pushes only the Version Packages
+   branch and the release tags.
+2. **`RELEASE_TOKEN`**, a fine-grained PAT, for a repo with no App.
+3. **`GITHUB_TOKEN`**, with a `No release credentials` warning on the run. This
+   needs "Allow GitHub Actions to create and approve pull requests" on
+   (Settings → Actions → General; `doctor` checks it for Changesets repos,
+   #946), and every Version Packages PR then needs the manual approval.
+
+The `version` job has no environment, so it reads these as repository or
+organization secrets. Store the App secrets at organization level, or once per
+repo: `gh secret set RELEASE_APP_ID` and
+`gh secret set RELEASE_APP_PRIVATE_KEY < key.pem`. `doctor`'s **Repository
+secrets** check reports a Changesets repo with neither the App secrets nor
+`RELEASE_TOKEN` as `drift`, and passes one with either.
+
+### One human gate
+
+With the App in place a release has two steps, and only the second needs a
+person:
+
+1. **Merge the Version Packages PR.** Its CI runs on its own, so anyone with
+   write access, an agent included, can merge it once it is green.
+2. **Approve the `release` deployment.** Publishing waits here. The `release`
+   environment's required reviewers should be humans only, never the account
+   your agents run as, so an agent can merge but cannot publish. The App token
+   can't publish either: npm trusted publishing is bound to the `release`
+   environment.
 
 ### Release secrets belong on the `release` environment
 
-Store any secret the publishing job reads (an admin PAT such as
-`RELEASE_TOKEN`) as an **environment secret** on `release`
+Store any secret only the publishing job reads as an **environment secret** on
+`release`
 (Settings → Environments → release → Environment secrets), not as a repository
 secret. Every job in every workflow can read a repository secret, which gets
 around the `release` environment's required reviewer, the only step in a release

@@ -515,6 +515,48 @@ done
 echo "release=$release" >> "$GITHUB_OUTPUT"`
 
 /**
+ * The token the Changesets release jobs push and open PRs with (#1030): a
+ * GitHub App installation token when `RELEASE_APP_ID` and
+ * `RELEASE_APP_PRIVATE_KEY` are set, else `RELEASE_TOKEN`, else `GITHUB_TOKEN`.
+ */
+const RELEASE_TOKEN_EXPR =
+	'${{ steps.app-token.outputs.token || secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}'
+
+/**
+ * Picks the release credentials and mints the App token (#1030). GitHub runs no
+ * workflows for events a GITHUB_TOKEN causes, so a Version Packages PR opened
+ * with it waits on "Approve and run workflows" and never gets its required
+ * check. One GitHub App installed on all of an owner's repos covers every repo.
+ * The `!= ''` comparisons only say whether a secret is set; no value reaches
+ * the shell.
+ */
+const RELEASE_CREDENTIAL_STEPS = `      # A GitHub App token opens the Version Packages PR, so its CI runs on its
+      # own: GitHub runs no workflows for events a GITHUB_TOKEN causes. Set
+      # RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY for one App installed on
+      # every repo; RELEASE_TOKEN (a PAT) is the fallback, then GITHUB_TOKEN.
+      - name: 🔑 Pick the release credentials
+        id: creds
+        env:
+          HAS_APP_ID: \${{ secrets.RELEASE_APP_ID != '' }}
+          HAS_APP_KEY: \${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+          HAS_RELEASE_TOKEN: \${{ secrets.RELEASE_TOKEN != '' }}
+        run: |
+          if [ "$HAS_APP_ID" = true ] && [ "$HAS_APP_KEY" = true ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          elif [ "$HAS_RELEASE_TOKEN" != true ]; then
+            echo "::warning title=No release credentials::Version Packages PRs opened with GITHUB_TOKEN wait on 'Approve and run workflows' and their required check never runs. Set RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY (a GitHub App), or RELEASE_TOKEN."
+          fi
+
+      - name: 🔑 Mint a GitHub App token
+        id: app-token
+        if: steps.creds.outputs.app == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: \${{ secrets.RELEASE_APP_ID }}
+          private-key: \${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+`
+
+/**
  * The Changesets release workflow (#938): still batched, but shipping is
  * "merge the Version Packages PR (VPR) + one approval".
  *
@@ -530,7 +572,7 @@ echo "release=$release" >> "$GITHUB_OUTPUT"`
  * environment stay: npm trusted publishing is bound to both.
  */
 function renderChangesetsRelease(config: ProjectConfig, opts: JobOptions): string {
-	// The version job is ungated and holds RELEASE_TOKEN, so no dependency
+	// The version job is ungated and holds the release token, so no dependency
 	// install script runs there; `changeset version` needs no build.
 	const setup = (publish: boolean) => `      - name: 📦 Setup Node.js
         uses: actions/setup-node@v7
@@ -550,7 +592,7 @@ function renderChangesetsRelease(config: ProjectConfig, opts: JobOptions): strin
         run: pnpm build
 `
 			: ''
-	const changesetsInputs = `          github-token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+	const changesetsInputs = `          github-token: ${RELEASE_TOKEN_EXPR}
           version-script: pnpm changeset version
           commit-message: 'chore(release): version packages'
           pr-title: 'chore(release): version packages'`
@@ -585,24 +627,14 @@ jobs:
     outputs:
       release: \${{ steps.unpublished.outputs.release }}
     steps:
-      # GitHub runs no workflows for events a GITHUB_TOKEN causes, so a Version
-      # Packages PR opened with the fallback never gets its required CI check.
-      - name: ⚠️ Warn when RELEASE_TOKEN is unset
-        env:
-          RELEASE_TOKEN: \${{ secrets.RELEASE_TOKEN }}
-        run: |
-          if [ -z "$RELEASE_TOKEN" ]; then
-            echo "::warning title=RELEASE_TOKEN is not set::Version Packages PRs opened with GITHUB_TOKEN run no CI and sit blocked on the required check. Set a RELEASE_TOKEN secret (PAT or GitHub App token)."
-          fi
-
+${RELEASE_CREDENTIAL_STEPS}
       - name: 📦 Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # RELEASE_TOKEN (admin PAT) lets the action push the Version Packages
-          # branch, and its PR then runs CI; GITHUB_TOKEN-made PRs trigger none.
-          # Falls back to GITHUB_TOKEN when no PAT is set.
-          token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # The App token (or RELEASE_TOKEN) pushes the Version Packages branch,
+          # so its PR runs CI; GITHUB_TOKEN-made PRs trigger none.
+          token: ${RELEASE_TOKEN_EXPR}
 
 ${setup(false)}
       # No publish-script: with changesets pending this opens or updates the
@@ -680,11 +712,12 @@ ${UNPUBLISHED_CHECK.split('\n')
       # The commit that triggered the run, not the tip: a changeset merged while
       # this waited for approval would otherwise make it update the Version
       # Packages PR instead of publishing.
+${RELEASE_CREDENTIAL_STEPS}
       - name: 📦 Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${RELEASE_TOKEN_EXPR}
 
 ${setup(true)}${build}
       # OIDC trusted publishing needs npm >= 11.5.1; Node 22 bundles npm 10, whose
