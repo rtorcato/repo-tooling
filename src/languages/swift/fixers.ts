@@ -178,7 +178,7 @@ export const SWIFT_FIXERS: Fixer[] = [
 			if (prefixed) {
 				console.error(
 					chalk.yellow(
-						`   created ${prefixed} locally: your latest tag is unprefixed, and Changesets tags \`vX.Y.Z\`. Push it before merging the Version Packages PR: git push origin ${prefixed}`
+						`   created ${prefixed} locally: your latest tag is unprefixed, and Changesets tags \`vX.Y.Z\`. Push it before merging the Version Packages PR: git push origin ${prefixed}. The push starts a release run for a version that already shipped; reject it at the \`release\` approval`
 					)
 				)
 			}
