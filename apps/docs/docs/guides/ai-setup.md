@@ -113,7 +113,7 @@ everything outside it alone. So:
 ## Loop settings live in `.repo-ai.json`
 
 The ai-issue-loop pipeline lives in the optional package
-`@infrazero/repo-ai` (see
+`@rtorcato/repo-ai` (see
 [Using with repo-ai](./ai-issue-loop.md)), and so do its settings: the agent
 account and the required skills go in repo-ai's own `.repo-ai.json`. See
 [repo-ai's config docs](./ai-issue-loop.md).
@@ -123,7 +123,7 @@ deprecated. They still validate, and are removed in the next major. To move
 them across, run:
 
 ```bash
-npx @infrazero/repo-ai fix config
+npx @rtorcato/repo-ai fix config
 ```
 
 ## `rules.mcp.recommended`: names and reasons, never an install directive
