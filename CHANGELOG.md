@@ -1,5 +1,21 @@
 # @rtorcato/repo-tooling
 
+## 6.4.0
+
+### Minor Changes
+
+- 6846bdf: `fix dependabot` now adds a `docker` (and `docker-compose`) ecosystem entry when the repo has a Dockerfile or compose file, and `doctor` flags a Dependabot config that lacks it (#1009).
+- c3121b2: `doctor` now names who it ran as and lists the checks that could not run (for example for lack of admin access), adds `ranAs` and `skipped[]` to `--json`, and gains `--strict` to exit non-zero when any check was skipped.
+
+### Patch Changes
+
+- 43163ec: `fix github-settings` refuses, naming the check, when branch protection would require a status check no workflow produces, instead of skipping with exit 0 (#1007).
+- 5badd47: `fix <target>` and `fix --resync` now exit 1 with `<target> needs confirmation: re-run with --yes (no TTY to prompt)` when there is no TTY and no `--yes`, instead of printing `skipped` and exiting 0, which read as "nothing to do". A bare `fix` still skips fixers it cannot confirm.
+- 0b30d03: Community-health files and `.editorconfig` no longer assume JavaScript. On a repo with no language marker, `CONTRIBUTING.md`, the PR template and the bug-report template say "the project's checks" instead of `pnpm` commands. `SECURITY.md` drops the `security-contact@example.com` placeholder and points at private vulnerability reporting only. `.editorconfig` gains a `[*.sh]` section indented with spaces.
+- ae21f4a: The Release token check now covers Changesets workflows: Version Packages PRs opened with a bare `GITHUB_TOKEN` run no CI, so doctor flags them as drift. The generated Changesets release workflow also emits a `::warning::` when `RELEASE_TOKEN` is unset.
+- 5a6812b: Name the ai-issue-loop companion `@rtorcato/repo-ai` everywhere (docs, CLI pointer, schema descriptions). `@infrazero/repo-ai` is deprecated on npm in favour of it (#1023).
+- c674024: The generated Changesets release workflow no longer queues a duplicate publish approval when a push lands while the previous publish awaits approval. A new ungated `gate` job queues in the `release` group and re-checks npm before the `release` environment is requested.
+
 ## 6.3.1
 
 ### Patch Changes
