@@ -166,6 +166,7 @@ export const SWIFT_FIXERS: Fixer[] = [
 			'.github/workflows/release.yml',
 			VERSION_WORKFLOW,
 			'package.json',
+			'package-lock.json',
 			'.changeset/config.json',
 		],
 		canFixDrift: true,

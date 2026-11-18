@@ -6,6 +6,9 @@ import base from './tooling/vitest/vitest.config.mjs'
 // redirect it into this repo. See the helper for the full failure mode (#519).
 stripAmbientGitEnv()
 
+// Scaffolders write a package-lock.json via npm; tests must not reach the registry.
+process.env.REPO_TOOLING_SKIP_LOCKFILE = '1'
+
 // repo-tooling-specific coverage scope and thresholds. The shared preset only
 // provides generic v8 defaults so consumers don't inherit our paths.
 export default mergeConfig(

@@ -41,6 +41,8 @@ The procedure is the same: add a changeset, merge the Version Packages PR, appro
 
 A repo that publishes no package uses Changesets for versioning only. `setup --preset swift-library` scaffolds a private root `package.json` that carries the version and has no entry points, a `.changeset/config.json` with `privatePackages: { version: true, tag: true }`, and `version-packages.yml`. Merging the Version Packages PR bumps the version and creates the `vX.Y.Z` tag. The tag runs `release.yml`, whose releasing job sits in the `release` environment.
 
+Commit the `package-lock.json` the scaffold writes: `version-packages.yml` installs with `npm ci`, so the dependency tree that runs beside the write token is the reviewed one. If npm was unreachable when you scaffolded, run `npm install --package-lock-only --ignore-scripts` and commit the result. Pushing the mirror `vX.Y.Z` tag that `fix swift-release` creates for an unprefixed tag starts a release run for a version that already shipped; reject it at the `release` approval.
+
 A tag pushed with `GITHUB_TOKEN` starts no workflow, so set a `RELEASE_TOKEN` secret (a PAT or GitHub App token). Without it the Version Packages PR gets no CI and the tag runs no release. The first step of `version-packages.yml` warns when it is unset.
 
 To convert a repo that releases from a hand-pushed tag, run `fix swift-release`. It writes the files above and seeds `version` from your latest semver tag. `doctor` reports the repo as drifted until then.

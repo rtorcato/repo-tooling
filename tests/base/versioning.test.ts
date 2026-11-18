@@ -122,6 +122,36 @@ describe('Changesets for versioning only (#1032)', () => {
 		expect(await fs.pathExists(join(dir, 'tagged'))).toBe(true)
 	})
 
+	// Ratchet: the token-bearing job must install a reviewed tree, not float.
+	it('installs from a lockfile and keeps the write token out of .git/config', () => {
+		const yaml = renderVersionWorkflow()
+		expect(yaml).toContain('npm ci --ignore-scripts')
+		expect(yaml).not.toMatch(/npm install/)
+		expect(yaml).toContain('persist-credentials: false')
+		expect(yaml).not.toContain('Nothing here runs repo code')
+	})
+
+	it('writes a package-lock.json when npm can resolve it', async () => {
+		const dir = newTmpDir()
+		const saved = process.env.REPO_TOOLING_SKIP_LOCKFILE
+		process.env.REPO_TOOLING_SKIP_LOCKFILE = ''
+		const bin = join(dir, 'bin')
+		await fs.outputFile(
+			join(bin, 'npm'),
+			'#!/bin/sh\necho \'{"lockfileVersion":3}\' > package-lock.json\n',
+			{ mode: 0o755 }
+		)
+		const original = process.env.PATH
+		process.env.PATH = `${bin}:${original}`
+		try {
+			expect(await scaffoldVersioning(dir, { name: 'demo' })).toContain('package-lock.json')
+		} finally {
+			process.env.PATH = original
+			process.env.REPO_TOOLING_SKIP_LOCKFILE = saved ?? ''
+		}
+		expect(await fs.pathExists(join(dir, 'package-lock.json'))).toBe(true)
+	})
+
 	it('names no owner or account in anything it emits (#1032)', async () => {
 		const dir = newTmpDir()
 		await scaffoldVersioning(dir, { name: 'demo' })

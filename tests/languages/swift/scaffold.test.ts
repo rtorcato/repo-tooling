@@ -268,7 +268,8 @@ describe('swiftFileList', () => {
 		// The lockfile is written by setupProject after the generator, so it's
 		// declared but never on disk at this point.
 		const declared = swiftFileList(config)
-			.filter((f) => f !== '.repo-tooling.json')
+			// The lockfile comes from npm, which tests skip (REPO_TOOLING_SKIP_LOCKFILE).
+			.filter((f) => f !== '.repo-tooling.json' && f !== 'package-lock.json')
 			.sort()
 		expect(written).toEqual(declared)
 	})

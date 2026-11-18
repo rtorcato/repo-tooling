@@ -84,15 +84,20 @@ jobs:
         with:
           fetch-depth: 0
           token: \${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # changesets/action sets up its own git auth from github-token, so the
+          # write token need not sit in .git/config while dependencies run.
+          persist-credentials: false
 
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
 
-      # Nothing here runs repo code: only @changesets/cli is installed.
+      # Only @changesets/cli is installed, from the committed package-lock.json,
+      # so the dependency tree that runs with the write token below is the one
+      # that was reviewed. --ignore-scripts stops install hooks only.
       - name: 📦 Install Changesets
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       # Changesets pending: open or update the PR. None pending (this push merged
       # it): run \`changeset tag\`, then the action pushes the new tag.
@@ -168,6 +173,34 @@ export interface VersioningOptions {
 }
 
 /**
+ * Write `package-lock.json` for the root package, so the workflow's `npm ci`
+ * installs a reviewed dependency tree rather than whatever is latest that day.
+ * Lock only: no `node_modules`, no install scripts. Needs the registry; when npm
+ * is unreachable it warns and the workflow's `npm ci` fails loudly until the
+ * lockfile is added. Set `REPO_TOOLING_SKIP_LOCKFILE=1` to skip it (offline, tests).
+ */
+async function writeLockfile(dir: string): Promise<boolean> {
+	if (process.env.REPO_TOOLING_SKIP_LOCKFILE) return false
+	if (await fs.pathExists(path.join(dir, 'package-lock.json'))) return false
+	try {
+		execFileSync(
+			'npm',
+			['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'],
+			{
+				cwd: dir,
+				stdio: ['ignore', 'ignore', 'pipe'],
+			}
+		)
+		return true
+	} catch {
+		console.error(
+			"   could not write package-lock.json (npm unreachable?): run `npm install --package-lock-only --ignore-scripts` and commit it, or the Version Packages workflow's `npm ci` fails"
+		)
+		return false
+	}
+}
+
+/**
  * Scaffold Changesets-for-versioning: the private root `package.json`, the
  * `.changeset/config.json`, and the Version Packages workflow. Existing files
  * are merged, never replaced: a repo's own `package.json` keeps its keys, and a
@@ -219,6 +252,8 @@ export async function scaffoldVersioning(dir: string, opts: VersioningOptions): 
 			written.push(CHANGESET_CONFIG)
 		}
 	}
+
+	if (await writeLockfile(dir)) written.push('package-lock.json')
 
 	// CI installs @changesets/cli, and so might a contributor: keep it out of git.
 	const ignorePath = path.join(dir, '.gitignore')
