@@ -51,6 +51,10 @@ judgement on a tag consumers can't pin below — for a benefit Dependabot's
 if consumers ask for it; adding a floating tag later is backwards-compatible,
 removing one is not.
 
+## The same procedure for every language
+
+The procedure above is the one for every repo repo-tooling manages, whatever its language: add a changeset, merge the Version Packages PR, approve the `release` environment. Nothing else releases (no hand-pushed tag, no merge-to-publish, no milestone close, no bare dispatch). Repos that publish no npm package use Changesets for versioning only, with a private root `package.json` that carries the version and a tag-triggered release job. See the [releasing guide](apps/docs/docs/guides/releasing.md#repos-with-no-npm-package-swift).
+
 ## Before an API-changing release
 
 Changesets owns the version, tag, CHANGELOG, and npm publish — **never bump or

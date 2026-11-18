@@ -5,6 +5,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import fs from '../../base/safe-fs.js'
 import type { Fixer } from '../../base/fixers.js'
+import { ensurePrefixedTag, scaffoldVersioning, VERSION_WORKFLOW } from '../../base/versioning.js'
 import { buildPresetConfig } from '../../cli/commands/setup-presets.js'
 import { copyPreset } from '../../cli/utils/copy-preset.js'
 import { LOCKFILE_NAME, writeLockfile } from '../../cli/utils/lockfile.js'
@@ -159,15 +160,30 @@ export const SWIFT_FIXERS: Fixer[] = [
 	{
 		target: 'swift-release',
 		description:
-			'Scaffold .github/workflows/release.yml (build + test on a version tag, then publish a GitHub Release)',
+			'Scaffold the one release procedure: the Version Packages workflow, a private root package.json and .changeset/config.json that version and tag it (seeded from the latest semver tag), and .github/workflows/release.yml (build + test on that tag, then a GitHub Release in the `release` environment)',
 		appliesTo: ['Release automation'],
-		outputs: ['.github/workflows/release.yml'],
+		outputs: [
+			'.github/workflows/release.yml',
+			VERSION_WORKFLOW,
+			'package.json',
+			'package-lock.json',
+			'.changeset/config.json',
+		],
 		canFixDrift: true,
 		async run({ targetDir }) {
 			const workflowsDir = path.join(targetDir, '.github', 'workflows')
 			await fs.ensureDir(workflowsDir)
 			await fs.writeFile(path.join(workflowsDir, 'release.yml'), renderSwiftReleaseWorkflow())
-			return { filesWritten: ['.github/workflows/release.yml'] }
+			const versioning = await scaffoldVersioning(targetDir, { name: path.basename(targetDir) })
+			const prefixed = ensurePrefixedTag(targetDir)
+			if (prefixed) {
+				console.error(
+					chalk.yellow(
+						`   created ${prefixed} locally: your latest tag is unprefixed, and Changesets tags \`vX.Y.Z\`. Push it before merging the Version Packages PR: git push origin ${prefixed}. The push starts a release run for a version that already shipped; reject it at the \`release\` approval`
+					)
+				)
+			}
+			return { filesWritten: ['.github/workflows/release.yml', ...versioning] }
 		},
 	},
 	{

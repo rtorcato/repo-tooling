@@ -10,6 +10,8 @@ import {
 	checkSwiftTests,
 	runSwiftChecks,
 } from '../../../src/languages/swift/checks.js'
+import { renderSwiftReleaseWorkflow } from '../../../src/languages/swift/ci.js'
+import { scaffoldVersioning } from '../../../src/base/versioning.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -248,9 +250,20 @@ describe('checkSwiftRelease', () => {
 			join(dir, '.github/workflows/release.yml'),
 			workflow("  push:\n    tags:\n      - '[0-9]+.[0-9]+.[0-9]+'\n")
 		)
+		await scaffoldVersioning(dir, { name: 'demo' })
 		const result = await checkSwiftRelease(dir)
 		expect(result.status).toBe('ok')
 		expect(result.detail).toContain('release.yml')
+	})
+
+	// #1032: a tag-triggered release nothing versions is a hand-pushed-tag release.
+	it('flags a tag-triggered release with no Changesets versioning behind it', async () => {
+		const dir = newTmpDir()
+		await fs.outputFile(join(dir, '.github/workflows/release.yml'), renderSwiftReleaseWorkflow())
+		const result = await checkSwiftRelease(dir)
+		expect(result.status).toBe('drift')
+		expect(result.detail).toContain('hand-pushed tag')
+		expect(result.hint).toContain('fix swift-release')
 	})
 
 	it('does not count a branch-triggered CI workflow', async () => {

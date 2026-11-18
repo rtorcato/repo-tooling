@@ -9,6 +9,7 @@ import {
 	renderSwiftWorkflow,
 	swiftGithubJobs,
 } from '../../../src/languages/swift/ci.js'
+import { scaffoldVersioning } from '../../../src/base/versioning.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
 const newTmpDir = useTmpDir()
@@ -139,6 +140,7 @@ describe('renderSwiftReleaseWorkflow', () => {
 	it('is the shape the Release automation check accepts', async () => {
 		const dir = newTmpDir()
 		await fs.outputFile(join(dir, '.github/workflows/release.yml'), renderSwiftReleaseWorkflow())
+		await scaffoldVersioning(dir, { name: 'demo' })
 		expect((await checkSwiftRelease(dir)).status).toBe('ok')
 	})
 })

@@ -40,7 +40,9 @@ SwiftPM resolves dependencies on the first `swift build`, and there's no
 | `.githooks/pre-commit` + `pre-push` | Node-free git hooks (SwiftLint, `swift build`/`test`) |
 | `.editorconfig` | Shared baseline plus a `[*.swift]` 4-space override |
 | `.github/workflows/ci.yml` | Swift CI on macOS runners |
-| `.github/workflows/release.yml` | Build/test gate + GitHub Release on a version tag |
+| `.github/workflows/release.yml` | Build/test gate + GitHub Release on a version tag, in the `release` environment |
+| `.github/workflows/version-packages.yml` | Opens the Version Packages PR; merging it tags the new version |
+| `package.json`, `.changeset/config.json` | A private root package that only carries the version (Changesets, versioning only) |
 | `.github/workflows/codeql.yml` | CodeQL with `language: swift` |
 | `.github/dependabot.yml` + auto-merge workflow | Grouped dependency updates |
 | `AGENTS.md`, `CLAUDE.md`, Cursor/Copilot rules, Claude skill, `.mcp.json.example` | AI agent files (language-agnostic) |
@@ -95,7 +97,7 @@ not having. Concretely:
 | Dead code | knip | Periphery |
 | Install step | `pnpm install` | none — SwiftPM resolves on build |
 | Git hooks | Husky + lint-staged (`.husky/`) | committed `.githooks/` + `core.hooksPath` |
-| Release | semantic-release → npm | version tag → GitHub Release (`release.yml`) |
+| Release | semantic-release → npm | Version Packages PR → version tag → GitHub Release (`release.yml`, `release` environment) |
 | CI runner | `ubuntu-latest` | `macos-latest` (Xcode) |
 | CodeQL | `javascript-typescript` | `swift` |
 

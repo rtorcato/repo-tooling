@@ -277,13 +277,15 @@ describe('computeFileList', () => {
 		expect(files).not.toContain('tsup.config.ts')
 	})
 
-	it('lists Swift files and no package.json for swift-library (#288)', () => {
+	it('lists Swift files and no JS toolchain for swift-library (#288)', () => {
 		const files = computeFileList(buildPresetConfig('swift-library', 'my-swift-lib'))
 		expect(files).toContain('Package.swift')
 		expect(files).toContain('Sources/MySwiftLib/MySwiftLib.swift')
 		expect(files).toContain('.swiftlint.yml')
 		expect(files).toContain('.github/workflows/ci.yml')
-		expect(files).not.toContain('package.json')
+		// The root package.json exists only to carry the version (#1032).
+		expect(files).toContain('package.json')
+		expect(files).toContain('.changeset/config.json')
 		expect(files).not.toContain('tsconfig.json')
 	})
 
@@ -385,7 +387,11 @@ describe('setup --preset', () => {
 		expect(await fs.pathExists(join(dir, 'Package.swift'))).toBe(true)
 		expect(await fs.pathExists(join(dir, '.swiftlint.yml'))).toBe(true)
 		expect(await fs.pathExists(join(dir, '.github', 'workflows', 'ci.yml'))).toBe(true)
-		expect(await fs.pathExists(join(dir, 'package.json'))).toBe(false)
+		// Only the private version carrier (#1032), never a JS toolchain.
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg.private).toBe(true)
+		expect(pkg.main).toBeUndefined()
+		expect(await fs.pathExists(join(dir, 'tsconfig.json'))).toBe(false)
 
 		const lock = await fs.readJson(join(dir, '.repo-tooling.json'))
 		expect(lock.record.config.language).toBe('swift')
