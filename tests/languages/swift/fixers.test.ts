@@ -158,7 +158,14 @@ describe('swift fixers', () => {
 	it('swift-release writes a workflow the Release automation check accepts', async () => {
 		const dir = newTmpDir()
 		const { filesWritten } = await fixer('swift-release').run(ctx(dir))
-		expect(filesWritten).toEqual(['.github/workflows/release.yml'])
+		expect(filesWritten).toEqual(
+			expect.arrayContaining([
+				'.github/workflows/release.yml',
+				'.github/workflows/version-packages.yml',
+				'.changeset/config.json',
+				'package.json',
+			])
+		)
 		expect((await checkSwiftRelease(dir)).status).toBe('ok')
 	})
 

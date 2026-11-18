@@ -16,6 +16,7 @@
 import path from 'node:path'
 import fs from 'fs-extra'
 import { type FileCheck, type GitHooksProfile, checkFile } from '../../base/checks.js'
+import { CHANGESET_CONFIG, hasVersioningConfig, VERSION_WORKFLOW } from '../../base/versioning.js'
 import { cutsRelease, jobEnvironment, workflowJobs } from '../../base/github-settings.js'
 import type { CheckResult } from '../../base/types.js'
 import { parsePackageSwift } from './ci.js'
@@ -344,10 +345,23 @@ export async function checkSwiftRelease(dir: string): Promise<CheckResult> {
 						hint: 'Run `npx @rtorcato/repo-tooling fix swift-release` to regenerate release.yml with `environment: release`, then `fix release-environment` to give that environment a required reviewer',
 					}
 				}
+				// A tag only releases when nothing but a merged Version Packages PR can
+				// make one (#1032). A bare tag-push release is anyone-with-push-access.
+				if (
+					!(await hasVersioningConfig(dir)) ||
+					!(await fs.pathExists(path.join(dir, VERSION_WORKFLOW)))
+				) {
+					return {
+						check,
+						status: 'drift',
+						detail: `.github/workflows/${file} releases on a tag push, but nothing versions it: no ${CHANGESET_CONFIG} with \`privatePackages\` versioning and tagging, or no ${VERSION_WORKFLOW}. A hand-pushed tag is the release`,
+						hint: 'Run `npx @rtorcato/repo-tooling fix swift-release` to scaffold the Version Packages flow (private package.json + Changesets, version seeded from your latest tag)',
+					}
+				}
 				return {
 					check,
 					status: 'ok',
-					detail: `.github/workflows/${file} releases on a tag push`,
+					detail: `.github/workflows/${file} releases on a tag the Version Packages PR creates`,
 				}
 			}
 		}

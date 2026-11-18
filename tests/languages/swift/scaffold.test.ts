@@ -7,7 +7,11 @@ import {
 	swiftFileList,
 	swiftModuleName,
 } from '../../../src/languages/swift/scaffold.js'
-import { SWIFT_GIT_HOOKS, runSwiftChecks } from '../../../src/languages/swift/checks.js'
+import {
+	SWIFT_GIT_HOOKS,
+	checkSwiftRelease,
+	runSwiftChecks,
+} from '../../../src/languages/swift/checks.js'
 import { checkGitHooks, checkPrePushHook } from '../../../src/base/checks.js'
 import { useTmpDir } from '../../helpers/tmp-dir.js'
 
@@ -54,9 +58,24 @@ describe('generateSwiftProject', () => {
 	// The whole point of the Swift arm: none of the package.json-rooted generators run.
 	it('writes no JS artefacts', async () => {
 		const dir = await scaffold()
-		for (const file of ['package.json', 'tsconfig.json', 'biome.json', 'vitest.config.ts']) {
+		for (const file of ['tsconfig.json', 'biome.json', 'vitest.config.ts']) {
 			expect(await fs.pathExists(join(dir, file)), file).toBe(false)
 		}
+	})
+
+	// #1032: the Version Packages PR is the only thing that cuts a tag.
+	it('scaffolds the private version carrier and the Version Packages flow', async () => {
+		const dir = await scaffold()
+		const pkg = await fs.readJson(join(dir, 'package.json'))
+		expect(pkg).toMatchObject({ private: true, version: '0.0.0' })
+		expect(pkg.main ?? pkg.exports ?? pkg.bin).toBeUndefined()
+		const config = await fs.readJson(join(dir, '.changeset/config.json'))
+		expect(config.privatePackages).toEqual({ version: true, tag: true })
+		const version = await fs.readFile(join(dir, '.github/workflows/version-packages.yml'), 'utf-8')
+		expect(version).toContain('changesets/action')
+		expect(version).not.toContain('environment:')
+		expect(await fs.readFile(join(dir, '.gitignore'), 'utf-8')).toContain('node_modules/')
+		expect(await checkSwiftRelease(dir)).toMatchObject({ status: 'ok' })
 	})
 
 	it('produces a manifest that passes the Package.swift check', async () => {

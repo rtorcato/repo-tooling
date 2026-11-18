@@ -197,6 +197,11 @@ export function renderSwiftWorkflow(pkg: SwiftPackage): string {
  * third-party pin to track, and `--verify-tag` refuses to invent a tag that
  * isn't actually pushed.
  *
+ * The tag comes from the Version Packages PR (#1032): `version-packages.yml`
+ * bumps a private root package and `changeset tag` creates `vX.Y.Z` on merge.
+ * Nothing else should push a tag, and `doctor` flags a repo that has no such
+ * versioning behind this workflow.
+ *
  * `environment: release` (#1031): the job waits for the environment's required
  * reviewer, so pushing a tag alone cuts no release. `fix release-environment`
  * creates the environment and lets tag runs into it.
