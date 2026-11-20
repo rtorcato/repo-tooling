@@ -44,6 +44,8 @@ export interface FixActionRecord {
 	doctorStatus: CheckResult['status']
 	filesWritten: string[]
 	lockfileConflict?: boolean
+	/** Why a `skipped` action did not run. Always set when `status` is `skipped` (#1020). */
+	reason?: string
 }
 
 /** @public Documented JSON shape (for-ai-agents.md); knip must not strip it. */
@@ -405,16 +407,25 @@ function failNeedsConfirmation(name: string): never {
 	process.exit(1)
 }
 
+/** Why `confirmApply` said no: nobody to ask, or the answer was no (#1020). */
+function declinedReason(): string {
+	return process.stdin.isTTY
+		? 'declined at the prompt'
+		: 'needs confirmation and there is no TTY to prompt; re-run with --yes'
+}
+
 function recordFor(
 	target: string | null,
 	check: string,
 	doctorStatus: CheckResult['status'],
 	status: FixActionStatus,
 	filesWritten: string[],
-	lockfileConflict = false
+	lockfileConflict = false,
+	reason?: string
 ): FixActionRecord {
 	const base: FixActionRecord = { target, check, status, doctorStatus, filesWritten }
 	if (lockfileConflict) base.lockfileConflict = true
+	if (reason) base.reason = reason
 	return base
 }
 
@@ -616,7 +627,15 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		const ok = await confirmApply(fixer, effectiveResult, assumeYes, dryRun)
 		if (!ok) {
 			actions.push(
-				recordFor(fixer.target, result.check, effectiveResult.status, 'skipped', [], conflict)
+				recordFor(
+					fixer.target,
+					result.check,
+					effectiveResult.status,
+					'skipped',
+					[],
+					conflict,
+					declinedReason()
+				)
 			)
 			if (json) return emitJson(fixer.target)
 			console.log(chalk.gray('   skipped\n'))
@@ -693,10 +712,9 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		// nor an optional tool: optional alternatives (Biome/ESLint/Prettier/Oxlint,
 		// semantic-release/Changesets/Release Please) are mutually exclusive (#630).
 		if (fixer.explicitOnly || result.status === 'optional-missing') {
-			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', []))
-			if (!silent) {
-				console.log(chalk.gray(`    skipped — run \`fix ${fixer.target}\` explicitly`))
-			}
+			const why = `run \`fix ${fixer.target}\` explicitly`
+			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', [], false, why))
+			if (!silent) console.log(chalk.gray(`    skipped — ${why}`))
 			skippedCount++
 			continue
 		}
@@ -707,8 +725,11 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 		}
 		const ok = await confirmApply(fixer, result, assumeYes, dryRun)
 		if (!ok) {
-			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict))
-			if (!silent) console.log(chalk.gray('    skipped'))
+			const why = declinedReason()
+			actions.push(
+				recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict, why)
+			)
+			if (!silent) console.log(chalk.gray(`    skipped — ${why}`))
 			skippedCount++
 			continue
 		}
@@ -723,7 +744,10 @@ export async function fixCommand(target: string | undefined, options: FixOptions
 				assumeYes,
 			})
 		} catch (err) {
-			actions.push(recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict))
+			const why = (err instanceof Error ? err.message : String(err)) || 'failed'
+			actions.push(
+				recordFor(fixer.target, result.check, result.status, 'skipped', [], conflict, why)
+			)
 			if (err instanceof FixerAbort) {
 				console.error(chalk.red(`    refused — ${err.message}`))
 				if (err.hint) console.error(chalk.gray(`    ${err.hint}`))
