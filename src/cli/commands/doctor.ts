@@ -1,12 +1,11 @@
 import path from 'node:path'
 import chalk from 'chalk'
 import fs from 'fs-extra'
-import { renderGitHubWorkflow } from '../../base/ci.js'
 import {
-	githubJobs,
 	hasBin,
 	hasCommitlint,
 	nodeFloorOf,
+	renderJsCiWorkflow,
 	renderReleaseWorkflow,
 	scriptsOf,
 } from '../../languages/js/ci.js'
@@ -735,14 +734,12 @@ async function runChecks(
 			},
 			// Same `scripts` gating the fixer applies, or the workflow doctor
 			// compares against would reference steps the fixer never writes (#364).
-			presetWorkflow: renderGitHubWorkflow(
-				githubJobs(inferReleaseConfig(pkg, targetDir), {
-					scripts: scriptsOf(pkg),
-					bin: hasBin(pkg),
-					commitlint: hasCommitlint(pkg),
-					nodeFloor: nodeFloorOf(pkg),
-				})
-			),
+			presetWorkflow: renderJsCiWorkflow(inferReleaseConfig(pkg, targetDir), {
+				scripts: scriptsOf(pkg),
+				bin: hasBin(pkg),
+				commitlint: hasCommitlint(pkg),
+				nodeFloor: nodeFloorOf(pkg),
+			}),
 			presetRelease: renderReleaseWorkflow(inferReleaseConfig(pkg, targetDir), {
 				scripts: scriptsOf(pkg),
 			}),

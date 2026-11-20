@@ -23,6 +23,7 @@
 	"scripts": {
 		"build": "pnpm sync:skill && pnpm build-cli",
 		"sync:skill": "node -e \"require('fs').copyFileSync('tooling/claude/repo-tooling.md', 'skills/repo-tooling/SKILL.md')\"",
+		"sync:ci": "pnpm build-cli && node scripts/sync-reusable-ci.mjs",
 		"build-cli": "rimraf ./dist && tsc --project src/cli/tsconfig.json",
 		"prepublishOnly": "./scripts/fix-bins.sh",
 		"dev": "pnpm --filter @rtorcato/docs dev",
