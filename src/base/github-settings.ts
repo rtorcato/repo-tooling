@@ -128,6 +128,7 @@ const CODE_SCANNING_CHECK = 'Code-scanning gate'
 export const RELEASE_GATE_CHECK = 'Release gate'
 export const RELEASE_ENV_CHECK = 'Release environment'
 const RELEASE_SECRETS_CHECK = 'Release secrets'
+export const RELEASE_REVIEWERS_CHECK = 'Release reviewers'
 const SECURITY_UPDATES_CHECK = 'Security updates'
 export const GITHUB_SETTINGS_CHECKS = [
 	'Branch protection',
@@ -138,6 +139,7 @@ export const GITHUB_SETTINGS_CHECKS = [
 	RELEASE_GATE_CHECK,
 	RELEASE_ENV_CHECK,
 	RELEASE_SECRETS_CHECK,
+	RELEASE_REVIEWERS_CHECK,
 ] as const
 
 // Recommended CodeQL alert thresholds — GitHub's UI defaults. This is the
@@ -259,6 +261,7 @@ export async function checkGitHubSettings(
 		await checkSecurityUpdates(gh, info.nwo, rules),
 		await checkCodeScanningRuleset(gh, info.nwo, info.branch, dir),
 		...(await checkReleaseGate(gh, info.nwo, dir, rules, info.branch)),
+		await checkReleaseReviewers(gh, info.nwo, rules),
 	]
 }
 
@@ -1625,6 +1628,8 @@ interface Environment {
 	reviewers: string[]
 	/** Just the user logins, as `rules.github.releaseReviewers` holds them (#863). */
 	users: string[]
+	/** User reviewers GitHub types as `Bot`, or whose login is an app's `[bot]` login (#1043). */
+	bots: string[]
 	/** Reviewers as a PUT takes them back, so a policy-only write keeps the gate (#960). */
 	reviewerIds: Array<{ type: string; id: number }>
 	/**
@@ -1643,7 +1648,10 @@ interface ReviewerRule {
 	type?: string
 	prevent_self_review?: boolean
 	wait_timer?: number
-	reviewers?: Array<{ type?: string; reviewer?: { id?: number; login?: string; slug?: string } }>
+	reviewers?: Array<{
+		type?: string
+		reviewer?: { id?: number; login?: string; slug?: string; type?: string }
+	}>
 }
 
 async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments | 'skip'> {
@@ -1669,6 +1677,12 @@ async function readEnvironments(gh: GhExec, nwo: string): Promise<Environments |
 					(rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? x.reviewer?.slug ?? '')
 				),
 				users: normalizeReviewers((rule?.reviewers ?? []).map((x) => x.reviewer?.login ?? '')),
+				bots: normalizeReviewers(
+					(rule?.reviewers ?? []).map((x) => {
+						const login = x.reviewer?.login ?? ''
+						return x.reviewer?.type === 'Bot' || login.endsWith('[bot]') ? login : ''
+					})
+				),
 				reviewerIds: (rule?.reviewers ?? []).flatMap((x) =>
 					typeof x.reviewer?.id === 'number' ? [{ type: x.type ?? 'User', id: x.reviewer.id }] : []
 				),
@@ -1910,6 +1924,68 @@ async function checkReleaseGate(
 	}
 
 	return [gate, environment, secrets]
+}
+
+/**
+ * Who can approve a release (#1043). The required reviewer on `release` is the
+ * one human gate: an agent or bot account on that list can dispatch a release
+ * and approve it itself, which no other check notices.
+ *
+ * - **drift** when a reviewer is a GitHub `Bot`, or a login listed in
+ *   `rules.github.agentAccounts` (a machine *user* types as `User`, so only the
+ *   declared list catches it).
+ * - **optional-missing** (a warning that never moves the exit code) when
+ *   `release` has no required reviewers, or "Prevent self-review" is off.
+ * - **skipped** when the environments can't be read, e.g. CI's GITHUB_TOKEN.
+ *
+ * Runs whether or not a workflow releases: the environment is what reads as a
+ * gate in the UI, so a bot on it is wrong either way.
+ */
+async function checkReleaseReviewers(
+	gh: GhExec,
+	nwo: string,
+	rules: GithubRules = {}
+): Promise<CheckResult> {
+	const check = RELEASE_REVIEWERS_CHECK
+	const envs = await readEnvironments(gh, nwo)
+	if (envs === 'skip') return skip(check, 'could not read environments')
+	const env = envs.get(RELEASE_ENVIRONMENT)
+	if (!env) return { check, status: 'ok', detail: `no \`${RELEASE_ENVIRONMENT}\` environment` }
+
+	const settings = `https://github.com/${nwo}/settings/environments`
+	const agents = new Set(normalizeReviewers(rules.agentAccounts ?? []))
+	const flagged = [
+		...env.bots.map((l) => `${l} (bot)`),
+		...env.users
+			.filter((l) => agents.has(l) && !env.bots.includes(l))
+			.map((l) => `${l} (agent account)`),
+	]
+	if (flagged.length)
+		return {
+			check,
+			status: 'drift',
+			detail: `the \`${RELEASE_ENVIRONMENT}\` environment lists ${flagged.join(', ')} as a required reviewer — that account can dispatch a release and approve it itself`,
+			hint: `Remove it at ${settings} (\`${RELEASE_ENVIRONMENT}\` → Required reviewers) and leave only humans on the list`,
+		}
+	if (!env.gated || env.reviewers.length === 0)
+		return {
+			check,
+			status: 'optional-missing',
+			detail: `the \`${RELEASE_ENVIRONMENT}\` environment has no required reviewers`,
+			hint: `Add a human reviewer at ${settings}, or run \`npx @rtorcato/repo-tooling fix release-environment\``,
+		}
+	if (env.preventSelfReview !== true)
+		return {
+			check,
+			status: 'optional-missing',
+			detail: `"Prevent self-review" is off on \`${RELEASE_ENVIRONMENT}\` — whoever triggers a release can approve it`,
+			hint: `Turn on "Prevent self-review" at ${settings} (\`${RELEASE_ENVIRONMENT}\`), and keep only humans on the reviewer list`,
+		}
+	return {
+		check,
+		status: 'ok',
+		detail: `\`${RELEASE_ENVIRONMENT}\` reviewers are ${env.reviewers.join(', ')}, none a bot${agents.size ? ' or agent account' : ''}`,
+	}
 }
 
 /**

@@ -110,6 +110,12 @@ export interface GithubRules {
 	 * allow (#960). Standard: the default branch.
 	 */
 	releaseBranches?: string[]
+	/**
+	 * Machine-user logins agents run as (#1043). doctor fails when one is a
+	 * required reviewer on the `release` environment. GitHub types these as
+	 * `User`, so only this list tells them from a human. No standard.
+	 */
+	agentAccounts?: string[]
 }
 
 export interface LockfileRules {
@@ -379,6 +385,12 @@ export function lockfileSchema() {
 								items: { type: 'string', minLength: 1 },
 								description:
 									"Branches the `release` environment's deployment branch policy must allow. Standard: the default branch.",
+							},
+							agentAccounts: {
+								type: 'array',
+								items: { type: 'string', minLength: 1 },
+								description:
+									'Machine-user logins agents run as. doctor fails when one is a required reviewer on the `release` environment.',
 							},
 						} satisfies Record<keyof GithubRules, object>,
 					},

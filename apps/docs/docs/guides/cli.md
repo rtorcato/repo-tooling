@@ -98,7 +98,7 @@ Some checks read live GitHub state over `gh`: branch protection, merge and secur
 | CI / supply chain | `GitHub Actions`, `Release token` (semantic-release needs `RELEASE_TOKEN`, with `GITHUB_TOKEN` as fallback), `npm OIDC publish`, `npm trusted publisher`, Dependabot, CodeQL, `GitLab CI` |
 | Build / docs | TypeDoc, `size-limit`, `Tree-shake check` |
 | Ecosystem | Bun runtime, Turborepo / Nx, Tailwind / PostCSS |
-| GitHub (live, over `gh`) | `Branch protection`, `Merge settings`, `Workflow permissions`, `Code-scanning gate`, `Security updates`, `Release gate`, `Release environment`, `Release secrets`, `Repository secrets`, `Milestones` |
+| GitHub (live, over `gh`) | `Branch protection`, `Merge settings`, `Workflow permissions`, `Code-scanning gate`, `Security updates`, `Release gate`, `Release environment`, `Release secrets`, `Release reviewers`, `Repository secrets`, `Milestones` |
 
 ### Release gate
 
@@ -109,6 +109,8 @@ The **Release gate** check looks for the workflow job that publishes (`semantic-
 - the job names an environment with no required reviewers
 
 **Release environment** reports a `release` environment that no job references, and **Release secrets** reports publish secrets kept as repository secrets rather than on the environment. `fix release-environment` creates the environment with you as the required reviewer and adds `environment: release` to the job. It only runs when named.
+
+**Release reviewers** fails when a required reviewer on the `release` environment is a bot, or a login listed in `rules.github.agentAccounts` (the machine users your agents run as, which GitHub types as ordinary users). Only humans belong on that list: an agent account there can dispatch a release and approve it itself. It warns, without failing, when `release` has no required reviewers or "Prevent self-review" is off, and skips when the token can't read environments. Remove the account at `https://github.com/<owner>/<repo>/settings/environments`.
 
 A repo that publishes nothing is `ok`, reported as *not applicable*. A root `package.json` with `private: true` counts as publishing nothing, unless it is a monorepo root with a workspace package that isn't private. The workspace packages come from `pnpm-workspace.yaml` or the `workspaces` field. A pnpm or Changesets monorepo always has a private root while `packages/*` publish, so the check still runs there.
 
