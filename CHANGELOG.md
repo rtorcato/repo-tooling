@@ -1,5 +1,18 @@
 # @rtorcato/repo-tooling
 
+## 6.5.0
+
+### Minor Changes
+
+- 1ac8a74: `language: "none"` for repos with no language stack, such as shell or Docker repos. `setup --preset none` writes `.repo-tooling.json` and nothing else, so the repo can declare `rules.*` (for example `rules.dependabot.onPr: label`). Doctor and `fix` then run the base suite only, and a declared `none` beats any marker file.
+- b20933f: The generated Changesets `release.yml` opens the Version Packages PR with a GitHub App token, so its CI runs without "Approve and run workflows". It mints the token with `actions/create-github-app-token` from the `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` secrets, falls back to `RELEASE_TOKEN`, then to `GITHUB_TOKEN` with a `No release credentials` warning. `doctor`'s Repository secrets check accepts the App secrets in place of `RELEASE_TOKEN` and flags a Changesets repo with neither. The Release secrets check no longer flags a secret an ungated job in the same workflow also needs. The releasing docs describe the one human gate: merge the Version Packages PR, then approve the `release` deployment.
+- 8925e42: One release procedure for repos with no npm package. `setup --preset swift-library` now scaffolds Changesets for versioning only: a private root `package.json`, a `.changeset/config.json` that versions and tags it, and a Version Packages workflow. Merging the Version Packages PR creates the `vX.Y.Z` tag, and the tag-triggered release job runs in the `release` environment. `doctor` reports a tag-triggered Swift release with no such versioning as drift, and `fix swift-release` converts it, seeding the version from the latest semver tag.
+
+### Patch Changes
+
+- c982321: `fix` now says why it skipped a fixer: every `skipped` action in `--json` carries a `reason`, and the text output prints it instead of a bare "skipped" (#1020).
+- ac19e27: The release gate now covers GitHub Releases and tag pushes, not only registry publishes. A job that runs `gh release create`, a release action, or pushes a tag must run in the `release` environment, in every language and in repos with no language marker. The Swift release template runs in `environment: release`, `fix swift-release` regenerates an ungated one, and `fix release-environment` lets tag-triggered runs into the environment.
+
 ## 6.4.0
 
 ### Minor Changes
