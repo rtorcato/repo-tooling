@@ -518,6 +518,61 @@ export async function checkCodeQL(dir: string, languages: readonly string[]): Pr
 	}
 }
 
+export const REUSABLE_PINS_CHECK = 'Reusable workflow pins'
+
+/** A `uses:` value on one line, quoted or bare, up to a comment or the end. */
+const USES_LINE = /^\s*(?:-\s*)?uses:\s*(['"]?)([^\s'"#]+)\1/
+/** A call to one of repo-tooling's reusable workflows; group 1 is the ref, if any. */
+const REPO_TOOLING_REUSABLE = /^rtorcato\/repo-tooling\/\.github\/workflows\/[^@]+(?:@(.*))?$/i
+const FULL_SHA = /^[0-9a-f]{40}$/i
+
+/**
+ * Every call to a repo-tooling reusable workflow pins a full commit SHA (#1038).
+ * A branch (`@main`) or a tag can move, so one repo-tooling change would run in
+ * every consumer's CI, release jobs included. A short SHA is refused too: GitHub
+ * rejects it for `uses:`, and it is not the immutable form Dependabot keeps.
+ * Comment lines run nothing, so they are skipped.
+ */
+export async function checkReusableWorkflowPins(dir: string): Promise<CheckResult> {
+	const workflowsDir = path.join(dir, '.github', 'workflows')
+	let files: string[] = []
+	try {
+		files = (await fs.readdir(workflowsDir)).filter((f) => /\.ya?ml$/.test(f)).sort()
+	} catch {
+		// No workflows directory: nothing calls a reusable workflow.
+	}
+	let pinned = 0
+	const unpinned: string[] = []
+	for (const f of files) {
+		const content = await fs.readFile(path.join(workflowsDir, f), 'utf-8')
+		content.split('\n').forEach((line, i) => {
+			if (line.trimStart().startsWith('#')) return
+			const target = USES_LINE.exec(line)?.[2]
+			if (!target) return
+			const ref = REPO_TOOLING_REUSABLE.exec(target)
+			if (!ref) return
+			if (ref[1] && FULL_SHA.test(ref[1])) pinned++
+			else unpinned.push(`${f}:${i + 1} (${ref[1] ? `@${ref[1]}` : 'no ref'})`)
+		})
+	}
+	if (unpinned.length > 0) {
+		return {
+			check: REUSABLE_PINS_CHECK,
+			status: 'drift',
+			detail: `repo-tooling reusable workflow not pinned to a full commit SHA: ${unpinned.join(', ')}`,
+			hint: "Pin each call to a full 40-character commit SHA with a version comment, e.g. `uses: rtorcato/repo-tooling/.github/workflows/js-ci.yml@<full sha> # vX.Y.Z`. A branch or tag can move, so one repo-tooling change would run in this repo's CI. Dependabot (github-actions) keeps the SHA current",
+		}
+	}
+	return {
+		check: REUSABLE_PINS_CHECK,
+		status: 'ok',
+		detail:
+			pinned > 0
+				? `${pinned} repo-tooling reusable workflow call${pinned === 1 ? '' : 's'} pinned to a full commit SHA`
+				: 'not applicable — no workflow calls a repo-tooling reusable workflow',
+	}
+}
+
 export async function checkAiSetup(dir: string): Promise<CheckResult> {
 	// Consider AI setup present if one of the block-managed files carries the
 	// agent block or the Claude skill is installed — the markers `fix ai` writes.

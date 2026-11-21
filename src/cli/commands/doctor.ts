@@ -71,6 +71,7 @@ import {
 	checkPrePushHook,
 	checkReadmeBadges,
 	checkRecommendedMcp,
+	checkReusableWorkflowPins,
 	COMMITLINT_FILE_CHECK,
 	type GitHooksProfile,
 } from '../../base/checks.js'
@@ -512,6 +513,8 @@ async function runBaseChecks(
 	results.push(await checkGitHubActions(root, opts.presetWorkflow, opts.presetRelease ?? null))
 	results.push(await checkDependabot(dir))
 	results.push(await checkCodeQL(root, opts.codeqlLanguages))
+	// #1038: a reusable-workflow caller pins a SHA, never a branch or tag.
+	results.push(await checkReusableWorkflowPins(root))
 	for (const spec of Object.values(REMOTE_CHECKS)) {
 		results.push(...(await runRemote(spec, root, lock, opts.offline)))
 	}
