@@ -1,5 +1,13 @@
 # @rtorcato/repo-tooling
 
+## 6.6.0
+
+### Minor Changes
+
+- 323497d: doctor: new `Release reviewers` check fails when a bot, or a login in the new `rules.github.agentAccounts` option, is a required reviewer on the `release` environment, and warns when `release` has no reviewers or "Prevent self-review" is off (#1043).
+- a2db88a: doctor: new `Reusable workflow pins` check fails when a workflow calls a repo-tooling reusable workflow with a branch, tag or short SHA instead of a full commit SHA (#1038).
+- 746732b: Add a reusable JS CI workflow (`.github/workflows/js-ci.yml`) and a thin-caller render in the CI generator (#1037). The caller keeps `on:`, `concurrency:`, the skip check and the final `ci` gate; `release.yml` stays copied.
+
 ## 6.5.0
 
 ### Minor Changes
