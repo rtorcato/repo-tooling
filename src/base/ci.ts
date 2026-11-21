@@ -30,6 +30,11 @@ export interface CiJob {
 	extra?: string
 	/** The `steps:` entries, already indented six spaces, no trailing newline. */
 	steps: string
+	/**
+	 * A reusable workflow to call (`owner/repo/.github/workflows/x.yml@ref`). The job
+	 * then has no runner or steps; `extra` carries its `permissions:` and `with:`.
+	 */
+	uses?: string
 }
 
 /**
@@ -155,6 +160,13 @@ function renderJob(job: CiJob): string {
 	const needsYaml = needs.length === 1 ? needs[0] : `[${needs.join(', ')}]`
 	const condition = job.if ? `${SKIP_GUARD} && ${job.if}` : SKIP_GUARD
 
+	if (job.uses) {
+		return `  ${job.id}:
+    needs: ${needsYaml}
+    if: ${condition}
+    uses: ${job.uses}${job.extra ? `\n${job.extra}` : ''}`
+	}
+
 	return `  ${job.id}:
     runs-on: ${job.runsOn ?? 'ubuntu-latest'}
     needs: ${needsYaml}
@@ -191,8 +203,11 @@ function gateJob(ids: readonly string[]): string {
 }
 
 /** Wrap language-supplied jobs in the shared workflow shell. */
-export function renderGitHubWorkflow(jobs: readonly CiJob[]): string {
-	const header = workflowHeader(jobs.some((job) => job.id === 'commitlint'))
+export function renderGitHubWorkflow(
+	jobs: readonly CiJob[],
+	opts: { lintsTitle?: boolean } = {}
+): string {
+	const header = workflowHeader(opts.lintsTitle ?? jobs.some((job) => job.id === 'commitlint'))
 	const gate = gateJob(['check-skip', ...jobs.map((job) => job.id)])
 	return pinActions(`${header}${[CHECK_SKIP_JOB, ...jobs.map(renderJob), gate].join('\n\n')}\n`)
 }

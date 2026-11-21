@@ -1,6 +1,5 @@
 import fs from '../../base/safe-fs.js'
 import path from 'node:path'
-import { renderGitHubWorkflow } from '../../base/ci.js'
 import { FixerAbort } from '../../base/fixers.js'
 import {
 	jobEnvironment,
@@ -10,7 +9,11 @@ import {
 	semanticReleaseJob,
 	workflowJobs,
 } from '../../base/github-settings.js'
-import { githubJobs, RELEASE_WORKFLOW, renderReleaseWorkflow } from '../../languages/js/ci.js'
+import {
+	RELEASE_WORKFLOW,
+	renderJsCiWorkflow,
+	renderReleaseWorkflow,
+} from '../../languages/js/ci.js'
 import type { ProjectConfig } from '../commands/setup.js'
 
 /** Matches the fixer's declared output, so `fix` reports the same path it lists. */
@@ -80,7 +83,7 @@ export async function generateGitHubActions(
 	const releaseEnvironment = releaseEnvironmentOf(existingRelease) ?? releaseEnvironmentOf(existing)
 	const release = renderReleaseWorkflow(config, { scripts, releaseEnvironment })
 
-	const workflow = renderGitHubWorkflow(githubJobs(config, { scripts, bin, commitlint, nodeFloor }))
+	const workflow = renderJsCiWorkflow(config, { scripts, bin, commitlint, nodeFloor })
 	const releaseJob = existing === null ? null : semanticReleaseJob(existing)
 	let ci = existing
 	let releaseYml = release
