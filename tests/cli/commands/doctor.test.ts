@@ -51,6 +51,7 @@ const BASE_CHECKS = [
 	'GitHub Actions',
 	'Dependabot',
 	'CodeQL',
+	'Reusable workflow pins',
 	'GitLab CI',
 	'CODEOWNERS',
 	'Community health',

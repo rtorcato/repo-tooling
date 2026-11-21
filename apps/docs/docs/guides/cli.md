@@ -95,10 +95,14 @@ Some checks read live GitHub state over `gh`: branch protection, merge and secur
 | Repo baseline | `package.json`, `EditorConfig`, `VS Code extensions` (`.vscode/extensions.json`), `Git identity` (`user.email` is a real address), `Git author history`, `Community health` (`CONTRIBUTING.md`, `SECURITY.md`), `Declared exceptions` (`rules.exceptions` in `.repo-tooling.json`) |
 | Tooling presets | TypeScript, Biome, ESLint, Prettier, Oxlint, Vitest, Commitlint |
 | Automation | `Git hooks`, `Pre-push hook`, `lint-staged`, `verify script`, semantic-release, knip |
-| CI / supply chain | `GitHub Actions`, `Release token` (semantic-release needs `RELEASE_TOKEN`, with `GITHUB_TOKEN` as fallback), `npm OIDC publish`, `npm trusted publisher`, Dependabot, CodeQL, `GitLab CI` |
+| CI / supply chain | `GitHub Actions`, `Release token` (semantic-release needs `RELEASE_TOKEN`, with `GITHUB_TOKEN` as fallback), `npm OIDC publish`, `npm trusted publisher`, Dependabot, CodeQL, `Reusable workflow pins`, `GitLab CI` |
 | Build / docs | TypeDoc, `size-limit`, `Tree-shake check` |
 | Ecosystem | Bun runtime, Turborepo / Nx, Tailwind / PostCSS |
 | GitHub (live, over `gh`) | `Branch protection`, `Merge settings`, `Workflow permissions`, `Code-scanning gate`, `Security updates`, `Release gate`, `Release environment`, `Release secrets`, `Release reviewers`, `Repository secrets`, `Milestones` |
+
+### Reusable workflow pins
+
+**Reusable workflow pins** fails when a workflow calls one of repo-tooling's reusable workflows (`uses: rtorcato/repo-tooling/.github/workflows/...`) with anything but a full 40-character commit SHA. A branch such as `@main`, a tag or a short SHA can move or be rejected, and a moved ref would run one repo-tooling change in every consumer's CI. Pin the SHA with a `# vX.Y.Z` comment so Dependabot keeps it current. A repo that calls no reusable workflow is `ok`, reported as *not applicable*. There is no fixer: pick the release you trust and paste its SHA.
 
 ### Release gate
 
