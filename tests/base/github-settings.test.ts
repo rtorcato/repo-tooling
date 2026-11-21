@@ -170,7 +170,7 @@ describe('checkGitHubSettings — skip paths', () => {
 		const exec = fakeGh()
 		const results = await checkGitHubSettings(newTmpDir(), exec)
 		expect(exec).not.toHaveBeenCalled()
-		expect(results).toHaveLength(8)
+		expect(results).toHaveLength(9)
 		expect(results.every((r) => r.status === 'skipped' && r.detail.includes('skipped'))).toBe(true)
 	})
 
@@ -192,7 +192,7 @@ describe('checkGitHubSettings — skip paths', () => {
 describe('checkGitHubSettings — compliant repo', () => {
 	it('reports all three ok when settings match the standard', async () => {
 		const results = await checkGitHubSettings(gitRepo(), fakeGh())
-		expect(results).toHaveLength(8)
+		expect(results).toHaveLength(9)
 		expect(results.every((r) => r.status === 'ok')).toBe(true)
 		expect(byName(results, 'Branch protection')?.detail).toContain('protected per standard')
 	})
@@ -795,6 +795,91 @@ jobs:
 		const exec = fakeGh({ repoSecrets: fail('gh: Not Found (HTTP 404)') })
 		const c = check(await checkGitHubSettings(repoWithReleaseJob(), exec))
 		expect(c?.status).toBe('optional-missing')
+	})
+})
+
+describe('checkGitHubSettings — release reviewers (#1043)', () => {
+	type Reviewer = { login: string; type?: string }
+	const releaseEnv = (reviewers: Reviewer[] | null, preventSelfReview = true) =>
+		ok(
+			JSON.stringify({
+				total_count: 1,
+				environments: [
+					{
+						name: 'release',
+						protection_rules:
+							reviewers === null
+								? []
+								: [
+										{
+											type: 'required_reviewers',
+											prevent_self_review: preventSelfReview,
+											reviewers: reviewers.map((r, i) => ({
+												type: 'User',
+												reviewer: { id: i + 1, login: r.login, type: r.type ?? 'User' },
+											})),
+										},
+									],
+					},
+				],
+			})
+		)
+	const reviewersFor = async (environments: GhResult, rules: GithubRules = {}) =>
+		byName(
+			await checkGitHubSettings(gitRepo(), fakeGh({ environments }), rules),
+			'Release reviewers'
+		)
+
+	it('is ok with no release environment', async () => {
+		const r = await reviewersFor(ok(NO_ENVIRONMENTS))
+		expect(r?.status).toBe('ok')
+	})
+
+	it('is ok when only humans review and self-review is prevented', async () => {
+		const r = await reviewersFor(releaseEnv([{ login: 'Alice' }]), { agentAccounts: ['some-bot'] })
+		expect(r?.status).toBe('ok')
+		expect(r?.detail).toContain('alice')
+	})
+
+	it('fails on a reviewer GitHub types as a Bot', async () => {
+		const r = await reviewersFor(
+			releaseEnv([{ login: 'alice' }, { login: 'release-app[bot]', type: 'Bot' }])
+		)
+		expect(r?.status).toBe('drift')
+		expect(r?.detail).toContain('release-app[bot] (bot)')
+		expect(r?.hint).toContain('https://github.com/owner/repo/settings/environments')
+		expect(r?.hint).toContain('only humans')
+	})
+
+	it('fails on a machine user listed in agentAccounts, case-insensitively', async () => {
+		const env = releaseEnv([{ login: 'alice' }, { login: 'Agent-Bot' }])
+		expect((await reviewersFor(env))?.status).toBe('ok')
+		const r = await reviewersFor(env, { agentAccounts: ['agent-bot'] })
+		expect(r?.status).toBe('drift')
+		expect(r?.detail).toContain('agent-bot (agent account)')
+	})
+
+	it('warns, without failing, when release has no required reviewers', async () => {
+		const r = await reviewersFor(releaseEnv(null))
+		expect(r?.status).toBe('optional-missing')
+		expect(r?.detail).toContain('no required reviewers')
+	})
+
+	it('warns when Prevent self-review is off', async () => {
+		const r = await reviewersFor(releaseEnv([{ login: 'alice' }], false))
+		expect(r?.status).toBe('optional-missing')
+		expect(r?.detail).toContain('Prevent self-review')
+	})
+
+	it('skips with a note when the token cannot read environments (403)', async () => {
+		const r = await reviewersFor(fail('gh: Resource not accessible by integration (HTTP 403)'))
+		expect(r?.status).toBe('skipped')
+		expect(r?.detail).toContain('could not read environments')
+	})
+
+	it('reads a 404 as no environments, not a failure', async () => {
+		const r = await reviewersFor(fail('gh: Not Found (HTTP 404)'))
+		expect(r?.status).toBe('ok')
 	})
 })
 

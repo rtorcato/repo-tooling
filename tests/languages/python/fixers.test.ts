@@ -73,6 +73,8 @@ describe('python fixers', () => {
 			'Git author history',
 			// #754: secret values can't be read back, so moving one is manual.
 			'Release secrets',
+			// #1043: who may approve a release is a human call, so no fixer edits it.
+			'Release reviewers',
 			'Repository secrets',
 			'README badges',
 			'pyproject.toml',
